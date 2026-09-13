@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+MirissaFinans.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.ipa
+*.xcarchive

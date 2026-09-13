@@ -1,0 +1,264 @@
+import Foundation
+import Observation
+
+/// Uygulamanın tek veri kaynağı.
+///
+/// Her değişiklikten sonra motor yeniden kurulur; bütün ekranlar
+/// anında ve kendiliğinden doğru rakamı gösterir. Kayıt diske
+/// gecikmeli ve atomik olarak yazılır.
+@MainActor
+@Observable
+public final class AppStore {
+    public private(set) var state: AppState
+    public private(set) var engine: Engine
+    public private(set) var loadError: String?
+
+    private let file: FileStore
+    private var saveTask: Task<Void, Never>?
+    private let saveDelay: Duration
+
+    public init(file: FileStore = FileStore(), saveDelay: Duration = .milliseconds(400)) {
+        self.file = file
+        self.saveDelay = saveDelay
+        let loaded = file.load()
+        self.loadError = loaded.error
+        let s = loaded.state ?? SeedData.initialState()
+        self.state = s
+        self.engine = Engine(s)
+        if loaded.state == nil { scheduleSave() }
+    }
+
+    /// Testler için diske hiç dokunmayan sürüm
+    public static func inMemory(_ s: AppState = SeedData.initialState()) -> AppStore {
+        let store = AppStore(file: FileStore(url: URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("mirissa-test-\(UUID().uuidString).json")))
+        store.replace(s)
+        return store
+    }
+
+    // MARK: - Değişiklik
+
+    public func mutate(_ block: (inout AppState) -> Void) {
+        var s = state
+        block(&s)
+        apply(s)
+    }
+
+    public func replace(_ s: AppState) { apply(s) }
+
+    private func apply(_ s: AppState) {
+        state = s
+        engine = Engine(s)
+        scheduleSave()
+    }
+
+    // MARK: - Kayıt
+
+    private func scheduleSave() {
+        saveTask?.cancel()
+        let snapshot = state
+        saveTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: self.saveDelay)
+            guard !Task.isCancelled else { return }
+            self.writeNow(snapshot)
+        }
+    }
+
+    /// Uygulama arka plana geçerken beklemeden yaz
+    public func flush() {
+        saveTask?.cancel()
+        saveTask = nil
+        writeNow(state)
+    }
+
+    private func writeNow(_ s: AppState) {
+        do { try file.save(s) } catch { loadError = String(describing: error) }
+    }
+
+    public var storageURL: URL { file.url }
+
+    // MARK: - Malzeme
+
+    public func addMaterial(_ m: StockMaterial) { mutate { $0.materials.append(m) } }
+
+    public func updateMaterial(_ m: StockMaterial) {
+        mutate { s in
+            if let i = s.materials.firstIndex(where: { $0.id == m.id }) { s.materials[i] = m }
+        }
+    }
+
+    /// Malzemeyi siler ve ona bağlı reçete satırları ile hareketleri temizler.
+    public func deleteMaterial(_ id: Id) {
+        mutate { s in
+            s.materials.removeAll { $0.id == id }
+            for i in s.products.indices { s.products[i].recipe.removeAll { $0.materialId == id } }
+            s.purchases.removeAll { $0.item == .material(id) }
+            s.adjustments.removeAll { $0.item == .material(id) }
+            s.counts.removeAll { $0.item == .material(id) }
+        }
+    }
+
+    // MARK: - Ürün
+
+    public func addProduct(_ p: Product) { mutate { $0.products.append(p) } }
+
+    public func updateProduct(_ p: Product) {
+        mutate { s in
+            if let i = s.products.firstIndex(where: { $0.id == p.id }) { s.products[i] = p }
+        }
+    }
+
+    public func deleteProduct(_ id: Id) {
+        mutate { s in
+            s.products.removeAll { $0.id == id }
+            for i in s.products.indices { s.products[i].components.removeAll { $0.productId == id } }
+            s.sales.removeAll { $0.productId == id }
+            s.purchases.removeAll { $0.item == .product(id) }
+            s.adjustments.removeAll { $0.item == .product(id) }
+            s.counts.removeAll { $0.item == .product(id) }
+        }
+    }
+
+    // MARK: - Kanal
+
+    public func addChannel(_ c: Channel) { mutate { $0.channels.append(c) } }
+
+    public func updateChannel(_ c: Channel) {
+        mutate { s in
+            if let i = s.channels.firstIndex(where: { $0.id == c.id }) { s.channels[i] = c }
+        }
+    }
+
+    public func deleteChannel(_ id: Id) {
+        mutate { s in
+            s.channels.removeAll { $0.id == id }
+            s.sales.removeAll { $0.channelId == id }
+            s.channelMonths.removeAll { $0.channelId == id }
+            for i in s.expenses.indices where s.expenses[i].scope.channelId == id {
+                s.expenses[i].scope = .ortak
+            }
+        }
+    }
+
+    public func upsertChannelMonth(_ cm: ChannelMonth) {
+        mutate { s in
+            if let i = s.channelMonths.firstIndex(where: {
+                $0.month == cm.month && $0.channelId == cm.channelId
+            }) {
+                if cm.isEmpty { s.channelMonths.remove(at: i) } else { s.channelMonths[i] = cm }
+            } else if !cm.isEmpty {
+                s.channelMonths.append(cm)
+            }
+        }
+    }
+
+    // MARK: - Satış
+
+    public func addSale(_ e: SalesEntry) { mutate { $0.sales.append(e) } }
+
+    public func updateSale(_ e: SalesEntry) {
+        mutate { s in
+            if let i = s.sales.firstIndex(where: { $0.id == e.id }) { s.sales[i] = e }
+        }
+    }
+
+    public func deleteSale(_ id: Id) { mutate { $0.sales.removeAll { $0.id == id } } }
+
+    // MARK: - Gider
+
+    public func addExpense(_ e: Expense) { mutate { $0.expenses.append(e) } }
+
+    public func updateExpense(_ e: Expense) {
+        mutate { s in
+            if let i = s.expenses.firstIndex(where: { $0.id == e.id }) { s.expenses[i] = e }
+        }
+    }
+
+    public func deleteExpense(_ id: Id) { mutate { $0.expenses.removeAll { $0.id == id } } }
+
+    /// Düzenli gideri durdurur: geçmiş aylar olduğu gibi kalır.
+    public func stopExpense(_ id: Id, lastMonth: MonthKey) {
+        mutate { s in
+            if let i = s.expenses.firstIndex(where: { $0.id == id }) { s.expenses[i].endMonth = lastMonth }
+        }
+    }
+
+    public func resumeExpense(_ id: Id) {
+        mutate { s in
+            if let i = s.expenses.firstIndex(where: { $0.id == id }) { s.expenses[i].endMonth = nil }
+        }
+    }
+
+    /// Sadece bir ayın tutarını değiştirir, diğer aylar etkilenmez.
+    public func overrideExpense(_ id: Id, month: MonthKey, amount: Kurus?, skipped: Bool = false) {
+        mutate { s in
+            guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
+            if amount == nil && !skipped {
+                s.expenses[i].overrides[month] = nil
+            } else {
+                s.expenses[i].overrides[month] = ExpenseOverride(amount: amount, skipped: skipped)
+            }
+        }
+    }
+
+    // MARK: - Stok
+
+    public func addPurchase(_ p: StockPurchase) { mutate { $0.purchases.append(p) } }
+
+    public func updatePurchase(_ p: StockPurchase) {
+        mutate { s in
+            if let i = s.purchases.firstIndex(where: { $0.id == p.id }) { s.purchases[i] = p }
+        }
+    }
+
+    public func deletePurchase(_ id: Id) { mutate { $0.purchases.removeAll { $0.id == id } } }
+
+    public func addAdjustment(_ a: StockAdjustment) { mutate { $0.adjustments.append(a) } }
+
+    public func updateAdjustment(_ a: StockAdjustment) {
+        mutate { s in
+            if let i = s.adjustments.firstIndex(where: { $0.id == a.id }) { s.adjustments[i] = a }
+        }
+    }
+
+    public func deleteAdjustment(_ id: Id) { mutate { $0.adjustments.removeAll { $0.id == id } } }
+
+    public func addCount(_ c: StockCount) { mutate { $0.counts.append(c) } }
+
+    public func deleteCount(_ id: Id) { mutate { $0.counts.removeAll { $0.id == id } } }
+
+    /// Bir hareketi kaynağından siler (geçmiş ekranındaki "sil" için)
+    public func deleteMovementSource(_ row: LedgerRow) {
+        switch row.movement.source {
+        case .purchase: deletePurchase(row.movement.sourceId)
+        case .adjustment: deleteAdjustment(row.movement.sourceId)
+        case .count: deleteCount(row.movement.sourceId)
+        case .sales: deleteSale(row.movement.sourceId)
+        case .opening: break
+        }
+    }
+
+    // MARK: - Ayarlar ve yedekleme
+
+    public func updateSettings(_ s: AppSettings) { mutate { $0.settings = s } }
+
+    public func resetToSeed() { apply(SeedData.initialState()) }
+
+    public func eraseAllData() {
+        var s = state
+        s.sales = []
+        s.expenses = []
+        s.purchases = []
+        s.adjustments = []
+        s.counts = []
+        s.channelMonths = []
+        apply(s)
+    }
+
+    public func exportJSON() throws -> Data { try Persistence.encode(state) }
+
+    public func importJSON(_ data: Data) throws {
+        apply(try Persistence.decode(data))
+    }
+}

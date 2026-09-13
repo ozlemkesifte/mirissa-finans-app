@@ -1,0 +1,52 @@
+name: MirissaFinans
+
+options:
+  bundleIdPrefix: com.mirissalab
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+packages:
+  MirissaKit:
+    path: MirissaKit
+
+targets:
+  MirissaFinans:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: MirissaKit
+        product: MirissaCore
+      - package: MirissaKit
+        product: MirissaUI
+    info:
+      path: App/Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: MirissaFinans
+        PRODUCT_BUNDLE_IDENTIFIER: com.mirissalab.finans
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: $(MIRISSA_TEAM_ID)
+        SWIFT_EMIT_LOC_STRINGS: YES
+
+schemes:
+  MirissaFinans:
+    build:
+      targets:
+        MirissaFinans: all
+    run:
+      config: Debug
+    archive:
+      config: Release
