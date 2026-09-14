@@ -65,8 +65,10 @@ struct StockView: View {
                         badge: p.isBundle ? "set" : nil,
                         qtyText: p.tracksOwnStock
                             ? Units.formatQty(store.engine.qty(.product(p.id)), baseUnit: .adet)
-                            : "bileşenlerden",
-                        subtitle: "Maliyet: \(store.engine.cost(of: p.id).total.tl)",
+                            : "—",
+                        subtitle: p.tracksOwnStock
+                            ? "Maliyet: \(store.engine.cost(of: p.id).total.tl)"
+                            : "Maliyet: \(store.engine.cost(of: p.id).total.tl) · stok bileşenlerden düşer",
                         status: p.tracksOwnStock ? store.engine.status(.product(p.id)) : .normal
                     )
                 }

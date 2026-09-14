@@ -58,7 +58,7 @@ struct SettingsView: View {
                         }
                     }
                     Button {
-                        let c = Channel(id: Ids.make(.channelMonth), name: "Yeni kanal")
+                        let c = Channel(id: Ids.make(.channel), name: "Yeni kanal")
                         store.addChannel(c)
                         sheet = .channelSetup(c.id)
                     } label: {

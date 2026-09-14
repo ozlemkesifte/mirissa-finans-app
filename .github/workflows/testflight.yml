@@ -37,6 +37,26 @@ jobs:
           brew install xcodegen
           xcodegen generate
 
+      - name: Gizli anahtarlar tanımlı mı?
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          eksik=""
+          [ -z "$ASC_KEY_ID" ] && eksik="$eksik ASC_KEY_ID"
+          [ -z "$ASC_ISSUER_ID" ] && eksik="$eksik ASC_ISSUER_ID"
+          [ -z "$ASC_PRIVATE_KEY" ] && eksik="$eksik ASC_PRIVATE_KEY"
+          [ -z "$TEAM_ID" ] && eksik="$eksik APPLE_TEAM_ID"
+          if [ -n "$eksik" ]; then
+            echo "::error::Şu GitHub secret'ları eksik:$eksik"
+            echo "Settings → Secrets and variables → Actions bölümünden ekle."
+            echo "Ayrıntılar için README'deki 'TestFlight'a yayınlama' bölümüne bak."
+            exit 1
+          fi
+          echo "Bütün anahtarlar tanımlı."
+
       - name: App Store Connect API anahtarını hazırla
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

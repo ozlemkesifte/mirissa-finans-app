@@ -202,7 +202,7 @@ public struct SectionTitle: View {
 
     public var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(text.uppercased())
+            Text(text.trUpper)
                 .font(.caption.weight(.semibold))
                 .tracking(0.6)
                 .foregroundStyle(Palette.inkFaint)
@@ -233,7 +233,7 @@ public struct BigStat: View {
     public var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title.uppercased())
+                Text(title.trUpper)
                     .font(.caption2.weight(.semibold))
                     .tracking(0.6)
                     .foregroundStyle(Palette.inkFaint)

@@ -94,8 +94,11 @@ public enum Ledger {
 
             if q <= 0 {
                 // Sıfıra bölmeyi ve NaN yayılmasını engelle: son geçerli maliyeti sakla.
-                if currentCost > 0 { lastCost[key] = currentCost }
-                v = max(v, 0)
+                // Değeri sıfıra kırpmak yerine miktarla orantılı tut — aksi halde
+                // eksiye düşmüş bir stoğa alım yapıldığında birim maliyet şişer.
+                let c = currentCost > 0 ? currentCost : (lastCost[key] ?? 0)
+                lastCost[key] = c
+                v = q * c
             } else {
                 lastCost[key] = v / q
             }

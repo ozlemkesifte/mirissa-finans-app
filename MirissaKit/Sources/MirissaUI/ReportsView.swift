@@ -207,7 +207,7 @@ struct ChannelReport: View {
                 Card {
                     VStack(spacing: 10) {
                         HStack {
-                            Text(ch.name.uppercased())
+                            Text(ch.name.trUpper)
                                 .font(.caption.weight(.semibold))
                                 .tracking(0.6)
                                 .foregroundStyle(Palette.inkFaint)
@@ -294,7 +294,7 @@ struct ResultSummary: View {
     var body: some View {
         Card {
             VStack(spacing: 11) {
-                Text(title.uppercased())
+                Text(title.trUpper)
                     .font(.caption2.weight(.semibold))
                     .tracking(0.6)
                     .foregroundStyle(Palette.inkFaint)

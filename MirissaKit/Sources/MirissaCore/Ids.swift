@@ -8,6 +8,7 @@ public enum IdPrefix: String {
     case purchase = "pur"
     case adjustment = "adj"
     case count = "cnt"
+    case channel = "chn"
     case channelMonth = "chm"
     case costLine = "cst"
     case recipeLine = "rcp"

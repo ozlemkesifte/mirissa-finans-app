@@ -136,6 +136,20 @@ struct LedgerTests {
         #expect(Fx.engine(s).qty(.material(Fx.koliId)) == 0)
     }
 
+    /// Eksiye düşmüş stoğa alım yapılınca birim maliyet şişmez
+    @Test func eksiStoktanSonraAlimMaliyetiSismez() {
+        var s = Fx.base()
+        s.addPurchase("pur_1", "2026-01-05", .material(Fx.koliId), qty: 100, paid: tl(1000))
+        // 150 sipariş -> stok -50'ye düşer
+        s.addSale("sal_1", "2026-01", channel: ChannelIds.trendyol, product: Fx.sampuanId,
+                  qty: 150, gross: tl(75_000))
+        s.addPurchase("pur_2", "2026-02-05", .material(Fx.koliId), qty: 200, paid: tl(2000))
+        let e = Fx.engine(s)
+        #expect(e.qty(.material(Fx.koliId)) == 150)
+        #expect(approx(e.unitCost(.material(Fx.koliId)), Double(tl(10))))
+        #expect(e.balance(.material(Fx.koliId)).value == tl(1500))
+    }
+
     /// Silinmiş malzemeye ait hareket uygulamayı çökertmez
     @Test func silinmisMalzemeCokertmez() {
         var s = Fx.base()

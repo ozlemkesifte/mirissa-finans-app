@@ -34,7 +34,7 @@ struct TrendChart: View {
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: 14) {
-                Text(title.uppercased())
+                Text(title.trUpper)
                     .font(.caption2.weight(.semibold))
                     .tracking(0.6)
                     .foregroundStyle(Palette.inkFaint)

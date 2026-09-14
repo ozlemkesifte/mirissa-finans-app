@@ -61,7 +61,7 @@ struct HomeView: View {
                 value: Money.formatPercent(result.karMarjiPct),
                 tone: loss ? Palette.zarar : Palette.kar,
                 caption: result.nakitCikisi != result.toplamGider
-                    ? "Kasadan çıkan: \(result.nakitCikisi.tlCompact)" : nil
+                    ? "Kasa çıkışı \(result.nakitCikisi.tlCompact)" : nil
             )
         }
     }
@@ -120,6 +120,7 @@ struct HomeView: View {
                 .clipShape(Circle())
                 .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         }
+        .menuIndicator(.hidden)
         .padding(.trailing, Metrics.pad)
         .padding(.bottom, 14)
     }
@@ -135,7 +136,7 @@ struct ChannelCard: View {
         Card {
             Disclosure {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(result.channelName.uppercased())
+                    Text(result.channelName.trUpper)
                         .font(.caption.weight(.semibold))
                         .tracking(0.6)
                         .foregroundStyle(Palette.inkFaint)

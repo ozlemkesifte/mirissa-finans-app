@@ -42,6 +42,11 @@ public enum Palette {
     public static let uyariYumusak = adaptive(light: (253, 245, 230), dark: (56, 42, 14))
 }
 
+public extension String {
+    /// Türkçe büyük harf: "gider" -> "GİDER" (varsayılan `uppercased()` "GIDER" üretir)
+    var trUpper: String { uppercased(with: Locale(identifier: "tr_TR")) }
+}
+
 public enum Metrics {
     public static let cardRadius: CGFloat = 18
     public static let gap: CGFloat = 12

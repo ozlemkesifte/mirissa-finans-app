@@ -32,7 +32,7 @@ struct ExpensesView: View {
 
                     Card {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text((period.scope == .month ? "Bu ay toplam gider" : "Bu yıl toplam gider").uppercased())
+                            Text((period.scope == .month ? "Bu ay toplam gider" : "Bu yıl toplam gider").trUpper)
                                 .font(.caption2.weight(.semibold))
                                 .tracking(0.6)
                                 .foregroundStyle(Palette.inkFaint)
@@ -108,6 +108,12 @@ private struct CategoryCard: View {
     var items: [ExpenseInstance]
     var onTap: (ExpenseInstance) -> Void
 
+    /// Kategorinin, elle girilmiş satırlarla açıklanamayan kısmı
+    /// (komisyon, ürün maliyeti, ambalaj gibi satıştan türeyen tutarlar)
+    private var otomatik: Kurus {
+        max(total - items.reduce(0) { $0 + $1.amount }, 0)
+    }
+
     var body: some View {
         Card {
             Disclosure {
@@ -137,6 +143,9 @@ private struct CategoryCard: View {
                 } else {
                     VStack(spacing: 8) {
                         Divider().overlay(Palette.separator)
+                        if otomatik > 0 {
+                            LabeledRow("Satışlardan hesaplanan", otomatik.tl, tone: Palette.inkSoft)
+                        }
                         ForEach(items) { i in
                             Button { onTap(i) } label: {
                                 HStack(spacing: 8) {

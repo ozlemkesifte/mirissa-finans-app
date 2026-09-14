@@ -121,3 +121,14 @@ kasadan çıkan tutar ayrıca "nakit çıkışı" olarak gösterilir.
 ```
 GERÇEK KÂR = Σ(kanalda kalan) − ortak şirket giderleri
 ```
+
+---
+
+## Ekran önizlemesi (Xcode'suz)
+
+```bash
+cd MirissaKit && swift run MirissaPreview ../onizleme
+```
+
+Bütün ekranları iPhone ölçüsünde PNG olarak `onizleme/` klasörüne çizer.
+Tasarımı telefona kurmadan önce görmek için kullanılır.
