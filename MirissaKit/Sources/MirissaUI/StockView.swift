@@ -217,8 +217,12 @@ struct MovementHistory: View {
     var item: ItemRef
     var limit: Int = 12
     @Environment(AppStore.self) private var store
+    @State private var sheet: AppSheet?
+    @State private var silinecek: LedgerRow?
+    @State private var hepsi = false
 
-    private var rows: [LedgerRow] { Array(store.engine.history(item).prefix(limit)) }
+    private var tumRows: [LedgerRow] { store.engine.history(item) }
+    private var rows: [LedgerRow] { hepsi ? tumRows : Array(tumRows.prefix(limit)) }
 
     var body: some View {
         VStack(spacing: Metrics.gap) {
@@ -230,30 +234,81 @@ struct MovementHistory: View {
                 } else {
                     VStack(spacing: 0) {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(r.label).font(.subheadline).foregroundStyle(Palette.ink)
-                                        .lineLimit(1)
-                                    Text(Dates.displayDateShort(r.date))
-                                        .font(.caption2).foregroundStyle(Palette.inkFaint)
-                                }
-                                Spacer(minLength: 8)
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text(deltaText(r))
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(r.delta < 0 ? Palette.zarar : Palette.kar)
-                                    Text("kalan \(Units.formatQty(r.balanceAfter, baseUnit: store.state.itemBaseUnit(item)))")
-                                        .font(.caption2).foregroundStyle(Palette.inkFaint)
-                                }
+                            Button { ac(r) } label: {
+                                row(r)
+                                    .padding(.horizontal, Metrics.pad)
+                                    .padding(.vertical, 11)
+                                    .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, Metrics.pad)
-                            .padding(.vertical, 11)
+                            .buttonStyle(.plain)
+                            .disabled(r.movement.source == .opening)
                             if i < rows.count - 1 {
                                 Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
                             }
                         }
+                        if tumRows.count > limit {
+                            Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
+                            Button {
+                                withAnimation(.snappy(duration: 0.2)) { hepsi.toggle() }
+                            } label: {
+                                Text(hepsi ? "Daha az göster" : "Tümünü göster (\(tumRows.count))")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Palette.accent)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 13)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
+            }
+        }
+        .appSheets($sheet)
+        .confirmationDialog(
+            silinecek.map { "\($0.label) kaydı silinsin mi?" } ?? "",
+            isPresented: Binding(get: { silinecek != nil }, set: { if !$0 { silinecek = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Sil", role: .destructive) {
+                if let r = silinecek { store.deleteMovementSource(r) }
+                silinecek = nil
+            }
+            Button("Vazgeç", role: .cancel) { silinecek = nil }
+        }
+    }
+
+    /// Hareketin kaynağını düzenlemeye açar — her kayıt sonradan düzeltilebilmeli.
+    private func ac(_ r: LedgerRow) {
+        switch r.movement.source {
+        case .purchase: sheet = .editPurchase(r.movement.sourceId)
+        case .adjustment: sheet = .editAdjustment(r.movement.sourceId)
+        case .sales: sheet = .editSale(r.movement.sourceId)
+        case .count: silinecek = r
+        case .opening: break
+        }
+    }
+
+    private func row(_ r: LedgerRow) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.label).font(.subheadline).foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                Text(Dates.displayDateShort(r.date))
+                    .font(.caption2).foregroundStyle(Palette.inkFaint)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(deltaText(r))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(r.delta < 0 ? Palette.zarar : Palette.kar)
+                Text("kalan \(Units.formatQty(r.balanceAfter, baseUnit: store.state.itemBaseUnit(item)))")
+                    .font(.caption2).foregroundStyle(Palette.inkFaint)
+            }
+            if r.movement.source != .opening {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Palette.inkFaint)
             }
         }
     }

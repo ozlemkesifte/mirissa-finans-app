@@ -7,7 +7,9 @@ public enum AppSheet: Identifiable, Hashable {
     case addExpense(MonthKey)
     case editExpense(Id, MonthKey)
     case addPurchase(ItemRef?)
+    case editPurchase(Id)
     case adjustStock(ItemRef?)
+    case editAdjustment(Id)
     case countStock(ItemRef?)
     case addMaterial
     case editMaterial(Id)
@@ -24,6 +26,8 @@ public enum AppSheet: Identifiable, Hashable {
         case let .addExpense(m): return "addExpense-\(m)"
         case let .editExpense(i, m): return "editExpense-\(i)-\(m)"
         case let .addPurchase(r): return "addPurchase-\(r?.id ?? "-")"
+        case let .editPurchase(i): return "editPurchase-\(i)"
+        case let .editAdjustment(i): return "editAdjustment-\(i)"
         case let .adjustStock(r): return "adjust-\(r?.id ?? "-")"
         case let .countStock(r): return "count-\(r?.id ?? "-")"
         case .addMaterial: return "addMaterial"
@@ -46,6 +50,8 @@ public extension View {
             case let .addExpense(m): ExpenseForm(month: m)
             case let .editExpense(i, m): ExpenseForm(editing: i, month: m)
             case let .addPurchase(r): PurchaseForm(preselected: r)
+            case let .editPurchase(i): PurchaseForm(editing: i)
+            case let .editAdjustment(i): AdjustForm(editing: i)
             case let .adjustStock(r): AdjustForm(preselected: r)
             case let .countStock(r): CountForm(preselected: r)
             case .addMaterial: MaterialForm()

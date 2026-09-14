@@ -19,6 +19,12 @@ struct ExpensesView: View {
             .map { ($0.key, $0.value) }
     }
 
+    private var purchases: [StockPurchase] {
+        store.state.purchases
+            .filter { Dates.month(of: $0.date) >= period.from && Dates.month(of: $0.date) <= period.to }
+            .sorted { $0.date > $1.date }
+    }
+
     private var recurring: [Expense] {
         store.state.expenses.filter(\.isRecurring)
             .sorted { $0.amount > $1.amount }
@@ -69,6 +75,31 @@ struct ExpensesView: View {
                                 onTap: { sheet = .editExpense($0.templateId ?? $0.id, $0.month) }
                             )
                         }
+                    }
+
+                    if !purchases.isEmpty {
+                        SectionTitle("Stok Alımları")
+                        Card(padding: 0) {
+                            VStack(spacing: 0) {
+                                ForEach(Array(purchases.enumerated()), id: \.element.id) { i, p in
+                                    Button { sheet = .editPurchase(p.id) } label: {
+                                        PurchaseRow(purchase: p)
+                                            .padding(.horizontal, Metrics.pad)
+                                            .padding(.vertical, 12)
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    if i < purchases.count - 1 {
+                                        Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
+                                    }
+                                }
+                            }
+                        }
+                        Text("Stok alımları kasadan çıkar ama kâra doğrudan gider yazılmaz; ürün satıldıkça maliyet olarak yansır.")
+                            .font(.caption)
+                            .foregroundStyle(Palette.inkFaint)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
                     }
 
                     if !recurring.isEmpty {
@@ -199,6 +230,36 @@ private struct RecurringRow: View {
             Text(expense.amount.tl)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(expense.isStopped ? Palette.inkFaint : Palette.ink)
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Palette.inkFaint)
+        }
+    }
+}
+
+private struct PurchaseRow: View {
+    var purchase: StockPurchase
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(store.state.itemName(purchase.item))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Palette.ink)
+                HStack(spacing: 6) {
+                    Text(Dates.displayDateShort(purchase.date))
+                    Text("·")
+                    Text("\(NumberInput.display(purchase.qty)) \(purchase.unit.displayName)")
+                }
+                .font(.caption)
+                .foregroundStyle(Palette.inkFaint)
+            }
+            if purchase.excludeFromExpenses { Pill("hariç") } else { Pill("stoğa girdi") }
+            Spacer(minLength: 8)
+            Text(purchase.landedTotal.tl)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Palette.ink)
             Image(systemName: "chevron.right")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(Palette.inkFaint)

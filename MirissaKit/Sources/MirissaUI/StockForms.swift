@@ -138,8 +138,10 @@ struct PurchaseForm: View {
 
 struct AdjustForm: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
 
     var preselected: ItemRef?
+    var editingId: Id?
     @State private var item: ItemRef?
     @State private var date: DateKey = Dates.today()
     @State private var qty: Double = 0
@@ -149,7 +151,15 @@ struct AdjustForm: View {
     @State private var note = ""
     @State private var loaded = false
 
-    init(preselected: ItemRef? = nil) { self.preselected = preselected }
+    init(preselected: ItemRef? = nil) {
+        self.preselected = preselected
+        self.editingId = nil
+    }
+
+    init(editing id: Id) {
+        self.preselected = nil
+        self.editingId = id
+    }
 
     private var baseUnit: UnitCode { item.map { store.state.itemBaseUnit($0) } ?? .adet }
     private var allowedUnits: [UnitCode] {
@@ -164,7 +174,8 @@ struct AdjustForm: View {
     }
 
     var body: some View {
-        FormShell(title: "Stok Düzelt", canSave: item != nil && qty > 0, onSave: save) {
+        FormShell(title: editingId == nil ? "Stok Düzelt" : "Düzeltmeyi Değiştir",
+                  canSave: item != nil && qty > 0, onSave: save) {
             Section {
                 ItemPicker(selection: $item)
                 DateRow(dateKey: $date)
@@ -205,10 +216,23 @@ struct AdjustForm: View {
             } footer: {
                 Text("Bu işlem stok hareket geçmişine kaydedilir, sonradan görebilir ve düzeltebilirsin.")
             }
+
+            if let id = editingId {
+                Section {
+                    Button(role: .destructive) { store.deleteAdjustment(id); dismiss() } label: {
+                        Label("Düzeltmeyi sil", systemImage: "trash")
+                    }
+                }
+            }
         }
         .onAppear {
             guard !loaded else { return }
             loaded = true
+            if let id = editingId, let a = store.state.adjustments.first(where: { $0.id == id }) {
+                item = a.item; date = a.date; qty = a.qty; unit = a.unit
+                isIncrease = a.isIncrease; reason = a.reason; note = a.note ?? ""
+                return
+            }
             item = preselected
             unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
         }
@@ -217,11 +241,13 @@ struct AdjustForm: View {
 
     private func save() {
         guard let item else { return }
-        store.addAdjustment(StockAdjustment(
+        let a = StockAdjustment(
+            id: editingId ?? Ids.make(.adjustment),
             date: date, item: item, qty: qty, unit: unit,
             isIncrease: isIncrease, reason: reason,
             note: note.isEmpty ? nil : note
-        ))
+        )
+        editingId == nil ? store.addAdjustment(a) : store.updateAdjustment(a)
     }
 }
 
