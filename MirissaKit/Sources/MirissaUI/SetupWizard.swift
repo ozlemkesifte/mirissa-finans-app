@@ -134,23 +134,23 @@ public struct SetupWizard: View {
         switch adim {
         case .karsilama: karsilama
         case let .urunSayisi: urunSayisiAdimi
-        case let .urunAdi(i): urunAdiAdimi(i)
-        case let .urunStok(i): urunStokAdimi(i)
-        case let .urunMaliyet(i): urunMaliyetAdimi(i)
-        case let .urunMaliyetKdv(i): urunMaliyetKdvAdimi(i)
-        case let .urunMaliyetOran(i): urunMaliyetOranAdimi(i)
-        case let .ambalajDahil(i): ambalajDahilAdimi(i)
+        case let .urunAdi(i): urunAdiAdimi(i).id("urunAdi-\(i)")
+        case let .urunStok(i): urunStokAdimi(i).id("urunStok-\(i)")
+        case let .urunMaliyet(i): urunMaliyetAdimi(i).id("urunMaliyet-\(i)")
+        case let .urunMaliyetKdv(i): urunMaliyetKdvAdimi(i).id("urunMaliyetKdv-\(i)")
+        case let .urunMaliyetOran(i): urunMaliyetOranAdimi(i).id("urunMaliyetOran-\(i)")
+        case let .ambalajDahil(i): ambalajDahilAdimi(i).id("ambalajDahil-\(i)")
         case .setVarMi: setVarMiAdimi
         case .setSayisi: setSayisiAdimi
-        case let .setAdi(i): setAdiAdimi(i)
-        case let .setBilesenleri(i): setBilesenleriAdimi(i)
+        case let .setAdi(i): setAdiAdimi(i).id("setAdi-\(i)")
+        case let .setBilesenleri(i): setBilesenleriAdimi(i).id("setBilesen-\(i)")
         case .malzemeSecimi: malzemeSecimAdimi
         case .malzemeAdi: malzemeAdiAdimi
-        case let .malzemeDetay(i): malzemeDetayAdimi(i)
-        case let .setAmbalaji(i): setAmbalajiAdimi(i)
+        case let .malzemeDetay(i): malzemeDetayAdimi(i).id("malzemeDetay-\(i)")
+        case let .setAmbalaji(i): setAmbalajiAdimi(i).id("setAmbalaj-\(i)")
         case .kanalSecimi: kanalSecimAdimi
         case .kanalAdi: kanalAdiAdimi
-        case let .kanalKurulum(i): kanalKurulumAdimi(i)
+        case let .kanalKurulum(i): kanalKurulumAdimi(i).id("kanalKurulum-\(i)")
         case .giderVarMi: giderVarMiAdimi
         case .giderler: giderAdimi
         case .ozet: ozetAdimi
@@ -243,7 +243,6 @@ public struct SetupWizard: View {
                 ileri(.urunStok(i))
             }
         )
-        .id("urunAd-\(i)")
     }
 
     // MARK: 3 — Ürün stoğu
@@ -405,7 +404,6 @@ public struct SetupWizard: View {
                 ileri(.setBilesenleri(i))
             }
         )
-        .id("setAd-\(i)")
     }
 
     private func setBilesenleriAdimi(_ i: Int) -> some View {

@@ -109,7 +109,7 @@ struct SaleFlow: View {
         case .ay: ayAdimi
         case .kanal: kanalAdimi
         case .urunSecimi: urunSecimAdimi
-        case let .urunDetay(i): urunDetayAdimi(i)
+        case let .urunDetay(i): urunDetayAdimi(i).id("satisUrun-\(i)")
         case .iadeVarMi: iadeSoruAdimi
         case .iadeDetay: iadeDetayAdimi
         case .kesintiBiliyorMu: kesintiSoruAdimi

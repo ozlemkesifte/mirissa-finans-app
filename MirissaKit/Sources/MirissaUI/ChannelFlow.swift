@@ -160,15 +160,15 @@ struct ChannelSetupFlow: View {
     private var icerik: some View {
         switch adim {
         case .urunler: urunlerAdimi
-        case let .fiyat(i): fiyatAdimi(i)
+        case let .fiyat(i): fiyatAdimi(i).id("kanalFiyat-\(i)")
         case .komisyonVarMi: komisyonVarMiAdimi
         case .komisyonNasil: komisyonNasilAdimi
         case .komisyonDeger: komisyonDegerAdimi
         case .kargoVarMi: kargoVarMiAdimi
         case .kargoNasil: kargoNasilAdimi
         case .kargoDeger: kargoDegerAdimi
-        case let .ekKalem(i): ekKalemAdimi(i)
-        case let .ekKalemDeger(i): ekKalemDegerAdimi(i)
+        case let .ekKalem(i): ekKalemAdimi(i).id("ekKalem-\(i)")
+        case let .ekKalemDeger(i): ekKalemDegerAdimi(i).id("ekKalemDeger-\(i)")
         case .baskaVarMi: baskaVarMiAdimi
         case .yeniKalemAdi: yeniKalemAdiAdimi
         case .yeniKalemNasil: yeniKalemNasilAdimi

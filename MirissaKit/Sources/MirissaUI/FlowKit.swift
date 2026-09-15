@@ -197,8 +197,14 @@ struct BuyukSayiAlani: View {
                 }
             }
         }
-        .onAppear { if metin.isEmpty, deger != 0 { metin = NumberInput.display(deger) } }
+        // Sihirbaz bir sonraki ürüne/malzemeye geçtiğinde SwiftUI bu görünümü
+        // yeniden kullanır; alan kendi metnini koruduğu için önceki cevap
+        // ekranda kalıyordu. Bağlı değer değişince metin de tazelenir.
+        .onAppear { metin = deger == 0 ? "" : NumberInput.display(deger) }
         .onChange(of: metin) { _, yeni in deger = NumberInput.parse(yeni) ?? 0 }
+        .onChange(of: deger) { _, yeni in
+            if let taze = NumberInput.senkron(metin: metin, deger: yeni) { metin = taze }
+        }
     }
 }
 
@@ -222,8 +228,11 @@ struct BuyukParaAlani: View {
                 }
             }
         }
-        .onAppear { if metin.isEmpty, deger != 0 { metin = NumberInput.display(deger) } }
+        .onAppear { metin = deger == 0 ? "" : NumberInput.display(deger) }
         .onChange(of: metin) { _, yeni in deger = NumberInput.kurus(yeni) ?? 0 }
+        .onChange(of: deger) { _, yeni in
+            if let taze = NumberInput.senkron(metin: metin, kurus: yeni) { metin = taze }
+        }
     }
 }
 

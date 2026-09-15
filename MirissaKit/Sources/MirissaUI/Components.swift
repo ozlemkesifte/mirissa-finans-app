@@ -26,6 +26,33 @@ public enum NumberInput {
         return Double(t)
     }
 
+    /// Alan başka bir kayıt için yeniden kullanıldığında ekrandaki metni tazeler.
+    /// Kullanıcının yazdığı metin bağlı değerle aynı sayıya işaret ediyorsa
+    /// dokunulmaz — böylece "5," gibi yarım yazımlar bozulmaz.
+    /// Farklıysa yeni değerin metni döner; değer sıfırsa alan boşalır.
+    public static func senkron(metin: String, deger: Double) -> String? {
+        if (parse(metin) ?? 0) == deger { return nil }
+        return deger == 0 ? "" : display(deger)
+    }
+
+    public static func senkron(metin: String, kurus deger: Kurus) -> String? {
+        if (Self.kurus(metin) ?? 0) == deger { return nil }
+        return deger == 0 ? "" : display(deger)
+    }
+
+    /// Boş bırakılabilen alanlar için: nil ise alan boşalır.
+    public static func senkron(metin: String, opsiyonel deger: Double?) -> String? {
+        let simdiki = metin.trimmingCharacters(in: .whitespaces).isEmpty ? nil : parse(metin)
+        if simdiki == deger { return nil }
+        return deger.map { display($0) } ?? ""
+    }
+
+    public static func senkron(metin: String, opsiyonelKurus deger: Kurus?) -> String? {
+        let simdiki = metin.trimmingCharacters(in: .whitespaces).isEmpty ? nil : Self.kurus(metin)
+        if simdiki == deger { return nil }
+        return deger.map { display($0) } ?? ""
+    }
+
     public static func kurus(_ raw: String) -> Kurus? {
         parse(raw).map { Money.fromTL($0) }
     }
@@ -66,8 +93,13 @@ public struct MoneyField: View {
                 .frame(maxWidth: 160)
             Text("TL").foregroundStyle(Palette.inkFaint).font(.subheadline)
         }
-        .onAppear { if text.isEmpty { text = NumberInput.display(value) } }
+        // Görünüm başka bir kayıt için yeniden kullanıldığında eski metin
+        // ekranda kalmasın: bağlı değer değişince alan tazelenir.
+        .onAppear { text = value == 0 ? "" : NumberInput.display(value) }
         .onChange(of: text) { _, new in value = NumberInput.kurus(new) ?? 0 }
+        .onChange(of: value) { _, new in
+            if let taze = NumberInput.senkron(metin: text, kurus: new) { text = taze }
+        }
     }
 }
 
@@ -99,9 +131,12 @@ public struct OptionalMoneyField: View {
                 .frame(maxWidth: 130)
             Text("TL").foregroundStyle(Palette.inkFaint).font(.subheadline)
         }
-        .onAppear { if text.isEmpty, let v = value { text = NumberInput.display(v) } }
+        .onAppear { text = value.map { NumberInput.display($0) } ?? "" }
         .onChange(of: text) { _, new in
             value = new.trimmingCharacters(in: .whitespaces).isEmpty ? nil : (NumberInput.kurus(new) ?? 0)
+        }
+        .onChange(of: value) { _, new in
+            if let taze = NumberInput.senkron(metin: text, opsiyonelKurus: new) { text = taze }
         }
     }
 }
@@ -128,8 +163,11 @@ public struct QtyField: View {
                 .frame(maxWidth: 120)
             if let suffix { Text(suffix).foregroundStyle(Palette.inkFaint).font(.subheadline) }
         }
-        .onAppear { if text.isEmpty { text = NumberInput.display(value) } }
+        .onAppear { text = value == 0 ? "" : NumberInput.display(value) }
         .onChange(of: text) { _, new in value = NumberInput.parse(new) ?? 0 }
+        .onChange(of: value) { _, new in
+            if let taze = NumberInput.senkron(metin: text, deger: new) { text = taze }
+        }
     }
 }
 
@@ -155,9 +193,12 @@ public struct OptionalQtyField: View {
                 .frame(maxWidth: 120)
             if let suffix { Text(suffix).foregroundStyle(Palette.inkFaint).font(.subheadline) }
         }
-        .onAppear { if text.isEmpty, let v = value { text = NumberInput.display(v) } }
+        .onAppear { text = value.map { NumberInput.display($0) } ?? "" }
         .onChange(of: text) { _, new in
             value = new.trimmingCharacters(in: .whitespaces).isEmpty ? nil : NumberInput.parse(new)
+        }
+        .onChange(of: value) { _, new in
+            if let taze = NumberInput.senkron(metin: text, opsiyonel: new) { text = taze }
         }
     }
 }
@@ -182,8 +223,11 @@ public struct PercentField: View {
                 .frame(maxWidth: 90)
             Text("%").foregroundStyle(Palette.inkFaint).font(.subheadline)
         }
-        .onAppear { if text.isEmpty { text = NumberInput.display(value) } }
+        .onAppear { text = value == 0 ? "" : NumberInput.display(value) }
         .onChange(of: text) { _, new in value = NumberInput.parse(new) ?? 0 }
+        .onChange(of: value) { _, new in
+            if let taze = NumberInput.senkron(metin: text, deger: new) { text = taze }
+        }
     }
 }
 
