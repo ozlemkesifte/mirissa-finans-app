@@ -142,6 +142,9 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var costLines: [CostLine]
     /// Paketleme reçetesi — 1 adet satıldığında kullanılan malzemeler
     public var recipe: [RecipeLine]
+    /// Üretim maliyetine ZATEN dahil olan malzemeler.
+    /// Bunlar stoktan düşer ama maliyetleri ikinci kez sayılmaz.
+    public var costIncludesMaterials: [Id]
     public var minQty: BaseQty?
     public var criticalQty: BaseQty?
     public var openingQty: BaseQty?
@@ -152,6 +155,11 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     /// Setler kendi stoklarını tutmaz; satıldığında bileşenleri düşer.
     public var tracksOwnStock: Bool { !isBundle }
 
+    /// Bu malzemenin maliyeti üretim maliyetine dahil mi
+    public func costAlreadyIncludes(_ materialId: Id) -> Bool {
+        costIncludesMaterials.contains(materialId)
+    }
+
     public init(
         id: Id = Ids.make(.product),
         name: String,
@@ -160,6 +168,7 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         components: [BundleComponent] = [],
         costLines: [CostLine] = [],
         recipe: [RecipeLine] = [],
+        costIncludesMaterials: [Id] = [],
         minQty: BaseQty? = nil,
         criticalQty: BaseQty? = nil,
         openingQty: BaseQty? = nil,
@@ -174,6 +183,7 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         self.components = components
         self.costLines = costLines
         self.recipe = recipe
+        self.costIncludesMaterials = costIncludesMaterials
         self.minQty = minQty
         self.criticalQty = criticalQty
         self.openingQty = openingQty
@@ -491,6 +501,8 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var endMonth: MonthKey?
     public var overrides: [MonthKey: ExpenseOverride]
     public var note: String?
+    /// Mükerrer kayıt kontrolü için fatura/fiş numarası
+    public var invoiceNo: String?
     /// Satış arttıkça artar mı. `nil` ise kategorinin varsayılanı kullanılır.
     public var behavior: CostBehavior?
     /// Fatura/fiş dosyasının adı (uygulamanın ekler klasöründe durur)
@@ -510,6 +522,7 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         endMonth: MonthKey? = nil,
         overrides: [MonthKey: ExpenseOverride] = [:],
         note: String? = nil,
+        invoiceNo: String? = nil,
         behavior: CostBehavior? = nil,
         attachment: String? = nil,
         vatRate: VatRate? = nil,
@@ -525,6 +538,7 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         self.endMonth = endMonth
         self.overrides = overrides
         self.note = note
+        self.invoiceNo = invoiceNo
         self.behavior = behavior
         self.attachment = attachment
         self.vatRate = vatRate
@@ -558,6 +572,8 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
     /// Giderler listesinde hiç görünmesin (ör. başka bir kasadan ödendi)
     public var excludeFromExpenses: Bool
     public var note: String?
+    /// Mükerrer kayıt kontrolü için fatura/fiş numarası
+    public var invoiceNo: String?
     /// Fatura/fiş dosyasının adı
     public var attachment: String?
     /// KDV oranı. `nil` eski kayıtlar için "KDV yok" sayılır.
@@ -577,6 +593,7 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
         expenseScope: ExpenseScope = .ortak,
         excludeFromExpenses: Bool = false,
         note: String? = nil,
+        invoiceNo: String? = nil,
         attachment: String? = nil,
         vatRate: VatRate? = nil,
         vatIncluded: Bool? = nil
@@ -593,6 +610,7 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
         self.expenseScope = expenseScope
         self.excludeFromExpenses = excludeFromExpenses
         self.note = note
+        self.invoiceNo = invoiceNo
         self.attachment = attachment
         self.vatRate = vatRate
         self.vatIncluded = vatIncluded

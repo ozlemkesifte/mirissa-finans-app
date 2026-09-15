@@ -141,6 +141,8 @@ struct ProductForm: View {
     @State private var components: [BundleComponent] = []
     @State private var costLines: [CostLine] = []
     @State private var recipe: [RecipeLine] = []
+    @State private var maliyeteDahil: [Id] = []
+    @State private var engelMesaji: String?
     @State private var minQty: Double?
     @State private var criticalQty: Double?
     @State private var loaded = false
@@ -157,6 +159,7 @@ struct ProductForm: View {
         FormShell(
             title: editingId == nil ? "Ürün Ekle" : "Ürünü Düzenle",
             canSave: !name.trimmingCharacters(in: .whitespaces).isEmpty,
+            issues: { Validation.product(taslak, state: store.state) },
             onSave: save
         ) {
             Section {
@@ -213,6 +216,39 @@ struct ProductForm: View {
             }
 
             Section {
+                DisclosureGroup("Bu üretim maliyetine neler dahil?") {
+                    if store.state.activeMaterials.isEmpty {
+                        Text("Önce ambalaj ve sarf malzemesi ekle.")
+                            .font(.footnote).foregroundStyle(Palette.inkFaint)
+                    }
+                    ForEach(store.state.activeMaterials) { m in
+                        Button {
+                            if let i = maliyeteDahil.firstIndex(of: m.id) {
+                                maliyeteDahil.remove(at: i)
+                            } else {
+                                maliyeteDahil.append(m.id)
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: maliyeteDahil.contains(m.id)
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(maliyeteDahil.contains(m.id)
+                                                     ? Palette.accent : Palette.inkFaint)
+                                Text(m.name).foregroundStyle(Palette.ink)
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            } footer: {
+                Text(maliyeteDahil.isEmpty
+                     ? "Yukarıdaki maliyete şişe, kapak, etiket gibi kalemler dahilse burada işaretle — reçetede ikinci kez sayılmasınlar."
+                     : "İşaretlediklerin stoktan düşmeye devam eder, maliyetleri ikinci kez sayılmaz.")
+            }
+
+            Section {
                 ForEach($recipe) { $line in
                     RecipeLineRow(line: $line)
                 }
@@ -220,9 +256,7 @@ struct ProductForm: View {
 
                 Menu {
                     ForEach(store.state.activeMaterials) { m in
-                        Button(m.name) {
-                            recipe.append(RecipeLine(materialId: m.id, qty: 1, unit: m.baseUnit))
-                        }
+                        Button(m.name) { receteyeEkle(m) }
                     }
                 } label: {
                     Label("Malzeme ekle", systemImage: "plus.circle")
@@ -250,6 +284,13 @@ struct ProductForm: View {
             }
         }
         .onAppear(perform: load)
+        .alert("Çift sayım oluşur", isPresented: Binding(
+            get: { engelMesaji != nil }, set: { if !$0 { engelMesaji = nil } }
+        )) {
+            Button("Tamam", role: .cancel) {}
+        } message: {
+            Text(engelMesaji ?? "")
+        }
         .confirmationDialog("Ürün, satışları ve stok geçmişiyle birlikte silinecek.",
                             isPresented: $showDelete, titleVisibility: .visible) {
             Button("Sil", role: .destructive) { store.deleteProduct(editingId!); dismiss() }
@@ -263,7 +304,28 @@ struct ProductForm: View {
         guard let id = editingId, let p = store.state.product(id) else { return }
         name = p.name; isBundle = p.isBundle; components = p.components
         costLines = p.costLines; recipe = p.recipe
+        maliyeteDahil = p.costIncludesMaterials
         minQty = p.minQty; criticalQty = p.criticalQty
+    }
+
+    private var taslak: Product {
+        Product(
+            id: editingId ?? "taslak", name: name, isBundle: isBundle,
+            components: isBundle ? components : [],
+            costLines: costLines, recipe: recipe,
+            costIncludesMaterials: maliyeteDahil,
+            minQty: minQty, criticalQty: criticalQty
+        )
+    }
+
+    /// Üretim maliyetine dahil bir malzeme reçeteye eklenmek istenirse engelle
+    private func receteyeEkle(_ m: StockMaterial) {
+        let sorunlar = Validation.recipeLine(materialId: m.id, in: taslak, state: store.state)
+        if let engel = sorunlar.first(where: { $0.severity == .engel }) {
+            engelMesaji = engel.detail
+            return
+        }
+        recipe.append(RecipeLine(materialId: m.id, qty: 1, unit: m.baseUnit))
     }
 
     private func save() {
@@ -272,6 +334,7 @@ struct ProductForm: View {
             p.name = name; p.isBundle = isBundle
             p.components = isBundle ? components : []
             p.costLines = cleanCost; p.recipe = recipe
+            p.costIncludesMaterials = maliyeteDahil
             p.minQty = minQty; p.criticalQty = criticalQty
             store.updateProduct(p)
         } else {
@@ -279,6 +342,7 @@ struct ProductForm: View {
                 name: name, isBundle: isBundle,
                 components: isBundle ? components : [],
                 costLines: cleanCost, recipe: recipe,
+                costIncludesMaterials: maliyeteDahil,
                 minQty: minQty, criticalQty: criticalQty
             ))
         }

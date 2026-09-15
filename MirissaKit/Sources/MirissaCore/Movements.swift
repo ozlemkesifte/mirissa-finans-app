@@ -226,7 +226,9 @@ public enum Movements {
                         label: "\(channelName) satışı — \(sold.name)"
                     ))
                 }
-                let backIn = e.returnsRestock ? e.returnsQty * mult : 0
+                // İade her zaman stoğa girer; satılabilir değilse hemen fire olarak
+                // çıkar. Net etki aynı, ama geçmişte ne olduğu görünür.
+                let backIn = e.returnsQty * mult
                 if backIn != 0 {
                     out.append(Movement(
                         id: "mv:sales:\(e.id):r:\(leafId)",
@@ -242,6 +244,22 @@ public enum Movements {
                         reason: nil,
                         label: "\(channelName) iadesi — \(sold.name)"
                     ))
+                    if !e.returnsRestock {
+                        out.append(Movement(
+                            id: "mv:sales:\(e.id):f:\(leafId)",
+                            item: .product(leafId),
+                            date: date,
+                            sortDate: nil,
+                            kind: .duzeltme,
+                            delta: -backIn,
+                            absoluteTo: nil,
+                            inCost: nil,
+                            source: .sales,
+                            sourceId: e.id,
+                            reason: .hasarli,
+                            label: "İade hasarlı — fire"
+                        ))
+                    }
                 }
             }
 

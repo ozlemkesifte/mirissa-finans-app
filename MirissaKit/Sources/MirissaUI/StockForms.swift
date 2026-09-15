@@ -18,6 +18,7 @@ struct PurchaseForm: View {
     @State private var shipping: Kurus = 0
     @State private var vendor = ""
     @State private var excludeFromExpenses = false
+    @State private var invoiceNo = ""
     @State private var vatRate: VatRate = .yirmi
     @State private var vatIncluded = true
     @State private var picked: PickedFile?
@@ -69,6 +70,9 @@ struct PurchaseForm: View {
         FormShell(
             title: editingId == nil ? "Stok Satın Al" : "Alımı Düzenle",
             canSave: item != nil && qty > 0,
+            issues: { taslak.map { Validation.purchase($0, state: store.state, editingId: editingId) } ?? [] },
+            summary: { taslak.map { Validation.purchaseSummary($0, state: store.state) }
+                       ?? SaveSummary(lines: []) },
             onSave: save
         ) {
             Section {
@@ -84,6 +88,7 @@ struct PurchaseForm: View {
                 MoneyField("Ödenen toplam", value: $paid)
                 MoneyField("Nakliye / kargo", value: $shipping)
                 TextField("Satıcı (isteğe bağlı)", text: $vendor)
+                TextField("Fatura no (isteğe bağlı)", text: $invoiceNo)
             }
 
             if baseQty > 0, paid + shipping > 0 {
@@ -135,12 +140,27 @@ struct PurchaseForm: View {
             excludeFromExpenses = p.excludeFromExpenses
             vatRate = p.resolvedVatRate
             vatIncluded = p.resolvedVatIncluded
+            invoiceNo = p.invoiceNo ?? ""
         } else {
             item = preselected
             unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
             vatRate = store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : .yok
             vatIncluded = store.state.settings.defaultVatIncluded
         }
+    }
+
+    private var taslak: StockPurchase? {
+        guard let item else { return nil }
+        return StockPurchase(
+            id: editingId ?? "taslak",
+            date: date, item: item, qty: qty, unit: unit,
+            totalPaid: paid, shippingCost: shipping,
+            vendor: vendor.isEmpty ? nil : vendor,
+            excludeFromExpenses: excludeFromExpenses,
+            invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
+            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+        )
     }
 
     private func save() {
@@ -152,6 +172,7 @@ struct PurchaseForm: View {
             totalPaid: paid, shippingCost: shipping,
             vendor: vendor.isEmpty ? nil : vendor,
             excludeFromExpenses: excludeFromExpenses,
+            invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
             attachment: invoiceRemoved ? nil : mevcutEk,
             vatRate: store.state.settings.vatEnabled ? vatRate : nil,
             vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
@@ -206,7 +227,10 @@ struct AdjustForm: View {
 
     var body: some View {
         FormShell(title: editingId == nil ? "Stok Düzelt" : "Düzeltmeyi Değiştir",
-                  canSave: item != nil && qty > 0, onSave: save) {
+                  canSave: item != nil && qty > 0,
+                  issues: { taslak.map { Validation.adjustment($0, state: store.state,
+                                                               editingId: editingId) } ?? [] },
+                  onSave: save) {
             Section {
                 ItemPicker(selection: $item)
                 DateRow(dateKey: $date)
@@ -268,6 +292,15 @@ struct AdjustForm: View {
             unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
         }
         .onChange(of: item) { _, _ in if !allowedUnits.contains(unit) { unit = baseUnit } }
+    }
+
+    private var taslak: StockAdjustment? {
+        guard let item else { return nil }
+        return StockAdjustment(
+            id: editingId ?? "taslak",
+            date: date, item: item, qty: qty, unit: unit,
+            isIncrease: isIncrease, reason: reason
+        )
     }
 
     private func save() {

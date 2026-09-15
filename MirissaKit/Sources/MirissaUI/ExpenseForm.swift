@@ -16,6 +16,7 @@ struct ExpenseForm: View {
     @State private var recurrence: Recurrence = .tek
     @State private var behavior: CostBehavior = .sabit
     @State private var behaviorTouched = false
+    @State private var invoiceNo = ""
     @State private var vatRate: VatRate = .yirmi
     @State private var vatIncluded = true
     @State private var picked: PickedFile?
@@ -45,6 +46,8 @@ struct ExpenseForm: View {
         FormShell(
             title: editingId == nil ? "Gider Ekle" : "Gideri Düzenle",
             canSave: !name.trimmingCharacters(in: .whitespaces).isEmpty && amount != 0,
+            issues: { Validation.expense(taslak, state: store.state, editingId: editingId) },
+            summary: { Validation.expenseSummary(taslak, state: store.state) },
             onSave: save
         ) {
             Section {
@@ -106,6 +109,7 @@ struct ExpenseForm: View {
                     .onChange(of: behavior) { _, _ in behaviorTouched = true }
                     VatSection(rate: $vatRate, included: $vatIncluded, amount: amount,
                                asSection: false)
+                    TextField("Fatura no (isteğe bağlı)", text: $invoiceNo)
                 }
             } footer: {
                 Text("Varsayılanlar çoğu gider için doğrudur; gerekmedikçe açman gerekmez.")
@@ -164,11 +168,25 @@ struct ExpenseForm: View {
         behaviorTouched = e.behavior != nil
         vatRate = e.resolvedVatRate
         vatIncluded = e.resolvedVatIncluded
+        invoiceNo = e.invoiceNo ?? ""
         let ov = e.overrides[contextMonth]
         name = ov?.name ?? e.name
         amount = ov?.amount ?? e.amount
         // Düzenli giderlerde varsayılan "sadece bu ay": geçmiş aylar kazara bozulmasın
         onlyThisMonth = e.isRecurring
+    }
+
+    private var taslak: Expense {
+        Expense(
+            id: editingId ?? "taslak",
+            date: date, name: name, amount: amount, category: category,
+            scope: scopeId == "ortak" ? .ortak : .channel(scopeId),
+            recurrence: recurrence,
+            invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
+            behavior: behavior,
+            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+        )
     }
 
     private func save() {
@@ -190,6 +208,7 @@ struct ExpenseForm: View {
                 updated.scope = scope
                 updated.recurrence = recurrence
                 updated.behavior = behavior
+                updated.invoiceNo = invoiceNo.isEmpty ? nil : invoiceNo
                 updated.vatRate = store.state.settings.vatEnabled ? vatRate : nil
                 updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : nil
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
@@ -200,6 +219,7 @@ struct ExpenseForm: View {
                 id: Ids.make(.expense),
                 date: date, name: name, amount: amount,
                 category: category, scope: scope, recurrence: recurrence,
+                invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
                 behavior: behavior,
                 vatRate: store.state.settings.vatEnabled ? vatRate : nil,
                 vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil

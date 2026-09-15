@@ -42,6 +42,8 @@ struct SaleForm: View {
         FormShell(
             title: editingId == nil ? "Aylık Satış Ekle" : "Satışı Düzenle",
             canSave: canSave,
+            issues: { Validation.sale(taslak, state: store.state, editingId: editingId) },
+            summary: { Validation.saleSummary(taslak, state: store.state) },
             onSave: save
         ) {
             Section {
@@ -121,6 +123,20 @@ struct SaleForm: View {
             productId = store.state.activeProducts.first?.id ?? ""
             channelId = store.state.activeChannels.first?.id ?? ChannelIds.trendyol
         }
+    }
+
+    /// Doğrulama ve özet için o anki form değerleri
+    private var taslak: SalesEntry {
+        SalesEntry(
+            id: editingId ?? "taslak",
+            month: month, channelId: channelId, productId: productId,
+            qty: qty, grossSales: gross, discount: discount,
+            returnsAmount: showReturns ? returnsAmount : 0,
+            returnsQty: showReturns ? returnsQty : 0,
+            returnsRestock: restock,
+            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+        )
     }
 
     private func save() {

@@ -78,9 +78,19 @@ struct FormShell<Content: View>: View {
     var title: String
     var saveTitle: String = "Kaydet"
     var canSave: Bool = true
+    /// Kayıt öncesi kontrol. Boş dönerse doğrudan kaydedilir.
+    var issues: () -> [ValidationIssue] = { [] }
+    /// Kaydet'ten önce gösterilecek kısa sonuç
+    var summary: () -> SaveSummary = { SaveSummary(lines: []) }
     var onSave: () -> Void
     @ViewBuilder var content: Content
+
     @Environment(\.dismiss) private var dismiss
+    @State private var onayIcin: [ValidationIssue] = []
+    @State private var onayOzeti = SaveSummary(lines: [])
+    @State private var onayGoster = false
+    @State private var engelGoster = false
+    @State private var engeller: [ValidationIssue] = []
 
     var body: some View {
         NavigationStack {
@@ -92,11 +102,123 @@ struct FormShell<Content: View>: View {
                         Button("Vazgeç") { dismiss() }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button(saveTitle) { onSave(); dismiss() }
+                        Button(saveTitle) { kaydetDene() }
                             .font(.body.weight(.semibold))
                             .disabled(!canSave)
                     }
                 }
+                .sheet(isPresented: $onayGoster) {
+                    OnayEkrani(issues: onayIcin, summary: onayOzeti) {
+                        onSave()
+                        onayGoster = false
+                        dismiss()
+                    }
+                }
+                .alert("Bu kayıt yapılamaz", isPresented: $engelGoster) {
+                    Button("Tamam", role: .cancel) {}
+                } message: {
+                    Text(engeller.map(\.detail).joined(separator: "\n\n"))
+                }
+        }
+    }
+
+    private func kaydetDene() {
+        let sorunlar = issues()
+        let kesin = sorunlar.hardBlocking
+        if !kesin.isEmpty {
+            engeller = kesin
+            engelGoster = true
+            return
+        }
+        let ozet = summary()
+        let onaylanacak = sorunlar.blocking + sorunlar.warnings
+        if onaylanacak.isEmpty && ozet.isEmpty {
+            onSave()
+            dismiss()
+            return
+        }
+        onayIcin = onaylanacak
+        onayOzeti = ozet
+        onayGoster = true
+    }
+}
+
+/// Kayıt öncesi kısa onay ekranı: ne olacağı ve varsa riskler.
+private struct OnayEkrani: View {
+    var issues: [ValidationIssue]
+    var summary: SaveSummary
+    var onConfirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var engeller: [ValidationIssue] { issues.filter { $0.severity == .engel } }
+    private var uyarilar: [ValidationIssue] { issues.filter { $0.severity == .uyari } }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: Metrics.gap) {
+                    if !summary.isEmpty {
+                        Card {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Bu işlem sonucunda".trUpper)
+                                    .font(.caption2.weight(.semibold))
+                                    .tracking(0.6)
+                                    .foregroundStyle(Palette.inkFaint)
+                                ForEach(summary.lines, id: \.self) { satir in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Text("•").foregroundStyle(Palette.inkFaint)
+                                        Text(satir)
+                                            .font(.subheadline)
+                                            .foregroundStyle(Palette.ink)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                                if let not = summary.note {
+                                    Divider().overlay(Palette.separator)
+                                    Text(not)
+                                        .font(.caption)
+                                        .foregroundStyle(Palette.inkSoft)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+
+                    ForEach(engeller + uyarilar) { sorun in
+                        Card(background: sorun.severity == .engel
+                             ? Palette.zararYumusak : Palette.uyariYumusak) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(sorun.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(sorun.severity == .engel ? Palette.zarar : Palette.uyari)
+                                Text(sorun.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.inkSoft)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .padding(Metrics.pad)
+            }
+            .screenBackground()
+            .navigationTitle(engeller.isEmpty ? "Onayla" : "Dikkat")
+            .inlineTitle()
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 10) {
+                    BigButton(engeller.isEmpty ? "Kaydet" : "Yine de kaydet",
+                              tone: engeller.isEmpty ? Palette.accent : Palette.zarar) {
+                        onConfirm()
+                    }
+                    Button("Vazgeç") { dismiss() }
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.inkSoft)
+                }
+                .padding(Metrics.pad)
+                .background(Palette.card)
+            }
         }
     }
 }

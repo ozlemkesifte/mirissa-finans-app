@@ -11,7 +11,9 @@ struct ChannelForm: View {
     @State private var showDelete = false
 
     var body: some View {
-        FormShell(title: draft?.name ?? "Kanal", canSave: draft != nil, onSave: save) {
+        FormShell(title: draft?.name ?? "Kanal", canSave: draft != nil,
+                  issues: { draft.map { Validation.channel($0) } ?? [] },
+                  onSave: save) {
             if let d = Binding($draft) {
                 Section {
                     TextField("Kanal adı", text: d.name)
