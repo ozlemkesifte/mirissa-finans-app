@@ -197,7 +197,7 @@ struct ItemCard: View {
                 Spacer(minLength: 8)
                 VStack(alignment: .trailing, spacing: 3) {
                     Text(qtyText)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .font(.system(.body, design: .rounded).weight(.semibold))
                         .foregroundStyle(tone)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)

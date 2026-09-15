@@ -126,8 +126,8 @@ public enum Movements {
                 kind: .purchase,
                 delta: base,
                 absoluteTo: nil,
-                // Stok maliyeti KDV HARİÇ: indirilecek KDV geri alınır,
-                // ürün maliyetine yazılırsa kârlılık yanlış çıkar.
+                // Stok maliyeti KDV HARİÇ: indirilecek KDV, ödenecek KDV'den
+                // mahsup edilir; ürün maliyetine yazılırsa kârlılık yanlış çıkar.
                 inCost: p.landedSplit.net,
                 source: .purchase,
                 sourceId: p.id,

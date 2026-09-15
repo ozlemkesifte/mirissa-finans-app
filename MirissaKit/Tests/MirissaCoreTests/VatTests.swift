@@ -238,3 +238,168 @@ struct VatTests {
         #expect(Engine(s).balanceSummary(month: "2026-09").tahminiKdv == 0)
     }
 }
+
+@Suite("KDV güvenlik kuralları")
+struct VatSafetyTests {
+
+    /// Devreden KDV hiçbir koşulda alacak tarafına geçmez
+    @Test func devredenKdvAlacakOlarakGosterilmez() {
+        var s = Fx.base()
+        s.products[0] = Fx.sampuan(cost: 0)
+        s.products[0].recipe = []
+        // Büyük alım, satış yok -> indirilecek KDV fazlası
+        s.purchases.append(StockPurchase(
+            id: "pur", date: "2026-09-01", item: .material(Fx.koliId),
+            qty: 1000, unit: .adet, totalPaid: tl(60_000),
+            vatRate: .yirmi, vatIncluded: true
+        ))
+        s.balances = [BalanceItem(id: "b", kind: .alacak, name: "Trendyol", amount: tl(10_000))]
+
+        let e = Engine(s)
+        let kdv = e.vatStatus("2026-09")
+        #expect(kdv.devreden == tl(10_000))
+        #expect(kdv.odenecek == 0)
+
+        let ozet = e.balanceSummary(month: "2026-09")
+        // Alacak tarafı yalnızca kullanıcının girdiği satırdan ibaret
+        #expect(ozet.toplamAlacak == tl(10_000))
+        #expect(ozet.tahminiKdv == 0)          // devreden KDV ödenecek listesine de girmez
+        #expect(ozet.alacaklar.allSatisfy { $0.name != "KDV" })
+    }
+
+    /// Tahmini KDV yalnızca ödenecek tarafında ve yalnızca pozitifken görünür
+    @Test func tahminiKdvSadeceOdenecekTarafinda() {
+        var s = Fx.base()
+        s.products[0] = Fx.sampuan(cost: 0)
+        s.products[0].recipe = []
+        s.sales.append(SalesEntry(
+            id: "sal", month: "2026-09", channelId: ChannelIds.other,
+            productId: Fx.sampuanId, qty: 10, grossSales: tl(12_000),
+            vatRate: .yirmi, vatIncluded: true
+        ))
+        let ozet = Engine(s).balanceSummary(month: "2026-09")
+        #expect(ozet.tahminiKdv == tl(2000))
+        #expect(ozet.toplamOdenecek == tl(2000))
+        #expect(ozet.toplamAlacak == 0)
+        #expect(ozet.net == -tl(2000))
+    }
+
+    /// KDV oranı her kayıtta ayrı ayrı seçilebilir; %20 yalnızca varsayılan
+    @Test func kdvOraniHerKayittaFarkliOlabilir() {
+        var s = Fx.base()
+        s.products[0] = Fx.sampuan(cost: 0)
+        s.products[0].recipe = []
+        s.sales = [
+            SalesEntry(id: "s20", month: "2026-09", channelId: ChannelIds.other,
+                       productId: Fx.sampuanId, qty: 1, grossSales: tl(120),
+                       vatRate: .yirmi, vatIncluded: true),
+            SalesEntry(id: "s10", month: "2026-09", channelId: ChannelIds.other,
+                       productId: Fx.sampuanId, qty: 1, grossSales: tl(110),
+                       vatRate: .on, vatIncluded: true),
+            SalesEntry(id: "s1", month: "2026-09", channelId: ChannelIds.other,
+                       productId: Fx.sampuanId, qty: 1, grossSales: tl(101),
+                       vatRate: .bir, vatIncluded: true),
+            SalesEntry(id: "s0", month: "2026-09", channelId: ChannelIds.other,
+                       productId: Fx.sampuanId, qty: 1, grossSales: tl(100),
+                       vatRate: .yok, vatIncluded: true),
+        ]
+        let r = Engine(s).companyMonth("2026-09")
+        #expect(r.gercekCiro == tl(400))                      // hepsi net 100 TL
+        #expect(r.hesaplananKdv == tl(20) + tl(10) + tl(1))   // oranlar ayrı ayrı uygulandı
+
+        // Varsayılan oran ayarı sadece formu doldurur, kayıtları bağlamaz
+        #expect(AppSettings().defaultVatRate == .yirmi)
+    }
+
+    /// Kanal kesinti KDV oranı kanala özel ve değiştirilebilir
+    @Test func kanalKesintiKdvOraniDegistirilebilir() {
+        func kur(_ oran: VatRate) -> ChannelMonthResult {
+            var s = Fx.base()
+            s.products[0] = Fx.sampuan(cost: 0)
+            s.products[0].recipe = []
+            s.channels[0].commissionPct = 20
+            s.channels[0].feeVatRate = oran
+            s.channels[0].feesIncludeVat = true
+            s.sales.append(SalesEntry(
+                id: "sal", month: "2026-09", channelId: ChannelIds.trendyol,
+                productId: Fx.sampuanId, qty: 100, grossSales: tl(12_000),
+                vatRate: .yirmi, vatIncluded: true
+            ))
+            return Engine(s).channelResult(channelId: ChannelIds.trendyol, month: "2026-09")
+        }
+        // 12.000 × %20 = 2.400 TL brüt komisyon
+        #expect(kur(.yirmi).commission.amount == tl(2000))   // KDV %20 ayrılır
+        #expect(kur(.yirmi).feeVat == tl(400))
+        #expect(kur(.on).commission.amount == Vat.net(tl(2400), rate: .on, included: true))
+        #expect(kur(.yok).commission.amount == tl(2400))     // KDV yoksa tamamı gider
+        #expect(kur(.yok).feeVat == 0)
+    }
+
+    /// İki kanal farklı kesinti KDV oranı taşıyabilir
+    @Test func kanallarFarkliKesintiOraniTasiyabilir() {
+        var s = Fx.base()
+        s.products[0] = Fx.sampuan(cost: 0)
+        s.products[0].recipe = []
+        s.channels[0].commissionPct = 20
+        s.channels[0].feeVatRate = .yirmi
+        s.channels[1].paymentPct = 10
+        s.channels[1].feeVatRate = .yok           // bu kanalda kesinti KDV'si yok
+        for (i, ch) in [ChannelIds.trendyol, ChannelIds.shopify].enumerated() {
+            s.sales.append(SalesEntry(
+                id: "s\(i)", month: "2026-09", channelId: ch,
+                productId: Fx.sampuanId, qty: 10, grossSales: tl(12_000),
+                vatRate: .yirmi, vatIncluded: true
+            ))
+        }
+        let e = Engine(s)
+        #expect(e.channelResult(channelId: ChannelIds.trendyol, month: "2026-09").feeVat > 0)
+        #expect(e.channelResult(channelId: ChannelIds.shopify, month: "2026-09").feeVat == 0)
+    }
+
+    /// Kesinti KDV oranı girilmemiş kanal uyarı listesine düşer
+    @Test func eksikKesintiOraniUyarir() {
+        var s = Fx.base()
+        s.products[0] = Fx.sampuan(cost: 0)
+        s.products[0].recipe = []
+        s.channels[0].commissionPct = 20
+        s.channels[0].feeVatRate = nil            // girilmemiş
+        s.sales.append(SalesEntry(
+            id: "sal", month: "2026-09", channelId: ChannelIds.trendyol,
+            productId: Fx.sampuanId, qty: 10, grossSales: tl(12_000),
+            vatRate: .yirmi, vatIncluded: true
+        ))
+        #expect(Engine(s).channelsMissingFeeVat(month: "2026-09") == ["Trendyol"])
+
+        s.channels[0].feeVatRate = .yirmi
+        #expect(Engine(s).channelsMissingFeeVat(month: "2026-09").isEmpty)
+    }
+
+    /// KDV, nakit çıkışı ile kâr ayrımını bozmaz
+    @Test func nakitKarAyrimiKorunur() {
+        var s = Fx.base()
+        s.products[0] = Fx.sampuan(cost: 0)
+        s.products[0].recipe = []
+        s.purchases.append(StockPurchase(
+            id: "pur", date: "2026-09-01", item: .material(Fx.koliId),
+            qty: 100, unit: .adet, totalPaid: tl(1200),
+            vatRate: .yirmi, vatIncluded: true
+        ))
+        s.expenses.append(Expense(id: "e", date: "2026-09-02", name: "Ajans",
+                                  amount: tl(1200), category: .sabit,
+                                  vatRate: .yirmi, vatIncluded: true))
+        let r = Engine(s).companyMonth("2026-09")
+
+        #expect(r.ortakGider == tl(1000))          // kâra KDV hariç girer
+        #expect(r.stokAlimi == tl(1200))           // stok alımı kâra hiç girmez
+        #expect(r.nakitCikisi == tl(2400))         // kasadan KDV dahil çıkar
+        #expect(r.gercekKar == -tl(1000))          // sadece gider, KDV yok, alım yok
+    }
+
+    /// Başlangıç kanalları kesinti KDV oranıyla gelir ama kilitli değildir
+    @Test func baslangicKanallariOranTasirAmaKilitliDegil() {
+        var s = SeedData.initialState()
+        #expect(s.channels.allSatisfy { $0.resolvedFeeVatRate == .yirmi })
+        s.channels[0].feeVatRate = .on
+        #expect(Engine(s).state.channel(ChannelIds.trendyol)?.resolvedFeeVatRate == .on)
+    }
+}

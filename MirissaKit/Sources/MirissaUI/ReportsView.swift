@@ -311,7 +311,7 @@ struct ResultSummary: View {
                         .foregroundStyle(Palette.ink)
                     Spacer()
                     Text(kar.tl)
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                        .font(.system(.title2, design: .rounded).weight(.semibold))
                         .foregroundStyle(kar < 0 ? Palette.zarar : Palette.kar)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)

@@ -84,9 +84,14 @@ public enum SeedData {
 
     public static func channels() -> [Channel] {
         [
-            Channel(id: ChannelIds.trendyol, name: "Trendyol", kind: .marketplace),
-            Channel(id: ChannelIds.shopify, name: "Shopify", kind: .ownStore),
-            Channel(id: ChannelIds.other, name: "Diğer", kind: .other),
+            // Kesinti KDV oranı Türkiye'deki yaygın orandan başlar ama
+            // sabit değildir: kanal ayarlarından her zaman değiştirilebilir.
+            Channel(id: ChannelIds.trendyol, name: "Trendyol", kind: .marketplace,
+                    feeVatRate: .yirmi, feesIncludeVat: true),
+            Channel(id: ChannelIds.shopify, name: "Shopify", kind: .ownStore,
+                    feeVatRate: .yirmi, feesIncludeVat: true),
+            Channel(id: ChannelIds.other, name: "Diğer", kind: .other,
+                    feeVatRate: .yirmi, feesIncludeVat: true),
         ]
     }
 

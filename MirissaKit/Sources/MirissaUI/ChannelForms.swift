@@ -48,7 +48,7 @@ struct ChannelForm: View {
                 if store.state.settings.vatEnabled {
                     Section {
                         Picker("Kesinti KDV oranı", selection: Binding(
-                            get: { draft?.resolvedFeeVatRate ?? .yirmi },
+                            get: { draft?.resolvedFeeVatRate ?? .yok },
                             set: { draft?.feeVatRate = $0 }
                         )) {
                             ForEach(VatRate.allCases) { r in Text(r.displayName).tag(r) }
@@ -62,7 +62,7 @@ struct ChannelForm: View {
                     } header: {
                         Text("Kesintilerin KDV'si")
                     } footer: {
-                        Text("Komisyon ve kargo faturasındaki KDV indirilecek KDV'ye eklenir; kâr hesabına yalnızca KDV hariç kısmı girer.")
+                        Text("Komisyon ve kargo faturasındaki KDV indirilecek KDV'ye eklenir; kâr hesabına yalnızca KDV hariç kısmı girer. Oran bu kanala özeldir, istediğin zaman değiştirebilirsin.")
                     }
                 }
 

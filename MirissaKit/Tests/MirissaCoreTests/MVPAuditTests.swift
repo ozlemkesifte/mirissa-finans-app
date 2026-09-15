@@ -98,13 +98,18 @@ struct MVPAuditTests {
         let ty = e.channelResult(channelId: ChannelIds.trendyol, month: "2026-09")
         let sh = e.channelResult(channelId: ChannelIds.shopify, month: "2026-09")
 
-        #expect(ty.commission.amount == Money.roundHalfAwayFromZero(Double(ty.netSales) * 0.20))
-        #expect(ty.shipping.amount == tl(60) * 128)
+        // Kesinti tutarları KDV hariç raporlanır; KDV'leri indirilecek KDV'ye gider
+        func netKesinti(_ brut: Kurus) -> Kurus { Vat.net(brut, rate: .yirmi, included: true) }
+
+        #expect(ty.commission.amount
+                == netKesinti(Money.roundHalfAwayFromZero(Double(ty.netSalesIncVat) * 0.20)))
+        #expect(ty.shipping.amount == netKesinti(tl(60) * 128))
         #expect(ty.otherDeduction.amount == 0)         // Trendyol'da aylık ücret yok
 
-        #expect(sh.commission.amount == Money.roundHalfAwayFromZero(Double(sh.netSales) * 0.03))
-        #expect(sh.shipping.amount == tl(70) * 30)
-        #expect(sh.otherDeduction.amount == tl(1500))  // Shopify aylık ücreti
+        #expect(sh.commission.amount
+                == netKesinti(Money.roundHalfAwayFromZero(Double(sh.netSalesIncVat) * 0.03)))
+        #expect(sh.shipping.amount == netKesinti(tl(70) * 30))
+        #expect(sh.otherDeduction.amount == netKesinti(tl(1500)))  // Shopify aylık ücreti
 
         #expect(ty.marginPct != sh.marginPct)
         // Şirket kârı iki kanalın kalanından ortak giderler düşülerek bulunur

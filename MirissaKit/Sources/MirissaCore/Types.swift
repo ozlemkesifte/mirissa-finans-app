@@ -604,8 +604,8 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
     /// Ödenen toplam (KDV dahil olabilir)
     public var landedTotal: Kurus { totalPaid + shippingCost }
 
-    /// Stok maliyeti KDV HARİÇ tutulur: indirilecek KDV geri alınır,
-    /// ürün maliyetine yazılırsa kârlılık yanlış çıkar.
+    /// Stok maliyeti KDV HARİÇ tutulur: indirilecek KDV, ödenecek KDV'den
+    /// mahsup edilir; ürün maliyetine yazılırsa kârlılık yanlış çıkar.
     public var landedSplit: VatSplit {
         Vat.split(landedTotal, rate: resolvedVatRate, included: resolvedVatIncluded)
     }

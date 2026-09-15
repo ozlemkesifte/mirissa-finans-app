@@ -2,6 +2,8 @@ import SwiftUI
 import MirissaCore
 #if os(iOS)
 import UIKit
+#else
+import AppKit
 #endif
 
 /// Açık/koyu moda uyum sağlayan renk üretici.
@@ -14,7 +16,12 @@ func adaptive(light: (Double, Double, Double), dark: (Double, Double, Double)) -
         return UIColor(red: c.0 / 255, green: c.1 / 255, blue: c.2 / 255, alpha: 1)
     })
     #else
-    return Color(red: light.0 / 255, green: light.1 / 255, blue: light.2 / 255)
+    // macOS'ta da dinamik: önizleme aracı koyu modu gerçekten çizebilsin
+    return Color(NSColor(name: nil) { appearance in
+        let koyu = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let c = koyu ? dark : light
+        return NSColor(srgbRed: c.0 / 255, green: c.1 / 255, blue: c.2 / 255, alpha: 1)
+    })
     #endif
 }
 
@@ -28,14 +35,20 @@ public enum Palette {
     public static let separator = adaptive(light: (232, 232, 237), dark: (52, 52, 58))
 
     public static let ink = adaptive(light: (17, 17, 20), dark: (245, 245, 248))
-    public static let inkSoft = adaptive(light: (104, 104, 118), dark: (158, 158, 172))
-    public static let inkFaint = adaptive(light: (150, 150, 164), dark: (120, 120, 134))
+    // Gri tonlar okunabilirlik eşiğini (4.5:1) her iki modda da geçecek
+    // şekilde seçildi; aralarındaki ağırlık farkı korunuyor.
+    public static let inkSoft = adaptive(light: (88, 88, 100), dark: (170, 170, 184))
+    public static let inkFaint = adaptive(light: (112, 112, 126), dark: (142, 142, 156))
 
     public static let accent = adaptive(light: (13, 122, 101), dark: (46, 178, 148))
     public static let kar = adaptive(light: (13, 122, 101), dark: (46, 178, 148))
     public static let zarar = adaptive(light: (192, 57, 43), dark: (255, 105, 92))
     public static let uyari = adaptive(light: (191, 120, 0), dark: (240, 168, 48))
     public static let gider = adaptive(light: (74, 78, 105), dark: (160, 166, 200))
+
+    /// Dolu butonların üzerindeki yazı. Koyu modda accent ve gider renkleri
+    /// açıldığı için beyaz kontrastı düşüyordu; koyu bir ton kullanılıyor.
+    public static let onFilled = adaptive(light: (255, 255, 255), dark: (10, 28, 24))
 
     public static let karYumusak = adaptive(light: (233, 246, 242), dark: (18, 52, 45))
     public static let zararYumusak = adaptive(light: (253, 236, 234), dark: (60, 24, 22))

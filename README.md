@@ -202,8 +202,8 @@ Her satış, gider ve stok alımında **KDV oranı** (%20 / %10 / %1 / yok) ve
 **Kârlılık her zaman KDV hariç hesaplanır.** KDV ne gelir ne giderdir:
 
 - Ciro, gider, kâr, kanalda kalan, başa baş — hepsi KDV hariç
-- Stok maliyeti de KDV hariç: indirilecek KDV geri alındığı için ürün
-  maliyetine yazılırsa kârlılık yanlış çıkar
+- Stok maliyeti de KDV hariç: indirilecek KDV ödenecek KDV'den mahsup
+  edildiği için ürün maliyetine yazılırsa kârlılık yanlış çıkar
 - Nakit çıkışı KDV dahil kalır — cepten gerçekten o kadar para çıkar
 
 Pazaryeri kesintileri satış fiyatının KDV dahil hali üzerinden alınır; kesinti
@@ -213,6 +213,16 @@ Aylık raporda açılır **KDV durumu** kartı: hesaplanan KDV, indirilecek KDV,
 önceki aydan devreden ve tahmini ödenecek KDV. İndirilecek fazlaysa
 **sonraki aya devreden KDV** olarak taşınır ve ertesi ay mahsup edilir.
 Bu bir tahmindir, beyanname değildir.
+
+KDV oranı **her kayıtta ayrı ayrı** seçilir — %20 yalnızca varsayılandır ve
+Ayarlar'dan değiştirilebilir. Pazaryeri kesintilerinin KDV oranı da her kanal
+için ayrı tutulur ve kanal ayarlarından değiştirilebilir; sabit %20 varsayımı
+yoktur. Bir kanalda kesinti KDV oranı girilmemişse KDV kartı uyarır.
+
+İndirilecek KDV hiçbir yerde "geri alınacak para" veya şirket alacağı olarak
+gösterilmez. Kullanılan tek ifadeler: **hesaplanan KDV**, **indirilecek KDV**,
+**tahmini ödenecek KDV**, **sonraki aya devreden KDV**. Devreden KDV alacak
+listesine girmez.
 
 KDV takibi Ayarlar'dan kapatılabilir; kapalıyken hiçbir ekranda görünmez.
 

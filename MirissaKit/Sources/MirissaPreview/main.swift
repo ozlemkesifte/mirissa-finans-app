@@ -139,12 +139,12 @@ func demoZarar() -> AppState {
 }
 
 @MainActor
-func render(_ view: AnyView, to url: URL, size: CGSize) -> Bool {
+func render(_ view: AnyView, to url: URL, size: CGSize, koyu: Bool = false) -> Bool {
     // ImageRenderer kaydırılabilir içeriği çizemiyor; gerçek bir pencerede
     // yerleşim yaptırıp katmanı yakalıyoruz.
     let hosting = NSHostingView(rootView: AnyView(
         view.frame(width: size.width, height: size.height)
-            .environment(\.colorScheme, .light)
+            .environment(\.colorScheme, koyu ? .dark : .light)
     ))
     hosting.frame = CGRect(origin: .zero, size: size)
 
@@ -156,7 +156,8 @@ func render(_ view: AnyView, to url: URL, size: CGSize) -> Bool {
     )
     window.contentView = hosting
     window.isOpaque = true
-    window.backgroundColor = .white
+    window.backgroundColor = koyu ? .black : .white
+    window.appearance = NSAppearance(named: koyu ? .darkAqua : .aqua)
     window.orderFrontRegardless()
 
     hosting.layoutSubtreeIfNeeded()
@@ -194,6 +195,13 @@ func run() {
         let u = outDir.appendingPathComponent("1b-ana-sayfa-hedef.png")
         if render(ekran.view, to: u, size: size) { ok += 1; print("✓ Ana Sayfa (aylık hedef) → \(u.lastPathComponent)") }
     }
+    // Koyu mod: buton kontrastı ve gri tonlar
+    let koyuEkran = outDir.appendingPathComponent("9-koyu-mod.png")
+    if let ekran = PreviewGallery.screens(store: store, period: Period(month: "2026-09")).dropFirst(2).first,
+       render(ekran.view, to: koyuEkran, size: size, koyu: true) {
+        ok += 1; print("✓ Koyu mod (Giderler) → \(koyuEkran.lastPathComponent)")
+    }
+
     let kdvKart = outDir.appendingPathComponent("8-kdv-alacak.png")
     if render(PreviewGallery.vatAndBalance(store: hedefStore, month: "2026-09"),
               to: kdvKart, size: size) { ok += 1; print("✓ KDV + Alacak → \(kdvKart.lastPathComponent)") }

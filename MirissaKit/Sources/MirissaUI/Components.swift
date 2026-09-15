@@ -240,7 +240,7 @@ public struct BigStat: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Text(value)
-                    .font(.system(size: 25, weight: .semibold, design: .rounded))
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
                     .foregroundStyle(tone)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
@@ -319,7 +319,7 @@ public struct EmptyHint: View {
     public var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 28, weight: .light))
+                .font(.largeTitle.weight(.light))
                 .foregroundStyle(Palette.inkFaint)
             Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink)
             Text(message)
@@ -355,7 +355,7 @@ public struct BigButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .background(tone)
-            .foregroundStyle(.white)
+            .foregroundStyle(Palette.onFilled)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)

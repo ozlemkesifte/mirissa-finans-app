@@ -128,7 +128,7 @@ struct HomeView: View {
         } label: {
             Image(systemName: "plus")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Palette.onFilled)
                 .frame(width: 54, height: 54)
                 .background(Palette.accent)
                 .clipShape(Circle())
@@ -158,14 +158,14 @@ struct ChannelCard: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Satış").font(.caption2).foregroundStyle(Palette.inkFaint)
                             Text(result.netSales.tlCompact)
-                                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                                .font(.system(.title3, design: .rounded).weight(.semibold))
                                 .foregroundStyle(Palette.ink)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("Kanalda kalan").font(.caption2).foregroundStyle(Palette.inkFaint)
                             Text(result.kanaldaKalan.tlCompact)
-                                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                                .font(.system(.title3, design: .rounded).weight(.semibold))
                                 .foregroundStyle(result.kanaldaKalan < 0 ? Palette.zarar : Palette.kar)
                         }
                     }

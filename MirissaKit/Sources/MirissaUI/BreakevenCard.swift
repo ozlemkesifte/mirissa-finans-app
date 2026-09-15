@@ -82,7 +82,7 @@ struct BreakevenCard: View {
                     .foregroundStyle(Palette.uyari)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text("\(basaBas.orders) sipariş")
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                        .font(.system(.title2, design: .rounded).weight(.semibold))
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
@@ -224,7 +224,7 @@ struct BreakevenCard: View {
                     .foregroundStyle(Palette.ink)
                 Spacer(minLength: 8)
                 Text(a.profit.tl)
-                    .font(.system(size: 24, weight: .semibold, design: .rounded))
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
                     .foregroundStyle(a.profit < 0 ? Palette.zarar : Palette.kar)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)

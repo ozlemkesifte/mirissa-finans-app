@@ -43,7 +43,7 @@ struct ExpensesView: View {
                                 .tracking(0.6)
                                 .foregroundStyle(Palette.inkFaint)
                             Text(result.toplamGider.tl)
-                                .font(.system(size: 32, weight: .semibold, design: .rounded))
+                                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                                 .foregroundStyle(Palette.ink)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)

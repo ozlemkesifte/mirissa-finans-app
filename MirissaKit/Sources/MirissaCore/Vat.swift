@@ -117,6 +117,17 @@ public extension Engine {
         return sonuc
     }
 
+    /// Kesintisi olduğu halde kesinti KDV oranı girilmemiş kanallar.
+    /// Bunlar varken indirilecek KDV olduğundan az çıkar.
+    func channelsMissingFeeVat(month: MonthKey) -> [String] {
+        companyMonth(month).channels.compactMap { c in
+            guard c.channelFees > 0,
+                  let ch = state.channel(c.channelId),
+                  ch.resolvedFeeVatRate == .yok else { return nil }
+            return ch.name
+        }
+    }
+
     /// Alacak ve ödenecekler + bu ayın tahmini KDV'si
     func balanceSummary(month: MonthKey) -> BalanceSummary {
         let acik = state.balances.filter { !$0.settled }

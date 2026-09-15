@@ -44,6 +44,14 @@ struct VatCard: View {
                         } else {
                             LabeledRow("Bu ay ödenecek KDV", "yok", tone: Palette.inkSoft, strong: true)
                         }
+                        let eksik = store.engine.channelsMissingFeeVat(month: month)
+                        if !eksik.isEmpty {
+                            Text("\(eksik.joined(separator: ", ")) için kesinti KDV oranı girilmedi — indirilecek KDV eksik olabilir. Ayarlar → kanal ayarlarından girebilirsin.")
+                                .font(.caption2)
+                                .foregroundStyle(Palette.uyari)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         Text("Bu bir tahmindir, beyanname değildir. Tutarlar girdiğin kayıtlardan hesaplanır; kâr hesabına KDV karışmaz.")
                             .font(.caption2)
                             .foregroundStyle(Palette.inkFaint)

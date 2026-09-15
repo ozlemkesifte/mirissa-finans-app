@@ -115,13 +115,18 @@ struct ScenarioTests {
         // --- Kanal hesapları ---
         let ty = r.channels.first { $0.channelId == ChannelIds.trendyol }!
         #expect(ty.netSales == tl(55_920 - 920 - 1398 + 37_500))
-        #expect(ty.commission.amount == Money.roundHalfAwayFromZero(Double(ty.netSales) * 0.20))
-        #expect(ty.shipping.amount == tl(60) * 118)
+        // Kesintiler KDV dahil alınır; kâra yalnızca KDV hariç kısmı girer
+        #expect(ty.commission.amount
+                == Vat.net(Money.roundHalfAwayFromZero(Double(ty.netSalesIncVat) * 0.20),
+                           rate: .yirmi, included: true))
+        #expect(ty.shipping.amount == Vat.net(tl(60) * 118, rate: .yirmi, included: true))
+        #expect(ty.feeVat > 0)
         #expect(ty.ads.amount == tl(5000))
 
         let sh = r.channels.first { $0.channelId == ChannelIds.shopify }!
         #expect(sh.netSales == tl(45_000))
-        #expect(sh.otherDeduction.amount == tl(1500))   // aylık Shopify ücreti bir kez
+        #expect(sh.otherDeduction.amount
+                == Vat.net(tl(1500), rate: .yirmi, included: true))   // aylık Shopify ücreti bir kez
         #expect(sh.ads.amount == tl(12_000))
 
         // --- Uyarılar ---
