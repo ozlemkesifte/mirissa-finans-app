@@ -1,20 +1,47 @@
 import Foundation
 
-public struct AppSettings: Codable, Hashable, Sendable {
+public struct AppSettings: Hashable, Sendable {
     /// "Yaklaşık kaç siparişlik kaldı" hesabında kullanılacak geçmiş ay sayısı
     public var consumptionWindowMonths: Int
     /// Stok alımları kâr hesabına gider olarak değil, satıldıkça maliyet olarak girer.
     public var capitalizePurchases: Bool
     public var companyName: String
+    /// Kullanıcının kendi belirlediği aylık kâr hedefi: ["2026-09": 7_500_000]
+    public var profitGoals: [MonthKey: Kurus]
+
+    public func profitGoal(for month: MonthKey) -> Kurus? {
+        profitGoals[month].flatMap { $0 > 0 ? $0 : nil }
+    }
 
     public init(
         consumptionWindowMonths: Int = 3,
         capitalizePurchases: Bool = true,
-        companyName: String = "Mirissa Lab"
+        companyName: String = "Mirissa Lab",
+        profitGoals: [MonthKey: Kurus] = [:]
     ) {
         self.consumptionWindowMonths = consumptionWindowMonths
         self.capitalizePurchases = capitalizePurchases
         self.companyName = companyName
+        self.profitGoals = profitGoals
+    }
+}
+
+// Eski yedeklerde olmayan alanlar varsayılanla doldurulur —
+// yeni bir ayar eklemek eski kayıtları okunamaz hale getirmesin.
+extension AppSettings: Codable {
+    enum CodingKeys: String, CodingKey {
+        case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = AppSettings()
+        consumptionWindowMonths = try c.decodeIfPresent(Int.self, forKey: .consumptionWindowMonths)
+            ?? d.consumptionWindowMonths
+        capitalizePurchases = try c.decodeIfPresent(Bool.self, forKey: .capitalizePurchases)
+            ?? d.capitalizePurchases
+        companyName = try c.decodeIfPresent(String.self, forKey: .companyName) ?? d.companyName
+        profitGoals = try c.decodeIfPresent([MonthKey: Kurus].self, forKey: .profitGoals) ?? [:]
     }
 }
 

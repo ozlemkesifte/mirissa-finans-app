@@ -102,6 +102,25 @@ func demoState() -> AppState {
     return s
 }
 
+/// Başa başın altında kalınan bir ay — uyarı ve günlük hedef bandını görmek için
+@MainActor
+func demoZarar() -> AppState {
+    var s = demoState()
+    // Eylül satışlarını üçte birine indir
+    for i in s.sales.indices where s.sales[i].month == "2026-09" {
+        s.sales[i].qty = (s.sales[i].qty / 3).rounded()
+        s.sales[i].grossSales = s.sales[i].grossSales / 3
+        s.sales[i].discount = s.sales[i].discount / 3
+        s.sales[i].returnsAmount = 0
+        s.sales[i].returnsQty = 0
+    }
+    for i in s.channelMonths.indices where s.channelMonths[i].month == "2026-09" {
+        s.channelMonths[i].orderCount = (s.channelMonths[i].orderCount ?? 0) / 3
+    }
+    s.settings.profitGoals["2026-09"] = Money.fromTL(75_000)
+    return s
+}
+
 @MainActor
 func render(_ view: AnyView, to url: URL, size: CGSize) -> Bool {
     // ImageRenderer kaydırılabilir içeriği çizemiyor; gerçek bir pencerede
@@ -152,6 +171,17 @@ func run() {
         if render(s.view, to: url, size: size) { ok += 1; print("✓ \(s.title) → \(url.lastPathComponent)") }
         else { print("✗ \(s.title)") }
     }
+    let zararStore = AppStore.inMemory(demoZarar())
+    let zarar = outDir.appendingPathComponent("1b-ana-sayfa-basabas-alti.png")
+    if let ekran = PreviewGallery.screens(store: zararStore, period: Period(month: "2026-09")).first,
+       render(ekran.view, to: zarar, size: size) {
+        ok += 1; print("✓ Ana Sayfa (başa baş altı) → \(zarar.lastPathComponent)")
+    }
+
+    let hedef = outDir.appendingPathComponent("1c-kar-hedefleri.png")
+    if render(PreviewGallery.breakevenCard(store: zararStore, month: "2026-09"),
+              to: hedef, size: size) { ok += 1; print("✓ Kâr hedefleri → \(hedef.lastPathComponent)") }
+
     let detay = outDir.appendingPathComponent("6-malzeme-detay.png")
     if render(PreviewGallery.detail(store: store, period: period, materialId: SeedData.M.koli),
               to: detay, size: size) { ok += 1; print("✓ Malzeme detayı → \(detay.lastPathComponent)") }

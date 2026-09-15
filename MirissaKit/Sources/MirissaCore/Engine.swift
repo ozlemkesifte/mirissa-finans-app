@@ -220,6 +220,9 @@ public final class Engine {
             cm?.otherDeductionActual,
             auto: net * ch.otherDeductionPct / 100 + Double(ch.platformFeeMonthly) + Double(ch.otherDeductionMonthly)
         )
+        // Aylık sabit kesintiler sipariş adedinden bağımsızdır; başa baş hesabı
+        // için değişken kısımdan ayrı tutulur.
+        r.fixedDeduction = min(ch.platformFeeMonthly + ch.otherDeductionMonthly, r.otherDeduction.amount)
         r.ads = figure(cm?.adsActual, auto: Double(channelExpenses[.reklam] ?? 0))
 
         var others = channelExpenses

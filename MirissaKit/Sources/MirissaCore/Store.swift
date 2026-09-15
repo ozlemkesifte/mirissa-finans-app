@@ -243,6 +243,14 @@ public final class AppStore {
 
     public func updateSettings(_ s: AppSettings) { mutate { $0.settings = s } }
 
+    /// Aya özel kâr hedefi. `nil` hedefi kaldırır.
+    public func setProfitGoal(_ amount: Kurus?, for month: MonthKey) {
+        mutate { s in
+            if let a = amount, a > 0 { s.settings.profitGoals[month] = a }
+            else { s.settings.profitGoals[month] = nil }
+        }
+    }
+
     public func resetToSeed() { apply(SeedData.initialState()) }
 
     public func eraseAllData() {

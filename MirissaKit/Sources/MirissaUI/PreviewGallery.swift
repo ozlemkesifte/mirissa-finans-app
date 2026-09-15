@@ -25,6 +25,20 @@ public enum PreviewGallery {
         ]
     }
 
+    /// Sadece "BU AY NEREDEYİZ?" kartı, hedefleri açık — tasarım kontrolü için
+    @MainActor
+    public static func breakevenCard(store: AppStore, month: MonthKey) -> AnyView {
+        AnyView(
+            ScrollView {
+                BreakevenCard(month: month, hedeflerAcik: true)
+                    .padding(Metrics.pad)
+            }
+            .screenBackground()
+            .environment(store)
+            .environment(Period(month: month))
+        )
+    }
+
     @MainActor
     public static func detail(store: AppStore, period: Period, materialId: Id) -> AnyView {
         AnyView(

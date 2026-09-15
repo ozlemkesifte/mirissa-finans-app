@@ -32,6 +32,9 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var shipping: Figure
     public var serviceFee: Figure
     public var otherDeduction: Figure
+    /// `otherDeduction` içindeki sipariş sayısından bağımsız kısım
+    /// (aylık platform ücreti, aylık sabit kesinti) — başa baş hesabı için ayrılır
+    public var fixedDeduction: Kurus
     public var ads: Figure
     /// Bu kanala işaretlenmiş diğer giderler (influencer, sabit vb.)
     public var otherChannelExpenses: [ExpenseCategory: Kurus]
@@ -43,6 +46,21 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var otherChannelExpensesTotal: Kurus {
         otherChannelExpenses.values.reduce(0, +)
     }
+
+    /// Sipariş adedine bağlı giderler — bir sipariş daha gelirse artan kısım
+    public var variableCost: Kurus {
+        commission.amount + shipping.amount + serviceFee.amount
+            + max(otherDeduction.amount - fixedDeduction, 0)
+            + productCost + packagingCost
+    }
+
+    /// Sipariş adedinden bağımsız giderler — ay boyunca sabit
+    public var fixedCost: Kurus {
+        min(fixedDeduction, otherDeduction.amount) + ads.amount + otherChannelExpensesTotal
+    }
+
+    /// KATKI = net satış − değişken giderler. Sabit giderleri bu tutar karşılar.
+    public var contribution: Kurus { netSales - variableCost }
 
     /// Platformun kestiği tutarlar (reklam, ürün maliyeti ve ambalaj hariç)
     public var channelFees: Kurus {
@@ -71,8 +89,8 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
             grossSales: 0, discount: 0, returnsAmount: 0, netSales: 0,
             units: 0, returnedUnits: 0, orders: 0, ordersIsEstimate: true,
             commission: .zero, shipping: .zero, serviceFee: .zero,
-            otherDeduction: .zero, ads: .zero, otherChannelExpenses: [:],
-            productCost: 0, packagingCost: 0
+            otherDeduction: .zero, fixedDeduction: 0, ads: .zero,
+            otherChannelExpenses: [:], productCost: 0, packagingCost: 0
         )
     }
 }
@@ -112,6 +130,14 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
 
     public var urunVeAmbalajMaliyeti: Kurus {
         channels.reduce(0) { $0 + $1.productCost + $1.packagingCost }
+    }
+
+    /// Bütün kanalların katkısı — sabit giderleri karşılayan tutar
+    public var toplamKatki: Kurus { channels.reduce(0) { $0 + $1.contribution } }
+
+    /// Sipariş adedinden bağımsız bütün giderler (kanal sabitleri + ortak giderler)
+    public var toplamSabitGider: Kurus {
+        channels.reduce(0) { $0 + $1.fixedCost } + ortakGider
     }
 
     public var hasData: Bool { gercekCiro != 0 || toplamGider != 0 || nakitCikisi != 0 }
@@ -180,6 +206,7 @@ public extension Array where Element == ChannelMonthResult {
             r.shipping.amount += c.shipping.amount; manualShipping = manualShipping || c.shipping.isManual
             r.serviceFee.amount += c.serviceFee.amount; manualService = manualService || c.serviceFee.isManual
             r.otherDeduction.amount += c.otherDeduction.amount; manualOther = manualOther || c.otherDeduction.isManual
+            r.fixedDeduction += c.fixedDeduction
             r.ads.amount += c.ads.amount; manualAds = manualAds || c.ads.isManual
             r.productCost += c.productCost
             r.packagingCost += c.packagingCost

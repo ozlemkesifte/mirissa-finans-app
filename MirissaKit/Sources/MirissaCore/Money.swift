@@ -58,6 +58,7 @@ public enum Money {
     /// %28,6
     public static func formatPercent(_ pct: Double, digits: Int = 1) -> String {
         guard pct.isFinite else { return "%0" }
-        return "%" + decimal(pct, digits: digits)
+        // Türkçede yüzde işareti sayıdan önce gelir; eksi işareti en başta durur.
+        return pct < 0 ? "-%" + decimal(-pct, digits: digits) : "%" + decimal(pct, digits: digits)
     }
 }

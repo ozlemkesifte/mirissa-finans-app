@@ -15,6 +15,9 @@ struct HomeView: View {
                 VStack(spacing: Metrics.gap) {
                     PeriodPicker(period: period)
                     headline
+                    if period.scope == .month {
+                        BreakevenCard(month: period.month)
+                    }
                     TrendChart(
                         points: trendPoints,
                         title: period.scope == .month ? "Son 6 Ay" : "\(period.year) Ayları"
