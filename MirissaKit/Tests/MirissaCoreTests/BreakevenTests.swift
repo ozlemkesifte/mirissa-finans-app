@@ -121,13 +121,17 @@ struct BreakevenTests {
 
     // MARK: Ay sonu — gerçekleşen
 
-    /// Satışlar girildiğinde hedef yerine gerçek sonuç gösterilir
+    /// Satışlar girildiğinde gerçek sonuç gösterilir.
+    /// "Kaç kargo gerekiyor" sorusunun cevabı da kaybolmaz: hedefler ayın
+    /// kendi gerçek karışımından hesaplanır.
     @Test func satisGirilinceSonucaDoner() {
         let p = Engine(kurulum(eylulSatisi: true)).plan(month: "2026-09", today: "2026-09-30")
         #expect(p.mode == .gerceklesen)
         #expect(p.basis == .ayinKendisi)
         #expect(!p.isApproximate)
-        #expect(p.targets.isEmpty)
+        #expect(!p.targets.isEmpty)
+        // Başa baş hedefi gerçekleşen sonuçtaki rakamla aynı olmalı
+        #expect(p.targets.first { $0.isBreakeven }?.orders == p.actual?.breakevenOrders)
 
         let a = p.actual!
         #expect(a.orders == 140)

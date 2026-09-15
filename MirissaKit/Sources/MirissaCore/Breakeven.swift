@@ -25,6 +25,20 @@ public enum TargetBasis: Hashable, Sendable {
         }
     }
 
+    /// Ana sayfada rakamın altına yazılan kısa etiket
+    public var label: String {
+        switch self {
+        case let .gecmisAy(m):
+            return "Yaklaşık · \(Dates.displayMonth(m)) karışımına göre"
+        case .beklenenDagilim:
+            return "Yaklaşık · girdiğin dağılıma göre"
+        case .ayinKendisi:
+            return "Bu ayın gerçek satışlarına göre"
+        case .yok:
+            return ""
+        }
+    }
+
     public var explanation: String {
         switch self {
         case let .gecmisAy(m):
@@ -155,6 +169,8 @@ public struct BreakevenPlan: Hashable, Sendable {
 
     public var actual: ActualResult?
     public var issues: [BreakevenIssue]
+    /// Hedef hesaplanamıyorsa neyin eksik olduğu — "0 kargo" yerine bu gösterilir
+    public var missing: [MissingSetupInfo] = []
 
     public var isApproximate: Bool { basis.isApproximate }
     public var blocking: BreakevenIssue? { issues.first { $0.isBlocking } }
@@ -211,7 +227,10 @@ public extension Engine {
         plan.fixedCosts = plannedFixedCosts(month: month)
         if plan.fixedCosts == 0 { plan.issues.append(.sabitGiderYok) }
 
-        guard let temel = targetBasis(before: month) else {
+        guard let temel = targetBasis(before: month, today: today) else {
+            // Geçmiş satış yoksa hedef yine de hesaplanmalı: neyin eksik
+            // olduğunu söyle, sıfır gösterme.
+            plan.missing = missingForTarget(month: month, today: today)
             plan.issues.append(.referansYok)
             return plan
         }
@@ -282,6 +301,27 @@ public extension Engine {
         if month == thisMonth { plan.issues.append(.ayHenuzBitmedi) }
         if satilanUrunlerinMaliyetiGirilmemis(month: month) { plan.issues.append(.urunMaliyetiYok) }
         plan.actual = actual
+
+        // Satış girilmiş olsa bile "kaç kargo gerekiyor" sorusunun cevabı görünmeli.
+        // Bu ayın kendi gerçek karışımı kullanılır.
+        plan.fixedCosts = r.toplamSabitGider
+        if plan.contributionPerOrder > 0 {
+            plan.basis = .ayinKendisi
+            plan.targets = buildTargets(plan: plan, month: month, days: days)
+        } else if r.orders == 0 {
+            // Ayın satışı yoksa ileriye dönük hedef kurulum verisinden gelir
+            plan.fixedCosts = plannedFixedCosts(month: month)
+            if let temel = targetBasis(before: month, today: today),
+               temel.contributionPerOrder > 0 {
+                plan.basis = temel.basis
+                plan.contributionPerOrder = temel.contributionPerOrder
+                plan.revenuePerOrder = temel.revenuePerOrder
+                plan.unitsPerOrder = temel.unitsPerOrder
+                plan.targets = buildTargets(plan: plan, month: month, days: days)
+            } else {
+                plan.missing = missingForTarget(month: month, today: today)
+            }
+        }
     }
 
     // MARK: - Hedefler
@@ -343,7 +383,8 @@ public extension Engine {
     /// Geçmiş ay, hedef ayda geçerli fiyatlarla yeniden değerlenir:
     /// fiyat zammı hedefi düşürür, indirim yükseltir. Geçmiş ayın kendi
     /// raporu bundan etkilenmez — orada hâlâ o günün fiyatı geçerlidir.
-    func targetBasis(before month: MonthKey) -> TargetBasisResult? {
+    func targetBasis(before month: MonthKey,
+                     today: DateKey = Dates.today()) -> TargetBasisResult? {
         for geri in 1...12 {
             let m = Dates.addMonths(month, -geri)
             let ham = companyMonth(m)
@@ -358,6 +399,17 @@ public extension Engine {
                 unitsPerOrder: r.units / Double(r.orders),
                 urunMaliyetiEksik: satilanUrunlerinMaliyetiGirilmemis(month: m),
                 fiyatGuncellendi: guncel != nil
+            )
+        }
+        // Geçmiş satış yok: kurulum bilgilerinden (fiyat, maliyet, komisyon,
+        // kargo) ve onaylanmış yaklaşık dağılımdan hesapla.
+        if let p = plannedContributionPerOrder(month: month, today: today), p.katki != 0 {
+            return TargetBasisResult(
+                basis: .beklenenDagilim,
+                contributionPerOrder: p.katki,
+                revenuePerOrder: p.ciro,
+                unitsPerOrder: 1,
+                urunMaliyetiEksik: false
             )
         }
         return expectedMixBasis()
@@ -495,6 +547,7 @@ public struct YearlyPlan: Hashable, Sendable {
     public var fixedCosts: Kurus
     public var targets: [YearlyTarget]
     public var issues: [BreakevenIssue]
+    public var missing: [MissingSetupInfo] = []
 
     /// Yılın gerçekleşen tarafı
     public var actualRevenue: Kurus
@@ -539,7 +592,8 @@ public extension Engine {
 
         // Sipariş başına katkı, bugünün ayına göre belirlenen temelden gelir.
         let referansAy = Dates.month(of: today)
-        guard let temel = targetBasis(before: referansAy) else {
+        guard let temel = targetBasis(before: referansAy, today: today) else {
+            plan.missing = missingForTarget(month: referansAy, today: today)
             plan.issues.append(.referansYok)
             return plan
         }

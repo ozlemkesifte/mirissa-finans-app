@@ -15,18 +15,28 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: Metrics.gap) {
                     PeriodPicker(period: period)
-                    // Satış girilmemiş bir ayda büyük kâr/zarar kartı gösterilmez:
-                    // sadece gider girilmiş olması o ay zarar edildiği anlamına gelmez.
-                    if !(period.scope == .month && satisGirilmedi) {
+                    ButunlukKarti()
+
+                    // 1) HEDEF — satış girilmemiş olsa bile çalışır.
+                    //    Ana ekranın ilk sorusu: bu ay kaç kargo çıkarmalıyım?
+                    if period.scope == .month {
+                        HedefKarti(sheet: $sheet, month: period.month)
+                    } else {
+                        YearlyCard(year: period.year, sheet: $sheet)
+                    }
+
+                    // 2) GERÇEKLEŞEN — satış girildiyse rakamlar, girilmediyse tek cümle.
+                    if period.scope == .month {
+                        if satisGirilmedi {
+                            GerceklesenKarti(sheet: $sheet, month: period.month)
+                        } else {
+                            // Satış girildiyse gerçekleşen kartı tüm dökümü gösterir
+                            BreakevenCard(month: period.month)
+                        }
+                    } else {
                         headline
                     }
-                    if period.scope == .month {
-                        BreakevenCard(month: period.month)
-                    } else {
-                        YearlyCard(year: period.year)
-                    }
                     EksikBilgiNotu(uyari: result.yaklasikUyarisi)
-                    ButunlukKarti()
                     islemler
                     YarimIslemKarti(sheet: $sheet)
                     PriceCheckCard(sheet: $sheet)

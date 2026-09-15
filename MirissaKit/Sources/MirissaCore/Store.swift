@@ -416,6 +416,11 @@ public final class AppStore {
         mutate { $0.drafts.removeAll { $0.id == id } }
     }
 
+    /// Yaklaşık satış dağılımı — yalnızca kullanıcı onayladığında kaydedilir.
+    public func setSalesMix(_ mix: SalesMix) {
+        mutate { $0.settings.salesMix = mix }
+    }
+
     public func setPriceCheckInterval(_ i: PriceCheckInterval) {
         mutate { $0.settings.priceCheckInterval = i }
     }

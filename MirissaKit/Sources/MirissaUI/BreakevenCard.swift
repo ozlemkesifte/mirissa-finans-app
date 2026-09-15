@@ -40,7 +40,7 @@ struct BreakevenCard: View {
 
     private func header(_ p: BreakevenPlan) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Aylık sonuç".trUpper)
+            Text("Bu ay gerçekleşen".trUpper)
                 .font(.caption2.weight(.semibold))
                 .tracking(0.6)
                 .foregroundStyle(Palette.inkFaint)

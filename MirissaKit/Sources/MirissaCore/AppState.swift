@@ -17,6 +17,57 @@ public struct ExpectedMix: Codable, Hashable, Sendable {
     }
 }
 
+/// Satışların yaklaşık dağılımı — geçmiş ay verisi yokken hedef hesaplamak için.
+/// Kullanıcı onaylamadan kullanılmaz; eşit dağılım yalnızca öneridir.
+public struct SalesMix: Codable, Hashable, Sendable {
+    /// kanal id → yüzde (toplamı 100 olmalı)
+    public var channelShares: [Id: Double]
+    /// ürün id → yüzde (toplamı 100 olmalı)
+    public var productShares: [Id: Double]
+    /// Kullanıcı bu dağılımı onayladı mı
+    public var confirmed: Bool
+    /// Ne zaman onaylandı
+    public var confirmedAt: DateKey?
+
+    public init(channelShares: [Id: Double] = [:], productShares: [Id: Double] = [:],
+                confirmed: Bool = false, confirmedAt: DateKey? = nil) {
+        self.channelShares = channelShares
+        self.productShares = productShares
+        self.confirmed = confirmed
+        self.confirmedAt = confirmedAt
+    }
+
+    /// Kanal ve ürün yüzdelerinin çarpımından (kanal, ürün, pay) listesi
+    public func agirliklar(state: AppState) -> [(channelId: Id, productId: Id, pay: Double)] {
+        let kanallar = channelShares.filter { $0.value > 0 && state.channel($0.key) != nil }
+        let urunler = productShares.filter { $0.value > 0 && state.product($0.key) != nil }
+        let kanalToplam = kanallar.values.reduce(0, +)
+        let urunToplam = urunler.values.reduce(0, +)
+        guard kanalToplam > 0, urunToplam > 0 else { return [] }
+        var out: [(Id, Id, Double)] = []
+        for (k, kp) in kanallar.sorted(by: { $0.key < $1.key }) {
+            for (u, up) in urunler.sorted(by: { $0.key < $1.key }) {
+                out.append((k, u, (kp / kanalToplam) * (up / urunToplam)))
+            }
+        }
+        return out
+    }
+
+    /// Eşit dağılım önerisi — kullanıcı onaylayana kadar kullanılmaz
+    public static func esitOneri(state: AppState) -> SalesMix {
+        let kanallar = state.activeChannels
+        let urunler = state.activeProducts
+        guard !kanallar.isEmpty, !urunler.isEmpty else { return SalesMix() }
+        let kp = 100.0 / Double(kanallar.count)
+        let up = 100.0 / Double(urunler.count)
+        return SalesMix(
+            channelShares: Dictionary(uniqueKeysWithValues: kanallar.map { ($0.id, kp) }),
+            productShares: Dictionary(uniqueKeysWithValues: urunler.map { ($0.id, up) }),
+            confirmed: false
+        )
+    }
+}
+
 public struct AppSettings: Hashable, Sendable {
     /// "Yaklaşık kaç siparişlik kaldı" hesabında kullanılacak geçmiş ay sayısı
     public var consumptionWindowMonths: Int
@@ -28,8 +79,10 @@ public struct AppSettings: Hashable, Sendable {
     /// "Bu ayın satışları şu tarihe kadar girildi" — ara durum işareti.
     /// Boşsa girilen satışlar ayın tamamı sayılır.
     public var progressAsOf: [MonthKey: DateKey]
-    /// Hiç geçmiş ay yokken hedef hesaplamak için kullanılan varsayım
+    /// Hiç geçmiş ay yokken hedef hesaplamak için kullanılan varsayım (eski)
     public var expectedMix: ExpectedMix?
+    /// Satışların yaklaşık kanal + ürün dağılımı
+    public var salesMix: SalesMix?
     /// Yeni kayıtlarda önerilen KDV oranı
     public var defaultVatRate: VatRate
     /// Yeni kayıtlarda "tutar KDV dahil" varsayılanı
@@ -68,6 +121,7 @@ public struct AppSettings: Hashable, Sendable {
         profitGoals: [MonthKey: Kurus] = [:],
         progressAsOf: [MonthKey: DateKey] = [:],
         expectedMix: ExpectedMix? = nil,
+        salesMix: SalesMix? = nil,
         defaultVatRate: VatRate = .yirmi,
         defaultVatIncluded: Bool = true,
         vatEnabled: Bool = true,
@@ -81,6 +135,7 @@ public struct AppSettings: Hashable, Sendable {
         self.profitGoals = profitGoals
         self.progressAsOf = progressAsOf
         self.expectedMix = expectedMix
+        self.salesMix = salesMix
         self.defaultVatRate = defaultVatRate
         self.defaultVatIncluded = defaultVatIncluded
         self.vatEnabled = vatEnabled
@@ -95,7 +150,7 @@ public struct AppSettings: Hashable, Sendable {
 extension AppSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
-        case progressAsOf, expectedMix
+        case progressAsOf, expectedMix, salesMix
         case defaultVatRate, defaultVatIncluded, vatEnabled, setupCompleted
         case priceCheckInterval, lastPriceCheck, yearlyProfitGoals
     }
@@ -113,6 +168,7 @@ extension AppSettings: Codable {
         profitGoals = try c.decodeIfPresent([MonthKey: Kurus].self, forKey: .profitGoals) ?? [:]
         progressAsOf = try c.decodeIfPresent([MonthKey: DateKey].self, forKey: .progressAsOf) ?? [:]
         expectedMix = try c.decodeIfPresent(ExpectedMix.self, forKey: .expectedMix)
+        salesMix = try c.decodeIfPresent(SalesMix.self, forKey: .salesMix)
         defaultVatRate = try c.decodeIfPresent(VatRate.self, forKey: .defaultVatRate) ?? .yirmi
         defaultVatIncluded = try c.decodeIfPresent(Bool.self, forKey: .defaultVatIncluded) ?? true
         vatEnabled = try c.decodeIfPresent(Bool.self, forKey: .vatEnabled) ?? true

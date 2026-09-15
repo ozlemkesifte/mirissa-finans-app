@@ -89,6 +89,16 @@ public enum PreviewGallery {
         ]
     }
 
+    /// Ana sayfanın dört senaryosu — görsel doğrulama için
+    @MainActor
+    public static func homeScenario(store: AppStore, month: MonthKey) -> AnyView {
+        AnyView(
+            HomeView(tab: .constant(0))
+                .environment(store)
+                .environment(Period(month: month))
+        )
+    }
+
     /// Kurulumun belirli bir adımı — görsel doğrulama için
     @MainActor
     public static func setupStep(store: AppStore, _ adim: SetupPreviewStep) -> AnyView {

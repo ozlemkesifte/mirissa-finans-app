@@ -221,6 +221,52 @@ func run() {
         ok += 1; print("✓ Koyu mod (Giderler) → \(koyuEkran.lastPathComponent)")
     }
 
+    // --- Ana sayfanın dört senaryosu ---
+    func golden() -> AppState {
+        // Önizleme için altın senaryonun sadeleştirilmiş hali
+        var g = demoState()
+        g.settings.companyName = "Mirissa Lab"
+        return g
+    }
+
+    // 1) Hiç satış yok, tüm maliyetler ve fiyatlar tanımlı
+    var s1 = golden()
+    s1.sales = []
+    s1.channelMonths = []
+    for i in s1.products.indices where !s1.products[i].isBundle {
+        s1.products[i].setPrice(Money.fromTL(1_200), channelId: ChannelIds.trendyol,
+                                from: "2026-01-01")
+        s1.products[i].setPrice(Money.fromTL(1_100), channelId: ChannelIds.shopify,
+                                from: "2026-01-01")
+    }
+    s1.channels = s1.channels.filter { $0.id != ChannelIds.other }
+    s1.settings.salesMix = SalesMix(
+        channelShares: [ChannelIds.trendyol: 60, ChannelIds.shopify: 40],
+        productShares: [SeedData.P.sampuan: 60, SeedData.P.serum: 40],
+        confirmed: true, confirmedAt: "2026-09-01")
+    let u1 = outDir.appendingPathComponent("s1-satis-yok.png")
+    if render(PreviewGallery.homeScenario(store: AppStore.inMemory(s1), month: "2026-09"),
+              to: u1, size: size) { ok += 1; print("✓ Senaryo 1 → \(u1.lastPathComponent)") }
+
+    // 2) Geçmiş satış yok, yaklaşık dağılım henüz onaylanmamış
+    var s2 = s1
+    s2.settings.salesMix = nil
+    let u2 = outDir.appendingPathComponent("s2-dagilim-sorulmamis.png")
+    if render(PreviewGallery.homeScenario(store: AppStore.inMemory(s2), month: "2026-09"),
+              to: u2, size: size) { ok += 1; print("✓ Senaryo 2 → \(u2.lastPathComponent)") }
+
+    // 3) Gerçek satış girilmiş ay
+    let u3 = outDir.appendingPathComponent("s3-satis-girilmis.png")
+    if render(PreviewGallery.homeScenario(store: AppStore.inMemory(golden()), month: "2026-09"),
+              to: u3, size: size) { ok += 1; print("✓ Senaryo 3 → \(u3.lastPathComponent)") }
+
+    // 4) Başa baş için gerekli bilgi eksik (fiyatlar girilmemiş)
+    var s4 = s1
+    for i in s4.products.indices { s4.products[i].priceHistory = nil }
+    let u4 = outDir.appendingPathComponent("s4-eksik-bilgi.png")
+    if render(PreviewGallery.homeScenario(store: AppStore.inMemory(s4), month: "2026-09"),
+              to: u4, size: size) { ok += 1; print("✓ Senaryo 4 → \(u4.lastPathComponent)") }
+
     // Rehberli akışlar — ilk soru ekranları
     for f in PreviewGallery.guidedFlows(store: AppStore.inMemory(demoState())) {
         let u = outDir.appendingPathComponent("\(f.name).png")
