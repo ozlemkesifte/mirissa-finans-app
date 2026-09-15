@@ -44,6 +44,7 @@ public struct SetupWizard: View {
     @State private var kurulacakKanallar: [Id] = []
     @State private var ekKanallar: [ChannelPreset] = []
     @State private var yeniKanalAdi = ""
+    @State private var malzemeArama = ""
     @State private var yuklendi = false
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
@@ -545,9 +546,15 @@ public struct SetupWizard: View {
             geri: geriGit,
             ileri: { ileri(.malzemeDetay(0)) }
         ) {
+            AramaAlani(placeholder: "Malzeme ara", metin: $malzemeArama,
+                       toplam: malzemeler.count)
             Card(padding: 0) {
                 VStack(spacing: 0) {
-                    ForEach(Array($malzemeler.enumerated()), id: \.element.id) { i, $m in
+                    ForEach(Array($malzemeler.enumerated()).filter { çift in
+                        let ad = malzemeler.indices.contains(çift.offset)
+                            ? malzemeler[çift.offset].ad : ""
+                        return araSuz([ad], malzemeArama) { $0 }.isEmpty == false
+                    }, id: \.element.id) { i, $m in
                         Button { m.secili.toggle() } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: m.secili ? "checkmark.circle.fill" : "circle")

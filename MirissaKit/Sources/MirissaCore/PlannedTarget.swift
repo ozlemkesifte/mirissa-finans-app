@@ -36,6 +36,7 @@ public struct MissingSetupInfo: Identifiable, Hashable, Sendable {
         case kanalKesintisi
         case sabitGider
         case dagilim
+        case kanalUrunleri
     }
 
     public var kind: Kind
@@ -98,8 +99,8 @@ public extension Engine {
     func unitContributions(on date: DateKey = Dates.today()) -> [UnitContribution] {
         var out: [UnitContribution] = []
         for ch in state.activeChannels {
-            for p in state.activeProducts {
-                if let u = unitContribution(productId: p.id, channelId: ch.id, on: date) {
+            for urunId in ch.soldProducts(in: state, on: date) {
+                if let u = unitContribution(productId: urunId, channelId: ch.id, on: date) {
                     out.append(u)
                 }
             }
@@ -124,9 +125,22 @@ public extension Engine {
             }
             return (agirliklar, true)
         }
-        // 2) Kullanıcının onayladığı yaklaşık dağılım
+        // 2) Kullanıcının onayladığı yaklaşık dağılım.
+        //    Bir SKU o kanalda satılmıyorsa dağılıma girmez.
         if let mix = state.settings.salesMix, mix.confirmed {
-            return (mix.agirliklar(state: state), false)
+            let gun = Dates.monthEnd(month)
+            let hepsi = mix.agirliklar(state: state)
+            // Yalnızca kullanıcının açıkça "bu kanalda şunları satıyorum"
+            // dediği liste süzer. Fiyatı henüz girilmemiş bir SKU dağılımdan
+            // düşürülmez — düşseydi sistem onun fiyatını hiç sormazdı.
+            let filtreli = hepsi.filter { a in
+                guard let ch = state.channel(a.channelId) else { return false }
+                guard let acikListe = ch.soldProductIds, !acikListe.isEmpty else { return true }
+                return acikListe.contains(a.productId)
+            }
+            let toplam = filtreli.reduce(0.0) { $0 + $1.pay }
+            guard toplam > 0 else { return ([], false) }
+            return (filtreli.map { ($0.channelId, $0.productId, $0.pay / toplam) }, false)
         }
         // 3) Tek kanal + tek ürün varsa soracak bir şey yok
         let kanallar = state.activeChannels
@@ -140,21 +154,38 @@ public extension Engine {
     // MARK: - Hedef için eksikler
 
     /// Hedefi hesaplamak için eksik olan bilgiler. Boşsa hesap yapılabilir.
+    ///
+    /// Yalnızca gerçekten gereken bilgiler sorulur: kullanıcının o kanalda
+    /// sattığını söylediği SKU'lar. Her ürünü her kanalda satılıyor varsaymaz,
+    /// yoksa kullanıcı hiç satmadığı ürün-kanal ikilileri için fiyat sorulur.
     func missingForTarget(month: MonthKey, today: DateKey = Dates.today()) -> [MissingSetupInfo] {
         var out: [MissingSetupInfo] = []
         let gun = max(today, Dates.monthStart(month))
-        let (agirliklar, gecmisten) = targetMix(month: month)
+        let (agirliklar, _) = targetMix(month: month)
 
         if agirliklar.isEmpty {
             out.append(MissingSetupInfo(.dagilim, "Satışlarının yaklaşık dağılımı sorulmadı"))
         }
 
-        // Dağılımda yer alan her ikili için fiyat ve maliyet gerekli
-        let ikililer: [(Id, Id)] = agirliklar.isEmpty
-            ? state.activeChannels.flatMap { c in state.activeProducts.map { (c.id, $0.id) } }
-            : agirliklar.map { ($0.channelId, $0.productId) }
+        // Hangi ikililer için bilgi gerekiyor:
+        //  - dağılım varsa yalnızca onun kapsadığı ikililer
+        //  - yoksa her kanalın kendi sattığını söylediği SKU'lar
+        var ikililer: [(Id, Id)] = agirliklar.map { ($0.channelId, $0.productId) }
+        if ikililer.isEmpty {
+            for ch in state.activeChannels {
+                let satilan = ch.soldProducts(in: state, on: gun)
+                if satilan.isEmpty {
+                    out.append(MissingSetupInfo(
+                        .kanalUrunleri, "\(ch.name) kanalında hangi ürünleri sattığın belli değil",
+                        channelId: ch.id))
+                } else {
+                    ikililer += satilan.map { (ch.id, $0) }
+                }
+            }
+        }
 
         var gorulen = Set<String>()
+        var maliyetiSorulan = Set<Id>()
         for (kanalId, urunId) in ikililer {
             let anahtar = "\(kanalId)#\(urunId)"
             guard gorulen.insert(anahtar).inserted else { continue }
@@ -164,9 +195,12 @@ public extension Engine {
                 out.append(MissingSetupInfo(.fiyat, "\(p.name) — \(ch.name) fiyatı girilmemiş",
                                             productId: urunId, channelId: kanalId))
             }
-            if cost(of: urunId, asOf: gun).total == 0 {
-                out.append(MissingSetupInfo(.urunMaliyeti, "\(p.name) maliyeti girilmemiş",
-                                            productId: urunId))
+            // Setin maliyeti elle girilmez; eksikse bileşenini göster.
+            for eksik in maliyetiEksikUrunler(urunId, asOf: gun)
+            where maliyetiSorulan.insert(eksik).inserted {
+                let ad = productsById[eksik]?.name ?? "Ürün"
+                out.append(MissingSetupInfo(.urunMaliyeti, "\(ad) maliyeti girilmemiş",
+                                            productId: eksik))
             }
         }
 
@@ -181,8 +215,22 @@ public extension Engine {
         if plannedFixedCosts(month: month) == 0 {
             out.append(MissingSetupInfo(.sabitGider, "Aylık sabit giderin girilmemiş"))
         }
-        _ = gecmisten
         return out
+    }
+
+    /// Maliyeti girilmemiş ürünler. Set verilirse bileşenlerine iner:
+    /// setin maliyeti bileşenlerden hesaplandığı için "set maliyeti" sorulmaz.
+    private func maliyetiEksikUrunler(_ productId: Id, asOf: DateKey) -> [Id] {
+        guard let p = productsById[productId] else { return [] }
+        if p.isBundle {
+            let bilesenler = p.components.flatMap { maliyetiEksikUrunler($0.productId, asOf: asOf) }
+            // Setin kendi ek maliyeti yoksa sorun değil; bileşenlerine bak
+            return bilesenler
+        }
+        // Ambalaj maliyeti reçeteden gelir; burada aranan ÜRÜNÜN kendi
+        // üretim maliyetidir. Toplama bakmak yanıltıcı olurdu: reçetesi olan
+        // bir ürünün maliyeti hiç girilmemiş olsa bile toplam sıfırdan büyük çıkar.
+        return cost(of: productId, asOf: asOf).intrinsic == 0 ? [productId] : []
     }
 
     // MARK: - Kurulumdan hesaplanan katkı

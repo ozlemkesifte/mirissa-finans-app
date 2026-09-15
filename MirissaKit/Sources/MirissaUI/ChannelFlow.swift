@@ -644,7 +644,9 @@ struct ChannelSetupFlow: View {
     // MARK: Kayıt
 
     private func kaydet() {
-        store.applyChannelRates(channelId, taslakRates)
+        // Bu kanalda hangi SKU'ların satıldığı da kaydedilir
+        store.applyChannelRates(channelId, taslakRates,
+                                soldProductIds: satilanUrunler.map(\.id))
 
         // Bu kanaldaki fiyatlar geçmişi bozmadan yazılır.
         let bugunku = bugun
@@ -707,11 +709,16 @@ struct ChannelSetupFlow: View {
         guard !yuklendi, let c = kanal else { return }
         yuklendi = true
         let r = c.rates(on: bugun)
-        seciliUrunler = Set(store.state.activeProducts
-            .filter { $0.price(for: channelId, on: bugun) != nil }
-            .map(\.id))
-        if seciliUrunler.isEmpty {
-            seciliUrunler = Set(store.state.activeProducts.map(\.id))
+        // Daha önce kaydedilmiş liste varsa onunla aç
+        if let kayitli = c.soldProductIds, !kayitli.isEmpty {
+            seciliUrunler = Set(kayitli)
+        } else {
+            seciliUrunler = Set(store.state.activeProducts
+                .filter { $0.price(for: channelId, on: bugun) != nil }
+                .map(\.id))
+            if seciliUrunler.isEmpty {
+                seciliUrunler = Set(store.state.activeProducts.map(\.id))
+            }
         }
         for p in store.state.activeProducts {
             if let f = p.price(for: channelId, on: bugun) { fiyatlar[p.id] = f }

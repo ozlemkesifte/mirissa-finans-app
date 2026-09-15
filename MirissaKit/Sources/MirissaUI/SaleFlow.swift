@@ -37,6 +37,8 @@ struct SaleFlow: View {
     @State private var siparisSayisi: Double = 0
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
+    @State private var urunArama = ""
+    @State private var hepsiniGoster = false
 
     private struct Kayit: Codable {
         var adim: Adim
@@ -185,10 +187,12 @@ struct SaleFlow: View {
             geri: geriGit, vazgec: { dismiss() },
             ileri: satirlariHazirla
         ) {
+            AramaAlani(placeholder: "Ürün ara", metin: $urunArama,
+                       toplam: store.state.activeProducts.count)
             VStack(spacing: Metrics.gap) {
-                ForEach(store.state.activeProducts) { p in
+                ForEach(araSuz(gosterilecekUrunler, urunArama, { $0.name })) { p in
                     SecenekButonu(baslik: p.name,
-                                  aciklama: p.isBundle ? "Set" : nil,
+                                  aciklama: p.isBundle ? "Set / paket" : nil,
                                   ikon: "cube.box",
                                   secili: secilenler.contains(p.id)) {
                         if let i = secilenler.firstIndex(of: p.id) {
@@ -199,7 +203,29 @@ struct SaleFlow: View {
                     }
                 }
             }
+            // Kanalda satıldığı kayıtlı olmayan ürünler varsayılan olarak gizlenir
+            if !hepsiniGoster, gizliUrunSayisi > 0 {
+                SecenekButonu(baslik: "Listede yok mu? Hepsini göster",
+                              aciklama: "\(gizliUrunSayisi) ürün daha var",
+                              ikon: "ellipsis.circle", renk: Palette.inkSoft) {
+                    withAnimation { hepsiniGoster = true }
+                }
+            }
         }
+    }
+
+    /// Bu kanalda satıldığı kayıtlı olan SKU'lar. Kayıt yoksa hepsi görünür.
+    private var gosterilecekUrunler: [Product] {
+        let hepsi = store.state.activeProducts
+        guard !hepsiniGoster,
+              let ch = store.state.channel(kanalId),
+              let liste = ch.soldProductIds, !liste.isEmpty else { return hepsi }
+        let sinirli = hepsi.filter { liste.contains($0.id) || secilenler.contains($0.id) }
+        return sinirli.isEmpty ? hepsi : sinirli
+    }
+
+    private var gizliUrunSayisi: Int {
+        store.state.activeProducts.count - gosterilecekUrunler.count
     }
 
     // 4 — Her ürün için adet + tutar

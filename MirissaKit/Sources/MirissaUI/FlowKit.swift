@@ -567,3 +567,44 @@ struct KdvOnizlemeKarti: View {
         }
     }
 }
+
+/// Uzun listelerde arama alanı. Kendi metnini tutar: yazarken üst ekran
+/// yeniden kurulmaz. Liste kısaysa hiç görünmez.
+struct AramaAlani: View {
+    var placeholder: String = "Ara"
+    @Binding var metin: String
+    /// Bu sayının altındaki listelerde arama gösterilmez
+    var esik: Int = 8
+    var toplam: Int
+
+    var body: some View {
+        if toplam >= esik {
+            Card {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(Palette.inkFaint)
+                    TextField(placeholder, text: $metin)
+                        .foregroundStyle(Palette.ink)
+                        .autocorrectionDisabled()
+                    if !metin.isEmpty {
+                        Button {
+                            metin = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(Palette.inkFaint)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Aramayı temizle")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Arama metnine göre süzme — Türkçe büyük/küçük harf kurallarıyla
+func araSuz<T>(_ liste: [T], _ metin: String, _ ad: (T) -> String) -> [T] {
+    let anahtar = metin.trimmingCharacters(in: .whitespacesAndNewlines).trLower
+    guard !anahtar.isEmpty else { return liste }
+    return liste.filter { ad($0).trLower.contains(anahtar) }
+}

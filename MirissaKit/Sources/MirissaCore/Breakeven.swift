@@ -509,7 +509,8 @@ public extension Engine {
     private func satilanUrunlerinMaliyetiGirilmemis(month: MonthKey) -> Bool {
         let satilan = Set(state.sales.filter { $0.month == month }.map(\.productId))
         guard !satilan.isEmpty else { return false }
-        return satilan.contains { cost(of: $0, asOf: Dates.monthEnd(month)).total == 0 }
+        // Ambalaj maliyeti değil, ürünün kendi üretim maliyeti aranıyor
+        return satilan.contains { cost(of: $0, asOf: Dates.monthEnd(month)).intrinsic == 0 }
     }
 }
 

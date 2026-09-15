@@ -377,13 +377,17 @@ public final class AppStore {
     }
 
     /// Kanala yeni tarihli kesinti seti ekler; eski oranlar silinmez.
-    public func applyChannelRates(_ channelId: Id, _ rates: ChannelRates) {
+    /// `soldProductIds` verilirse o kanalda satılan SKU listesi de kaydedilir —
+    /// sistem böylece satılmayan ürün-kanal ikilileri için fiyat sormaz.
+    public func applyChannelRates(_ channelId: Id, _ rates: ChannelRates,
+                                  soldProductIds: [Id]? = nil) {
         mutate { s in
             guard let i = s.channels.firstIndex(where: { $0.id == channelId }) else { return }
             var c = s.channels[i]
             c.setRates(rates)
             c.setupCompleted = true
             c.archived = false
+            if let soldProductIds { c.soldProductIds = soldProductIds }
             s.channels[i] = c
         }
     }

@@ -108,6 +108,13 @@ public enum Persistence {
             s.products[i].recipe.removeAll { !materialIds.contains($0.materialId) }
             s.products[i].components.removeAll { !productIds.contains($0.productId) || $0.productId == selfId }
         }
+        // Silinmiş ürünler kanalın "burada satılıyor" listesinde kalmasın
+        for i in s.channels.indices {
+            if let liste = s.channels[i].soldProductIds {
+                let temiz = liste.filter { productIds.contains($0) }
+                s.channels[i].soldProductIds = temiz.isEmpty ? nil : temiz
+            }
+        }
         s.sales.removeAll { !productIds.contains($0.productId) || !channelIds.contains($0.channelId) }
         s.channelMonths.removeAll { !channelIds.contains($0.channelId) }
         s.purchases.removeAll { !exists($0.item, materialIds, productIds) }

@@ -300,6 +300,7 @@ struct CountFlow: View {
     @State private var tarih: DateKey = Dates.today()
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
+    @State private var arama = ""
 
     private struct Kayit: Codable {
         var adim: Adim
@@ -364,8 +365,13 @@ struct CountFlow: View {
 
     private var kalemAdimi: some View {
         SoruAdimi(soru: "Neyi saydın?", adim: 1, toplam: 3, vazgec: { dismiss() }) {
+            AramaAlani(placeholder: "Ürün veya malzeme ara", metin: $arama,
+                       toplam: store.state.activeProducts.count + store.state.activeMaterials.count)
             VStack(spacing: Metrics.gap) {
-                ForEach(store.state.activeProducts.filter(\.tracksOwnStock)) { p in
+                let urunler = araSuz(store.state.activeProducts.filter(\.tracksOwnStock),
+                                     arama) { $0.name }
+                let malzemeler = araSuz(store.state.activeMaterials, arama) { $0.name }
+                ForEach(urunler) { p in
                     SecenekButonu(baslik: p.name,
                                   aciklama: "Sistemde: " + Units.formatQty(
                                     store.engine.qty(.product(p.id)), baseUnit: .adet),
@@ -373,12 +379,20 @@ struct CountFlow: View {
                         sec(.product(p.id))
                     }
                 }
-                ForEach(store.state.activeMaterials) { m in
+                ForEach(malzemeler) { m in
                     SecenekButonu(baslik: m.name,
                                   aciklama: "Sistemde: " + Units.formatQty(
                                     store.engine.qty(.material(m.id)), baseUnit: m.baseUnit),
                                   ikon: "shippingbox") {
                         sec(.material(m.id))
+                    }
+                }
+                if urunler.isEmpty && malzemeler.isEmpty {
+                    Card(background: Palette.inset) {
+                        Text("\"\(arama)\" için sonuç yok.")
+                            .font(.footnote)
+                            .foregroundStyle(Palette.inkSoft)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }

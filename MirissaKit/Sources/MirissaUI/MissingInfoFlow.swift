@@ -54,6 +54,7 @@ struct EksikleriTamamlaFlow: View {
         case .kanalKesintisi: return "storefront"
         case .sabitGider: return "repeat"
         case .dagilim: return "chart.pie"
+        case .kanalUrunleri: return "list.bullet"
         }
     }
 
@@ -64,6 +65,7 @@ struct EksikleriTamamlaFlow: View {
         case .kanalKesintisi: return "Kanal kurulumunu tamamla"
         case .sabitGider: return "Her ay ödediğin sabit giderleri gir"
         case .dagilim: return "Satışlarının yaklaşık dağılımını sor"
+        case .kanalUrunleri: return "Bu kanalda hangi ürünleri satıyorsun?"
         }
     }
 
@@ -80,6 +82,8 @@ struct EksikleriTamamlaFlow: View {
             acilan = .expenseFlow
         case .dagilim:
             acilan = .satisDagilimi
+        case .kanalUrunleri:
+            acilan = m.channelId.map { AppSheet.channelWizard($0) }
         }
     }
 

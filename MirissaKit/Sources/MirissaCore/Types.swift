@@ -406,6 +406,9 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public var rateHistory: [ChannelRates]?
     /// Kurulum soru-cevabı tamamlandı mı
     public var setupCompleted: Bool?
+    /// Bu kanalda satılan SKU'lar. Boşsa bilinmiyor demektir —
+    /// sistem her ürünü her kanalda satılıyor varsaymaz.
+    public var soldProductIds: [Id]?
 
     public init(
         id: Id,
@@ -422,7 +425,8 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         feeVatRate: VatRate? = nil,
         feesIncludeVat: Bool? = nil,
         rateHistory: [ChannelRates]? = nil,
-        setupCompleted: Bool? = nil
+        setupCompleted: Bool? = nil,
+        soldProductIds: [Id]? = nil
     ) {
         self.id = id
         self.name = name
@@ -439,11 +443,24 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         self.feesIncludeVat = feesIncludeVat
         self.rateHistory = rateHistory
         self.setupCompleted = setupCompleted
+        self.soldProductIds = soldProductIds
     }
 
     public var resolvedFeeVatRate: VatRate { feeVatRate ?? .yok }
     public var resolvedFeesIncludeVat: Bool { feesIncludeVat ?? true }
     public var resolvedSetupCompleted: Bool { setupCompleted ?? true }
+
+    /// Bu kanalda hangi SKU'lar satılıyor. Liste girilmemişse fiyatı
+    /// tanımlı olanlar kullanılır; o da yoksa boş döner ve sistem
+    /// "bilmiyorum" der — her ürünü her kanala yaymaz.
+    public func soldProducts(in state: AppState, on date: DateKey) -> [Id] {
+        if let liste = soldProductIds, !liste.isEmpty {
+            return liste.filter { id in state.activeProducts.contains { $0.id == id } }
+        }
+        return state.activeProducts
+            .filter { $0.price(for: id, on: date) != nil }
+            .map(\.id)
+    }
 
     /// Verilen tarihte geçerli kesinti ayarları.
     /// Tarihçe yoksa kanalın düz alanları kullanılır — eski veriler aynen çalışır.

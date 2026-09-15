@@ -268,7 +268,9 @@ func run() {
               to: u4, size: size) { ok += 1; print("✓ Senaryo 4 → \(u4.lastPathComponent)") }
 
     // Rehberli akışlar — ilk soru ekranları
-    for f in PreviewGallery.guidedFlows(store: AppStore.inMemory(demoState())) {
+    var akisDurumu = demoState()
+    akisDurumu.channels.removeAll { $0.id == ChannelIds.other }
+    for f in PreviewGallery.guidedFlows(store: AppStore.inMemory(akisDurumu)) {
         let u = outDir.appendingPathComponent("\(f.name).png")
         if render(f.view, to: u, size: size) { ok += 1; print("✓ \(f.title) → \(u.lastPathComponent)") }
         else { print("✗ \(f.title)") }

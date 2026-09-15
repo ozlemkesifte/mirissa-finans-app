@@ -154,6 +154,11 @@ public enum Integrity {
                         "\(c.name) kesinti ayarında geçersiz tarih: \(r.from)", recordId: c.id))
                 }
             }
+            for urunId in c.soldProductIds ?? []
+            where !s.products.contains(where: { $0.id == urunId }) {
+                out.append(IntegrityIssue(.bozuk, "Kanallar",
+                    "\(c.name) satış listesinde olmayan bir ürün var", recordId: c.id))
+            }
             let duz = c.commissionPct + c.paymentPct + c.otherDeductionPct
             if duz > 100 {
                 out.append(IntegrityIssue(.bozuk, "Kanallar",
