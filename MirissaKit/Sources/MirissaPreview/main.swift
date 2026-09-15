@@ -99,6 +99,23 @@ func demoState() -> AppState {
         StockAdjustment(id: "a1", date: "2026-09-18", item: .material(SeedData.M.koli),
                         qty: 10, unit: .adet, reason: .hasarli)
     ]
+    // KDV: satışlar, giderler ve alımlar %20 KDV dahil girilmiş
+    for i in s.sales.indices { s.sales[i].vatRate = .yirmi; s.sales[i].vatIncluded = true }
+    for i in s.expenses.indices { s.expenses[i].vatRate = .yirmi; s.expenses[i].vatIncluded = true }
+    for i in s.purchases.indices { s.purchases[i].vatRate = .yirmi; s.purchases[i].vatIncluded = true }
+    for i in s.channels.indices { s.channels[i].feeVatRate = .yirmi; s.channels[i].feesIncludeVat = true }
+    s.balances = [
+        BalanceItem(id: "b1", kind: .alacak, source: .kanal,
+                    name: "Trendyol Eylül hakedişi", amount: Money.fromTL(46_500),
+                    dueDate: "2026-10-05"),
+        BalanceItem(id: "b2", kind: .alacak, source: .kanal,
+                    name: "Shopify bekleyen ödeme", amount: Money.fromTL(12_400)),
+        BalanceItem(id: "b3", kind: .odenecek, source: .tedarikci,
+                    name: "Kutu tedarikçisi faturası", amount: Money.fromTL(18_000),
+                    dueDate: "2026-10-15"),
+        BalanceItem(id: "b4", kind: .odenecek, source: .diger,
+                    name: "Influencer ödemesi", amount: Money.fromTL(8000)),
+    ]
     return s
 }
 
@@ -177,6 +194,10 @@ func run() {
         let u = outDir.appendingPathComponent("1b-ana-sayfa-hedef.png")
         if render(ekran.view, to: u, size: size) { ok += 1; print("✓ Ana Sayfa (aylık hedef) → \(u.lastPathComponent)") }
     }
+    let kdvKart = outDir.appendingPathComponent("8-kdv-alacak.png")
+    if render(PreviewGallery.vatAndBalance(store: hedefStore, month: "2026-09"),
+              to: kdvKart, size: size) { ok += 1; print("✓ KDV + Alacak → \(kdvKart.lastPathComponent)") }
+
     let hedefDetay = outDir.appendingPathComponent("1c-hedef-detay.png")
     if render(PreviewGallery.breakevenCard(store: hedefStore, month: "2026-10"),
               to: hedefDetay, size: size) { ok += 1; print("✓ Hedef detayı → \(hedefDetay.lastPathComponent)") }

@@ -48,6 +48,23 @@ public enum PreviewGallery {
         )
     }
 
+    /// KDV ve alacak/ödenecek kartları, açık halde
+    @MainActor
+    public static func vatAndBalance(store: AppStore, month: MonthKey) -> AnyView {
+        AnyView(
+            ScrollView {
+                VStack(spacing: Metrics.gap) {
+                    VatCard(month: month, acik: true)
+                    BalanceCard(month: month, sheet: .constant(nil), acik: true)
+                }
+                .padding(Metrics.pad)
+            }
+            .screenBackground()
+            .environment(store)
+            .environment(Period(month: month))
+        )
+    }
+
     @MainActor
     public static func detail(store: AppStore, period: Period, materialId: Id) -> AnyView {
         AnyView(

@@ -16,6 +16,8 @@ Mirissa Lab için finans, kârlılık ve otomatik stok takibi yapan native iOS u
 - Hangi malzemenin bitmek üzere olduğunu ve yaklaşık kaç siparişlik kaldığını gösterir
 - Aylık / yıllık / kanal raporları üretir, CSV olarak dışa aktarır
 - Gider ve stok alımlarına fatura fotoğrafı veya PDF eklenebilir
+- Basit KDV takibi: hesaplanan / indirilecek / ödenecek veya devreden
+- Basit alacak / ödenecek listesi
 
 Veriler **sadece telefonda** saklanır, internet gerektirmez.
 
@@ -189,6 +191,36 @@ asla değiştirmez**, sadece başa baş noktasını değiştirir.
 ayın kârından düşmek anlamına gelmez — kâra yalnızca o ay gerçekten satılan
 ürünlerin maliyeti girer. Ödenen tutar ayrıca "bu ay ödenen (nakit çıkışı)"
 olarak gösterilir. Başa baş hesabı kâr tarafını kullanır.
+
+---
+
+## KDV
+
+Her satış, gider ve stok alımında **KDV oranı** (%20 / %10 / %1 / yok) ve
+**tutar KDV dahil mi** seçilir. Sistem tutarı net ve KDV olarak ayırır.
+
+**Kârlılık her zaman KDV hariç hesaplanır.** KDV ne gelir ne giderdir:
+
+- Ciro, gider, kâr, kanalda kalan, başa baş — hepsi KDV hariç
+- Stok maliyeti de KDV hariç: indirilecek KDV geri alındığı için ürün
+  maliyetine yazılırsa kârlılık yanlış çıkar
+- Nakit çıkışı KDV dahil kalır — cepten gerçekten o kadar para çıkar
+
+Pazaryeri kesintileri satış fiyatının KDV dahil hali üzerinden alınır; kesinti
+tutarının KDV'si indirilecek KDV'ye, net kısmı gidere gider.
+
+Aylık raporda açılır **KDV durumu** kartı: hesaplanan KDV, indirilecek KDV,
+önceki aydan devreden ve tahmini ödenecek KDV. İndirilecek fazlaysa
+**sonraki aya devreden KDV** olarak taşınır ve ertesi ay mahsup edilir.
+Bu bir tahmindir, beyanname değildir.
+
+KDV takibi Ayarlar'dan kapatılabilir; kapalıyken hiçbir ekranda görünmez.
+
+## Alacak / Ödenecek
+
+Aylık raporda ikinci bir açılır kart: kanal ödemeleri, tedarikçi faturaları
+ve diğer ödenecekler elle girilir; tahmini KDV otomatik eklenir. Cari hesap
+değil, "kim bana borçlu, ben kime borçluyum" listesi.
 
 ---
 

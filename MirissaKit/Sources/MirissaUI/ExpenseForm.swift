@@ -16,6 +16,8 @@ struct ExpenseForm: View {
     @State private var recurrence: Recurrence = .tek
     @State private var behavior: CostBehavior = .sabit
     @State private var behaviorTouched = false
+    @State private var vatRate: VatRate = .yirmi
+    @State private var vatIncluded = true
     @State private var picked: PickedFile?
     @State private var invoiceRemoved = false
     @State private var loaded = false
@@ -118,6 +120,8 @@ struct ExpenseForm: View {
                 }
             }
 
+            VatSection(rate: $vatRate, included: $vatIncluded, amount: amount)
+
             InvoiceSection(current: mevcutFatura, picked: $picked, removed: $invoiceRemoved)
 
             if editingId != nil {
@@ -158,13 +162,19 @@ struct ExpenseForm: View {
     private func load() {
         guard !loaded else { return }
         loaded = true
-        guard let e = editing else { return }
+        guard let e = editing else {
+            vatRate = store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : .yok
+            vatIncluded = store.state.settings.defaultVatIncluded
+            return
+        }
         date = e.date
         recurrence = e.recurrence
         category = e.category
         scopeId = e.scope.channelId ?? "ortak"
         behavior = e.resolvedBehavior
         behaviorTouched = e.behavior != nil
+        vatRate = e.resolvedVatRate
+        vatIncluded = e.resolvedVatIncluded
         let ov = e.overrides[contextMonth]
         name = ov?.name ?? e.name
         amount = ov?.amount ?? e.amount
@@ -191,6 +201,8 @@ struct ExpenseForm: View {
                 updated.scope = scope
                 updated.recurrence = recurrence
                 updated.behavior = behavior
+                updated.vatRate = store.state.settings.vatEnabled ? vatRate : nil
+                updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : nil
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
                 store.updateExpense(updated)
             }
@@ -199,7 +211,9 @@ struct ExpenseForm: View {
                 id: Ids.make(.expense),
                 date: date, name: name, amount: amount,
                 category: category, scope: scope, recurrence: recurrence,
-                behavior: behavior
+                behavior: behavior,
+                vatRate: store.state.settings.vatEnabled ? vatRate : nil,
+                vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
             )
             store.addExpense(yeni)
             hedefId = yeni.id

@@ -198,6 +198,10 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public var platformFeeMonthly: Kurus
     public var otherDeductionPct: Double
     public var otherDeductionMonthly: Kurus
+    /// Komisyon, kargo gibi kesintilerin KDV oranı
+    public var feeVatRate: VatRate?
+    /// Kesinti tutarları KDV'yi içeriyor mu
+    public var feesIncludeVat: Bool?
 
     public init(
         id: Id,
@@ -210,7 +214,9 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         serviceFeePerOrder: Kurus = 0,
         platformFeeMonthly: Kurus = 0,
         otherDeductionPct: Double = 0,
-        otherDeductionMonthly: Kurus = 0
+        otherDeductionMonthly: Kurus = 0,
+        feeVatRate: VatRate? = nil,
+        feesIncludeVat: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -223,7 +229,12 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         self.platformFeeMonthly = platformFeeMonthly
         self.otherDeductionPct = otherDeductionPct
         self.otherDeductionMonthly = otherDeductionMonthly
+        self.feeVatRate = feeVatRate
+        self.feesIncludeVat = feesIncludeVat
     }
+
+    public var resolvedFeeVatRate: VatRate { feeVatRate ?? .yok }
+    public var resolvedFeesIncludeVat: Bool { feesIncludeVat ?? true }
 }
 
 public enum ChannelKind: String, Codable, Sendable {
@@ -298,6 +309,10 @@ public struct SalesEntry: Codable, Identifiable, Hashable, Sendable {
     /// İade edilen ürün stoğa geri girsin mi (ambalaj asla geri gelmez)
     public var returnsRestock: Bool
     public var note: String?
+    /// KDV oranı. `nil` eski kayıtlar için "KDV yok" sayılır.
+    public var vatRate: VatRate?
+    /// Girilen tutarlar KDV'yi içeriyor mu
+    public var vatIncluded: Bool?
 
     public init(
         id: Id = Ids.make(.sale),
@@ -310,7 +325,9 @@ public struct SalesEntry: Codable, Identifiable, Hashable, Sendable {
         returnsAmount: Kurus = 0,
         returnsQty: Double = 0,
         returnsRestock: Bool = true,
-        note: String? = nil
+        note: String? = nil,
+        vatRate: VatRate? = nil,
+        vatIncluded: Bool? = nil
     ) {
         self.id = id
         self.month = month
@@ -323,10 +340,21 @@ public struct SalesEntry: Codable, Identifiable, Hashable, Sendable {
         self.returnsQty = returnsQty
         self.returnsRestock = returnsRestock
         self.note = note
+        self.vatRate = vatRate
+        self.vatIncluded = vatIncluded
     }
 
+    public var resolvedVatRate: VatRate { vatRate ?? .yok }
+    public var resolvedVatIncluded: Bool { vatIncluded ?? true }
+
+    /// Girildiği haliyle net satış (KDV dahil olabilir)
     public var netSales: Kurus { grossSales - discount - returnsAmount }
     public var netQty: Double { max(qty - returnsQty, 0) }
+
+    /// KDV hariç net satış ve hesaplanan KDV
+    public var vatSplit: VatSplit {
+        Vat.split(netSales, rate: resolvedVatRate, included: resolvedVatIncluded)
+    }
 }
 
 // MARK: - Gider
@@ -467,6 +495,9 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var behavior: CostBehavior?
     /// Fatura/fiş dosyasının adı (uygulamanın ekler klasöründe durur)
     public var attachment: String?
+    /// KDV oranı. `nil` eski kayıtlar için "KDV yok" sayılır.
+    public var vatRate: VatRate?
+    public var vatIncluded: Bool?
 
     public init(
         id: Id = Ids.make(.expense),
@@ -480,7 +511,9 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         overrides: [MonthKey: ExpenseOverride] = [:],
         note: String? = nil,
         behavior: CostBehavior? = nil,
-        attachment: String? = nil
+        attachment: String? = nil,
+        vatRate: VatRate? = nil,
+        vatIncluded: Bool? = nil
     ) {
         self.id = id
         self.date = date
@@ -494,9 +527,13 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         self.note = note
         self.behavior = behavior
         self.attachment = attachment
+        self.vatRate = vatRate
+        self.vatIncluded = vatIncluded
     }
 
     public var resolvedBehavior: CostBehavior { behavior ?? category.defaultBehavior }
+    public var resolvedVatRate: VatRate { vatRate ?? .yok }
+    public var resolvedVatIncluded: Bool { vatIncluded ?? true }
 
     public var startMonth: MonthKey { Dates.month(of: date) }
     public var isRecurring: Bool { recurrence != .tek }
@@ -523,6 +560,9 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
     public var note: String?
     /// Fatura/fiş dosyasının adı
     public var attachment: String?
+    /// KDV oranı. `nil` eski kayıtlar için "KDV yok" sayılır.
+    public var vatRate: VatRate?
+    public var vatIncluded: Bool?
 
     public init(
         id: Id = Ids.make(.purchase),
@@ -537,7 +577,9 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
         expenseScope: ExpenseScope = .ortak,
         excludeFromExpenses: Bool = false,
         note: String? = nil,
-        attachment: String? = nil
+        attachment: String? = nil,
+        vatRate: VatRate? = nil,
+        vatIncluded: Bool? = nil
     ) {
         self.id = id
         self.date = date
@@ -552,9 +594,21 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
         self.excludeFromExpenses = excludeFromExpenses
         self.note = note
         self.attachment = attachment
+        self.vatRate = vatRate
+        self.vatIncluded = vatIncluded
     }
 
+    public var resolvedVatRate: VatRate { vatRate ?? .yok }
+    public var resolvedVatIncluded: Bool { vatIncluded ?? true }
+
+    /// Ödenen toplam (KDV dahil olabilir)
     public var landedTotal: Kurus { totalPaid + shippingCost }
+
+    /// Stok maliyeti KDV HARİÇ tutulur: indirilecek KDV geri alınır,
+    /// ürün maliyetine yazılırsa kârlılık yanlış çıkar.
+    public var landedSplit: VatSplit {
+        Vat.split(landedTotal, rate: resolvedVatRate, included: resolvedVatIncluded)
+    }
 
     public var resolvedCategory: ExpenseCategory {
         expenseCategory ?? (item.kind == .material ? .ambalaj : .urunUretimi)
@@ -643,6 +697,67 @@ public struct StockCount: Codable, Identifiable, Hashable, Sendable {
         self.countedQty = countedQty
         self.unit = unit
         self.reason = reason
+        self.note = note
+    }
+}
+
+
+// MARK: - Alacak / Ödenecek
+
+public enum BalanceKind: String, Codable, Sendable, CaseIterable, Identifiable {
+    /// Bize gelecek para
+    case alacak
+    /// Bizim ödeyeceğimiz
+    case odenecek
+
+    public var id: String { rawValue }
+    public var displayName: String { self == .alacak ? "Alacak" : "Ödenecek" }
+}
+
+public enum BalanceSource: String, Codable, Sendable, CaseIterable, Identifiable {
+    case kanal
+    case tedarikci
+    case diger
+
+    public var id: String { rawValue }
+    public var displayName: String {
+        switch self {
+        case .kanal: return "Satış kanalı ödemesi"
+        case .tedarikci: return "Tedarikçi faturası"
+        case .diger: return "Diğer"
+        }
+    }
+}
+
+/// Basit bir alacak/ödenecek satırı. Muhasebe cari hesabı değil —
+/// "kim bana borçlu, ben kime borçluyum" listesi.
+public struct BalanceItem: Codable, Identifiable, Hashable, Sendable {
+    public var id: Id
+    public var kind: BalanceKind
+    public var source: BalanceSource
+    public var name: String
+    public var amount: Kurus
+    public var dueDate: DateKey?
+    public var settled: Bool
+    public var note: String?
+
+    public init(
+        id: Id = Ids.make(.balance),
+        kind: BalanceKind,
+        source: BalanceSource = .diger,
+        name: String,
+        amount: Kurus,
+        dueDate: DateKey? = nil,
+        settled: Bool = false,
+        note: String? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.source = source
+        self.name = name
+        self.amount = amount
+        self.dueDate = dueDate
+        self.settled = settled
         self.note = note
     }
 }

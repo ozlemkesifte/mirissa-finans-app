@@ -88,8 +88,14 @@ struct PersistenceTests {
         s.addPurchase("pur_1", "2026-09-01", .material(SeedData.M.koli), qty: 500, paid: tl(5000))
         s.addSale("sal_1", "2026-09", channel: ChannelIds.trendyol,
                   product: SeedData.P.sampuan, qty: 80, gross: tl(55_920))
+        var kdvsiz = s
+        kdvsiz.settings.vatEnabled = false
+        #expect(CSVExport.all(Engine(kdvsiz), from: "2026-01", to: "2026-12").count == 6)
+
+        // KDV takibi açıkken kdv-ozeti.csv de çıkar
         let files = CSVExport.all(Engine(s), from: "2026-01", to: "2026-12")
-        #expect(files.count == 6)
+        #expect(files.count == 7)
+        #expect(files.contains { $0.name == "kdv-ozeti.csv" })
         #expect(files.allSatisfy { !$0.contents.isEmpty })
         let satis = files.first { $0.name == "satislar.csv" }!
         #expect(satis.contents.contains("Şampuan"))

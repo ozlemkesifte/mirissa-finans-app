@@ -45,6 +45,27 @@ struct ChannelForm: View {
                     Text("Aylık ücretler kaç ürün satıldığından bağımsız olarak ayda bir kez düşülür.")
                 }
 
+                if store.state.settings.vatEnabled {
+                    Section {
+                        Picker("Kesinti KDV oranı", selection: Binding(
+                            get: { draft?.resolvedFeeVatRate ?? .yirmi },
+                            set: { draft?.feeVatRate = $0 }
+                        )) {
+                            ForEach(VatRate.allCases) { r in Text(r.displayName).tag(r) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Toggle("Kesintiler KDV dahil", isOn: Binding(
+                            get: { draft?.resolvedFeesIncludeVat ?? true },
+                            set: { draft?.feesIncludeVat = $0 }
+                        ))
+                    } header: {
+                        Text("Kesintilerin KDV'si")
+                    } footer: {
+                        Text("Komisyon ve kargo faturasındaki KDV indirilecek KDV'ye eklenir; kâr hesabına yalnızca KDV hariç kısmı girer.")
+                    }
+                }
+
                 if store.state.channels.count > 1 {
                     Section {
                         Button(role: .destructive) { showDelete = true } label: {

@@ -30,7 +30,7 @@ struct ReportsView: View {
                     .labelsHidden()
 
                     switch tab {
-                    case .aylik: MonthlyReport()
+                    case .aylik: MonthlyReport(sheet: $sheet)
                     case .yillik: YearlyReport()
                     case .kanallar: ChannelReport(onEdit: { id in sheet = .channelMonth(id, period.month) })
                     }
@@ -52,6 +52,7 @@ struct ReportsView: View {
 struct MonthlyReport: View {
     @Environment(AppStore.self) private var store
     @Environment(Period.self) private var period
+    @Binding var sheet: AppSheet?
 
     private var result: CompanyMonthResult { store.engine.companyMonth(period.month) }
 
@@ -66,6 +67,8 @@ struct MonthlyReport: View {
                 marj: result.karMarjiPct
             )
             ExpenseBreakdownCard(breakdown: result.expenseBreakdown, total: result.toplamGider)
+            VatCard(month: period.month)
+            BalanceCard(month: period.month, sheet: $sheet)
             if result.units > 0 {
                 Card {
                     VStack(spacing: 9) {

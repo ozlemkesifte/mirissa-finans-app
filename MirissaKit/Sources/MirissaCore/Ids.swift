@@ -12,6 +12,7 @@ public enum IdPrefix: String {
     case channelMonth = "chm"
     case costLine = "cst"
     case recipeLine = "rcp"
+    case balance = "bal"
 }
 
 public enum Ids {

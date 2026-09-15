@@ -17,6 +17,8 @@ public enum AppSheet: Identifiable, Hashable {
     case editProduct(Id)
     case channelSetup(Id)
     case channelMonth(Id, MonthKey)
+    case addBalance
+    case editBalance(Id)
     case settings
 
     public var id: String {
@@ -36,6 +38,8 @@ public enum AppSheet: Identifiable, Hashable {
         case let .editProduct(i): return "editProduct-\(i)"
         case let .channelSetup(i): return "channelSetup-\(i)"
         case let .channelMonth(i, m): return "channelMonth-\(i)-\(m)"
+        case .addBalance: return "addBalance"
+        case let .editBalance(i): return "editBalance-\(i)"
         case .settings: return "settings"
         }
     }
@@ -60,6 +64,8 @@ public extension View {
             case let .editProduct(i): ProductForm(editing: i)
             case let .channelSetup(i): ChannelForm(channelId: i)
             case let .channelMonth(i, m): ChannelMonthForm(channelId: i, month: m)
+            case .addBalance: BalanceForm()
+            case let .editBalance(i): BalanceForm(editing: i)
             case .settings: SettingsView()
             }
         }

@@ -18,6 +18,8 @@ struct PurchaseForm: View {
     @State private var shipping: Kurus = 0
     @State private var vendor = ""
     @State private var excludeFromExpenses = false
+    @State private var vatRate: VatRate = .yirmi
+    @State private var vatIncluded = true
     @State private var picked: PickedFile?
     @State private var invoiceRemoved = false
     @State private var loaded = false
@@ -43,8 +45,15 @@ struct PurchaseForm: View {
                                  packSizes: store.state.itemPackSizes(item)) ?? 0
     }
 
+    /// Stok maliyeti KDV hariç tutulur
+    private var netTotal: Kurus {
+        store.state.settings.vatEnabled
+            ? Vat.net(paid + shipping, rate: vatRate, included: vatIncluded)
+            : paid + shipping
+    }
+
     private var unitCost: Kurus {
-        baseQty > 0 ? Money.roundHalfAwayFromZero(Double(paid + shipping) / baseQty) : 0
+        baseQty > 0 ? Money.roundHalfAwayFromZero(Double(netTotal) / baseQty) : 0
     }
 
     /// Alım sonrası oluşacak yeni ağırlıklı ortalama maliyet
@@ -52,7 +61,7 @@ struct PurchaseForm: View {
         guard let item, baseQty > 0 else { return 0 }
         let b = store.engine.balance(item)
         let existingQty = max(b.qty, 0)
-        let total = Double(b.value) + Double(paid + shipping)
+        let total = Double(b.value) + Double(netTotal)
         return Money.roundHalfAwayFromZero(total / (existingQty + baseQty))
     }
 
@@ -96,6 +105,8 @@ struct PurchaseForm: View {
                      : "Bu alım giderlere otomatik yazılır. Stoğa girdiği için kârdan doğrudan düşülmez; ürün satıldıkça maliyet olarak yansır.")
             }
 
+            VatSection(rate: $vatRate, included: $vatIncluded, amount: paid + shipping, label: "Ödenen tutar")
+
             InvoiceSection(
                 current: editingId.flatMap { id in store.state.purchases.first { $0.id == id }?.attachment },
                 picked: $picked, removed: $invoiceRemoved
@@ -122,9 +133,13 @@ struct PurchaseForm: View {
             item = p.item; date = p.date; qty = p.qty; unit = p.unit
             paid = p.totalPaid; shipping = p.shippingCost; vendor = p.vendor ?? ""
             excludeFromExpenses = p.excludeFromExpenses
+            vatRate = p.resolvedVatRate
+            vatIncluded = p.resolvedVatIncluded
         } else {
             item = preselected
             unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
+            vatRate = store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : .yok
+            vatIncluded = store.state.settings.defaultVatIncluded
         }
     }
 
@@ -137,7 +152,9 @@ struct PurchaseForm: View {
             totalPaid: paid, shippingCost: shipping,
             vendor: vendor.isEmpty ? nil : vendor,
             excludeFromExpenses: excludeFromExpenses,
-            attachment: invoiceRemoved ? nil : mevcutEk
+            attachment: invoiceRemoved ? nil : mevcutEk,
+            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
         )
         editingId == nil ? store.addPurchase(p) : store.updatePurchase(p)
         if let f = picked {

@@ -74,6 +74,31 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("KDV takibi", isOn: Binding(
+                        get: { store.state.settings.vatEnabled },
+                        set: { store.setVatEnabled($0) }
+                    ))
+                    if store.state.settings.vatEnabled {
+                        Picker("Varsayılan oran", selection: Binding(
+                            get: { store.state.settings.defaultVatRate },
+                            set: { store.setVatDefaults(rate: $0, included: store.state.settings.defaultVatIncluded) }
+                        )) {
+                            ForEach(VatRate.allCases) { r in Text(r.displayName).tag(r) }
+                        }
+                        Toggle("Tutarlar KDV dahil girilir", isOn: Binding(
+                            get: { store.state.settings.defaultVatIncluded },
+                            set: { store.setVatDefaults(rate: store.state.settings.defaultVatRate, included: $0) }
+                        ))
+                    }
+                } header: {
+                    Text("KDV")
+                } footer: {
+                    Text(store.state.settings.vatEnabled
+                         ? "Satış, gider ve alım formlarında KDV satırı çıkar. Kâr hesabı her zaman KDV hariç tutarlarla yapılır."
+                         : "Kapalıyken hiçbir ekranda KDV görünmez.")
+                }
+
+                Section {
                     Button {
                         csvURLs = ExportService.write(
                             CSVExport.all(store.engine, from: bounds.first, to: bounds.last)

@@ -16,6 +16,8 @@ struct SaleForm: View {
     @State private var returnsQty: Double = 0
     @State private var restock = true
     @State private var showReturns = false
+    @State private var vatRate: VatRate = .yirmi
+    @State private var vatIncluded = true
     @State private var loaded = false
 
     init(month: MonthKey) {
@@ -29,6 +31,11 @@ struct SaleForm: View {
     }
 
     private var net: Kurus { gross - discount - returnsAmount }
+    /// Kâr hesabına giren tutar
+    private var netExVat: Kurus {
+        store.state.settings.vatEnabled
+            ? Vat.net(net, rate: vatRate, included: vatIncluded) : net
+    }
     private var canSave: Bool { !productId.isEmpty && (qty > 0 || gross > 0) }
 
     var body: some View {
@@ -69,8 +76,10 @@ struct SaleForm: View {
                 }
             }
 
+            VatSection(rate: $vatRate, included: $vatIncluded, amount: net, label: "Satış tutarı")
+
             Section {
-                LabeledRow("Gerçek satış", net.tl, tone: Palette.accent, strong: true)
+                LabeledRow("Gerçek satış", netExVat.tl, tone: Palette.accent, strong: true)
                 if !productId.isEmpty, qty > 0 {
                     let b = store.engine.cost(of: productId, asOf: Dates.monthEnd(month))
                     LabeledRow("Ürün maliyeti", Money.roundHalfAwayFromZero(Double(b.intrinsic) * (qty - returnsQty)).tl)
@@ -104,7 +113,11 @@ struct SaleForm: View {
             qty = s.qty; gross = s.grossSales; discount = s.discount
             returnsAmount = s.returnsAmount; returnsQty = s.returnsQty; restock = s.returnsRestock
             showReturns = s.returnsAmount != 0 || s.returnsQty != 0
+            vatRate = s.resolvedVatRate
+            vatIncluded = s.resolvedVatIncluded
         } else {
+            vatRate = store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : .yok
+            vatIncluded = store.state.settings.defaultVatIncluded
             productId = store.state.activeProducts.first?.id ?? ""
             channelId = store.state.activeChannels.first?.id ?? ChannelIds.trendyol
         }
@@ -117,7 +130,9 @@ struct SaleForm: View {
             qty: qty, grossSales: gross, discount: discount,
             returnsAmount: showReturns ? returnsAmount : 0,
             returnsQty: showReturns ? returnsQty : 0,
-            returnsRestock: restock
+            returnsRestock: restock,
+            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
         )
         if editingId != nil {
             store.updateSale(entry)

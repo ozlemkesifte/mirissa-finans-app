@@ -30,6 +30,12 @@ public struct AppSettings: Hashable, Sendable {
     public var progressAsOf: [MonthKey: DateKey]
     /// Hiç geçmiş ay yokken hedef hesaplamak için kullanılan varsayım
     public var expectedMix: ExpectedMix?
+    /// Yeni kayıtlarda önerilen KDV oranı
+    public var defaultVatRate: VatRate
+    /// Yeni kayıtlarda "tutar KDV dahil" varsayılanı
+    public var defaultVatIncluded: Bool
+    /// KDV takibi açık mı — kapalıyken hiçbir ekranda KDV görünmez
+    public var vatEnabled: Bool
 
     public func profitGoal(for month: MonthKey) -> Kurus? {
         profitGoals[month].flatMap { $0 > 0 ? $0 : nil }
@@ -41,7 +47,10 @@ public struct AppSettings: Hashable, Sendable {
         companyName: String = "Mirissa Lab",
         profitGoals: [MonthKey: Kurus] = [:],
         progressAsOf: [MonthKey: DateKey] = [:],
-        expectedMix: ExpectedMix? = nil
+        expectedMix: ExpectedMix? = nil,
+        defaultVatRate: VatRate = .yirmi,
+        defaultVatIncluded: Bool = true,
+        vatEnabled: Bool = true
     ) {
         self.consumptionWindowMonths = consumptionWindowMonths
         self.capitalizePurchases = capitalizePurchases
@@ -49,6 +58,9 @@ public struct AppSettings: Hashable, Sendable {
         self.profitGoals = profitGoals
         self.progressAsOf = progressAsOf
         self.expectedMix = expectedMix
+        self.defaultVatRate = defaultVatRate
+        self.defaultVatIncluded = defaultVatIncluded
+        self.vatEnabled = vatEnabled
     }
 }
 
@@ -58,6 +70,7 @@ extension AppSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
         case progressAsOf, expectedMix
+        case defaultVatRate, defaultVatIncluded, vatEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -71,6 +84,9 @@ extension AppSettings: Codable {
         profitGoals = try c.decodeIfPresent([MonthKey: Kurus].self, forKey: .profitGoals) ?? [:]
         progressAsOf = try c.decodeIfPresent([MonthKey: DateKey].self, forKey: .progressAsOf) ?? [:]
         expectedMix = try c.decodeIfPresent(ExpectedMix.self, forKey: .expectedMix)
+        defaultVatRate = try c.decodeIfPresent(VatRate.self, forKey: .defaultVatRate) ?? .yirmi
+        defaultVatIncluded = try c.decodeIfPresent(Bool.self, forKey: .defaultVatIncluded) ?? true
+        vatEnabled = try c.decodeIfPresent(Bool.self, forKey: .vatEnabled) ?? true
     }
 }
 
@@ -84,6 +100,7 @@ public struct AppState: Codable, Hashable, Sendable {
     public var purchases: [StockPurchase]
     public var adjustments: [StockAdjustment]
     public var counts: [StockCount]
+    public var balances: [BalanceItem]
     public var settings: AppSettings
 
     public init(
@@ -96,6 +113,7 @@ public struct AppState: Codable, Hashable, Sendable {
         purchases: [StockPurchase] = [],
         adjustments: [StockAdjustment] = [],
         counts: [StockCount] = [],
+        balances: [BalanceItem] = [],
         settings: AppSettings = AppSettings()
     ) {
         self.materials = materials
@@ -107,6 +125,7 @@ public struct AppState: Codable, Hashable, Sendable {
         self.purchases = purchases
         self.adjustments = adjustments
         self.counts = counts
+        self.balances = balances
         self.settings = settings
     }
 

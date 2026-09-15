@@ -18,10 +18,17 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var channelName: String
     public var month: MonthKey
 
+    /// Aşağıdaki satış tutarlarının hepsi KDV HARİÇ'tir.
     public var grossSales: Kurus
     public var discount: Kurus
     public var returnsAmount: Kurus
     public var netSales: Kurus
+    /// Net satışın KDV dahil hali — kanal kesintileri bunun üzerinden hesaplanır
+    public var netSalesIncVat: Kurus
+    /// Satışlardan doğan (hesaplanan) KDV
+    public var outputVat: Kurus
+    /// Kanal kesintilerinden indirilebilecek KDV
+    public var feeVat: Kurus
     public var units: Double
     public var returnedUnits: Double
     public var orders: Int
@@ -98,6 +105,7 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
         .init(
             channelId: channelId, channelName: channelName, month: month,
             grossSales: 0, discount: 0, returnsAmount: 0, netSales: 0,
+            netSalesIncVat: 0, outputVat: 0, feeVat: 0,
             units: 0, returnedUnits: 0, orders: 0, ordersIsEstimate: true,
             commission: .zero, shipping: .zero, serviceFee: .zero,
             otherDeduction: .zero, fixedDeduction: 0, ads: .zero, adsFixed: 0,
@@ -118,6 +126,8 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
     public var stokAlimi: Kurus
     /// Kasadan bu ay çıkan toplam
     public var nakitCikisi: Kurus
+    /// Gider ve alımlardan indirilebilecek KDV (kanal kesintileri hariç)
+    public var giderKdv: Kurus
     public var expenseBreakdown: [ExpenseCategory: Kurus]
 
     public var id: String { month }
@@ -160,9 +170,16 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
 
     public var hasData: Bool { gercekCiro != 0 || toplamGider != 0 || nakitCikisi != 0 }
 
+    /// Satışlardan doğan KDV
+    public var hesaplananKdv: Kurus { channels.reduce(0) { $0 + $1.outputVat } }
+    /// Gider, alım ve kanal kesintilerinden indirilebilecek KDV
+    public var indirilecekKdv: Kurus {
+        giderKdv + channels.reduce(0) { $0 + $1.feeVat }
+    }
+
     public static func empty(_ m: MonthKey) -> CompanyMonthResult {
         .init(month: m, channels: [], ortakGider: 0, ortakGiderDegisken: 0,
-              stokAlimi: 0, nakitCikisi: 0, expenseBreakdown: [:])
+              stokAlimi: 0, nakitCikisi: 0, giderKdv: 0, expenseBreakdown: [:])
     }
 }
 
@@ -217,6 +234,9 @@ public extension Array where Element == ChannelMonthResult {
             r.discount += c.discount
             r.returnsAmount += c.returnsAmount
             r.netSales += c.netSales
+            r.netSalesIncVat += c.netSalesIncVat
+            r.outputVat += c.outputVat
+            r.feeVat += c.feeVat
             r.units += c.units
             r.returnedUnits += c.returnedUnits
             r.orders += c.orders

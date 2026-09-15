@@ -50,12 +50,16 @@ public enum CSVExport {
                     money(s.returnsAmount),
                     num(s.returnsQty, digits: 0),
                     money(s.netSales),
+                    money(s.vatSplit.net),
+                    money(s.vatSplit.vat),
+                    s.resolvedVatRate.displayName,
                     s.note ?? "",
                 ]
             }
         return file("satislar.csv",
                     ["Ay", "Kanal", "Ürün", "Adet", "Brüt satış", "İndirim",
-                     "İade tutarı", "İade adedi", "Net satış", "Not"], rows)
+                     "İade tutarı", "İade adedi", "Net satış",
+                     "KDV hariç", "KDV", "KDV oranı", "Not"], rows)
     }
 
     public static func expenses(_ e: Engine, from: MonthKey, to: MonthKey) -> ExportFile {
@@ -67,13 +71,15 @@ public enum CSVExport {
                 i.category.displayName,
                 i.scope.channelId.map { e.state.channel($0)?.name ?? $0 } ?? "Ortak",
                 money(i.amount),
+                money(i.net),
+                money(i.inputVat),
                 i.capitalized ? "Stoğa girdi" : "Gider",
                 i.sourceKind == .duzenli ? "Düzenli" : (i.sourceKind == .stokAlimi ? "Stok alımı" : "Tek seferlik"),
             ]
         }
         return file("giderler.csv",
                     ["Tarih", "Ay", "Gider adı", "Kategori", "Bölüm",
-                     "Tutar", "Kâra etkisi", "Tür"], rows)
+                     "Tutar", "KDV hariç", "İndirilecek KDV", "Kâra etkisi", "Tür"], rows)
     }
 
     public static func products(_ e: Engine) -> ExportFile {
@@ -152,8 +158,25 @@ public enum CSVExport {
                     ["Ay", "Gerçek ciro", "Toplam gider", "Gerçek kâr", "Kâr marjı %", "Satılan adet"], rows)
     }
 
+    public static func vatSummary(_ e: Engine, from: MonthKey, to: MonthKey) -> ExportFile {
+        let rows = Dates.monthRange(from: from, to: to).map { m -> [String] in
+            let v = e.vatStatus(m)
+            return [
+                m,
+                money(v.hesaplanan),
+                money(v.indirilecek),
+                money(v.oncekiDevreden),
+                money(v.odenecek),
+                money(v.devreden),
+            ]
+        }
+        return file("kdv-ozeti.csv",
+                    ["Ay", "Hesaplanan KDV", "İndirilecek KDV", "Önceki aydan devreden",
+                     "Tahmini ödenecek", "Sonraki aya devreden"], rows)
+    }
+
     public static func all(_ e: Engine, from: MonthKey, to: MonthKey) -> [ExportFile] {
-        [
+        var out = [
             monthlySummary(e, from: from, to: to),
             sales(e),
             expenses(e, from: from, to: to),
@@ -161,5 +184,7 @@ public enum CSVExport {
             materials(e),
             movements(e),
         ]
+        if e.state.settings.vatEnabled { out.append(vatSummary(e, from: from, to: to)) }
+        return out
     }
 }

@@ -296,6 +296,34 @@ public final class AppStore {
         }
     }
 
+    // MARK: - Alacak / Ödenecek
+
+    public func addBalance(_ b: BalanceItem) { mutate { $0.balances.append(b) } }
+
+    public func updateBalance(_ b: BalanceItem) {
+        mutate { s in
+            if let i = s.balances.firstIndex(where: { $0.id == b.id }) { s.balances[i] = b }
+        }
+    }
+
+    public func deleteBalance(_ id: Id) { mutate { $0.balances.removeAll { $0.id == id } } }
+
+    /// Tahsil edildi / ödendi olarak işaretler
+    public func settleBalance(_ id: Id, settled: Bool = true) {
+        mutate { s in
+            if let i = s.balances.firstIndex(where: { $0.id == id }) { s.balances[i].settled = settled }
+        }
+    }
+
+    public func setVatEnabled(_ on: Bool) { mutate { $0.settings.vatEnabled = on } }
+
+    public func setVatDefaults(rate: VatRate, included: Bool) {
+        mutate { s in
+            s.settings.defaultVatRate = rate
+            s.settings.defaultVatIncluded = included
+        }
+    }
+
     // MARK: - Ayarlar ve yedekleme
 
     public func updateSettings(_ s: AppSettings) { mutate { $0.settings = s } }
@@ -334,6 +362,7 @@ public final class AppStore {
         s.adjustments = []
         s.counts = []
         s.channelMonths = []
+        s.balances = []
         apply(s)
         pruneAttachments()
     }

@@ -20,14 +20,18 @@ public struct ExpenseInstance: Identifiable, Hashable, Sendable {
     public var behavior: CostBehavior
     /// Fatura/fiş dosyası
     public var attachment: String?
+    /// Tutarın KDV hariç kısmı — kâr hesabı bunu kullanır
+    public var net: Kurus
+    /// İndirilebilecek KDV
+    public var inputVat: Kurus
     /// Stoğa giren alım: nakit çıkışıdır ama kâra satıldıkça maliyet olarak yansır.
     public var capitalized: Bool
     /// Doğrudan düzenlenebilir mi (stok alımları kendi ekranından düzenlenir)
     public var editable: Bool
 
-    /// Kâr hesabına bu ay giren tutar
-    public var expenseAmount: Kurus { capitalized ? 0 : amount }
-    /// Kasadan bu ay çıkan tutar
+    /// Kâr hesabına bu ay giren tutar (KDV hariç)
+    public var expenseAmount: Kurus { capitalized ? 0 : net }
+    /// Kasadan bu ay çıkan tutar (KDV dahil, gerçekten ödenen)
     public var cashAmount: Kurus { amount }
 }
 
@@ -68,6 +72,8 @@ public enum Expenses {
                 scope: p.expenseScope,
                 behavior: .satisaBagli,
                 attachment: p.attachment,
+                net: p.landedSplit.net,
+                inputVat: p.landedSplit.vat,
                 capitalized: s.settings.capitalizePurchases,
                 editable: false
             ))
@@ -100,6 +106,8 @@ public enum Expenses {
 
     private static func instance(_ e: Expense, month: MonthKey, date: DateKey) -> ExpenseInstance {
         let ov = e.overrides[month]
+        let tutar = ov?.amount ?? e.amount
+        let bolum = Vat.split(tutar, rate: e.resolvedVatRate, included: e.resolvedVatIncluded)
         return ExpenseInstance(
             id: e.recurrence == .tek ? e.id : "\(e.id)#\(month)",
             templateId: e.id,
@@ -112,6 +120,8 @@ public enum Expenses {
             scope: e.scope,
             behavior: e.resolvedBehavior,
             attachment: ov?.attachment ?? e.attachment,
+            net: bolum.net,
+            inputVat: bolum.vat,
             capitalized: false,
             editable: true
         )

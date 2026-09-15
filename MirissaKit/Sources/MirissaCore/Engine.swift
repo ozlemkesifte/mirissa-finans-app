@@ -30,6 +30,10 @@ public final class Engine {
     private var companyCache: [MonthKey: CompanyMonthResult] = [:]
     private var expenseCache: [MonthKey: [ExpenseInstance]] = [:]
     var consumptionCache: [String: ConsumptionRate] = [:]
+    private var vatCache: [MonthKey: VatStatus] = [:]
+
+    func vatCacheGet(_ m: MonthKey) -> VatStatus? { vatCache[m] }
+    func vatCacheSet(_ m: MonthKey, _ v: VatStatus) { vatCache[m] = v }
 
     public init(_ state: AppState) {
         self.state = state
@@ -127,9 +131,11 @@ public final class Engine {
         var channelDegiskenByCat: [Id: [ExpenseCategory: Kurus]] = [:]
         var stokAlimi: Kurus = 0
         var nakit: Kurus = 0
+        var giderKdv: Kurus = 0
 
         for i in instances {
             nakit += i.cashAmount
+            giderKdv += i.inputVat
             if i.capitalized { stokAlimi += i.amount; continue }
             guard i.expenseAmount != 0 else { continue }
             if let ch = i.scope.channelId {
@@ -188,6 +194,7 @@ public final class Engine {
             ortakGiderDegisken: ortakDegisken,
             stokAlimi: stokAlimi,
             nakitCikisi: nakit,
+            giderKdv: giderKdv,
             expenseBreakdown: breakdown
         )
     }
@@ -204,9 +211,13 @@ public final class Engine {
         let cm = state.channelMonth(month: month, channelId: ch.id)
 
         for e in rows {
-            r.grossSales += e.grossSales
-            r.discount += e.discount
-            r.returnsAmount += e.returnsAmount
+            // Bütün satış tutarları KDV hariç tutulur: kârlılık net değerler üzerinden.
+            let oran = e.resolvedVatRate, dahil = e.resolvedVatIncluded
+            r.grossSales += Vat.net(e.grossSales, rate: oran, included: dahil)
+            r.discount += Vat.net(e.discount, rate: oran, included: dahil)
+            r.returnsAmount += Vat.net(e.returnsAmount, rate: oran, included: dahil)
+            r.netSalesIncVat += e.netSales
+            r.outputVat += e.vatSplit.vat
             r.units += e.qty
             r.returnedUnits += e.returnsQty
             let b = cost(of: e.productId, asOf: asOf)
@@ -224,17 +235,32 @@ public final class Engine {
             r.ordersIsEstimate = true
         }
 
-        let net = Double(max(r.netSales, 0))
-        r.commission = figure(cm?.commissionActual, auto: net * ch.commissionPct / 100 + net * ch.paymentPct / 100)
-        r.shipping = figure(cm?.shippingActual, auto: Double(ch.shippingPerOrder) * Double(r.orders))
-        r.serviceFee = figure(cm?.serviceFeeActual, auto: Double(ch.serviceFeePerOrder) * Double(r.orders))
-        r.otherDeduction = figure(
+        // Pazaryeri kesintileri satış fiyatının KDV DAHİL hali üzerinden alınır.
+        // Kesinti tutarının kendi KDV'si indirilecek KDV'ye gider, net kısmı gidere.
+        let taban = Double(max(r.netSalesIncVat, 0))
+        var kesintiKdv: Kurus = 0
+        func kesinti(_ manual: Kurus?, auto: Double) -> Figure {
+            let ham = manual ?? Money.roundHalfAwayFromZero(auto)
+            let bolum = Vat.split(ham, rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat)
+            kesintiKdv += bolum.vat
+            return Figure(bolum.net, manual: manual != nil)
+        }
+
+        r.commission = kesinti(cm?.commissionActual, auto: taban * (ch.commissionPct + ch.paymentPct) / 100)
+        r.shipping = kesinti(cm?.shippingActual, auto: Double(ch.shippingPerOrder) * Double(r.orders))
+        r.serviceFee = kesinti(cm?.serviceFeeActual, auto: Double(ch.serviceFeePerOrder) * Double(r.orders))
+        r.otherDeduction = kesinti(
             cm?.otherDeductionActual,
-            auto: net * ch.otherDeductionPct / 100 + Double(ch.platformFeeMonthly) + Double(ch.otherDeductionMonthly)
+            auto: taban * ch.otherDeductionPct / 100 + Double(ch.platformFeeMonthly) + Double(ch.otherDeductionMonthly)
         )
+        r.feeVat = kesintiKdv
         // Aylık sabit kesintiler sipariş adedinden bağımsızdır; başa baş hesabı
         // için değişken kısımdan ayrı tutulur.
-        r.fixedDeduction = min(ch.platformFeeMonthly + ch.otherDeductionMonthly, r.otherDeduction.amount)
+        r.fixedDeduction = min(
+            Vat.net(ch.platformFeeMonthly + ch.otherDeductionMonthly,
+                    rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat),
+            r.otherDeduction.amount
+        )
         let reklamToplam = channelExpenses[.reklam] ?? 0
         let reklamDegisken = channelVariableExpenses[.reklam] ?? 0
         r.ads = figure(cm?.adsActual, auto: Double(reklamToplam))
