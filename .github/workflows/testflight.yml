@@ -67,10 +67,12 @@ jobs:
           cp ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 ~/.appstoreconnect/private_keys/
           chmod 600 ~/private_keys/AuthKey_${ASC_KEY_ID}.p8
 
-      - name: Arşivle
+      # Arşiv imzasız alınır. İmzalama dağıtım adımında yapılır: arşiv
+      # sırasında Xcode "iOS App Development" profili aramaya kalkıyor,
+      # ekipte kayıtlı cihaz olmadığı için de bulamıyor. App Store dağıtımı
+      # için development profiline zaten ihtiyaç yok.
+      - name: Arşivle (imzasız)
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild archive \
@@ -79,12 +81,10 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/MirissaFinans.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${ASC_KEY_ID}.p8 \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: IPA çıkar
