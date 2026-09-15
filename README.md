@@ -125,45 +125,62 @@ GERÇEK KÂR = Σ(kanalda kalan) − ortak şirket giderleri
 
 ---
 
-## Başa baş & hedef
+## Aylık hedef & ay sonu sonucu
 
-Ana sayfadaki **"Bu ay neredeyiz?"** kartı şunu hesaplar: bu ayki sabit
-giderleri karşılamak için kaç sipariş gerekiyor, kaç sipariş kaldı ve kalan
-günlerde günde kaç sipariş çıkması lazım. Her açılışta yeniden hesaplanır,
-geride kalındıkça günlük hedef kendini yukarı çeker.
+Uygulama senden günlük satış girişi beklemez. Satışları ay sonunda tek
+seferde girersin.
 
-**Sipariş başına kazanç** o ayın gerçek kanal ve ürün karışımından çıkar —
-bütün siparişler aynı kârlılıktaymış gibi varsayılmaz. Trendyol'un komisyonu
-ile Shopify'ın ödeme komisyonu ayrı hesaplanır, ürün maliyetleri satılan
-karışıma göre ağırlıklanır.
+**Ay başında** ana sayfadaki kart aylık hedefi gösterir — o ay satış olup
+olmamasından bağımsız:
+
+```
+BAŞA BAŞ HEDEFİ      310 sipariş    günde ~11
+25.000 TL kâr        350 sipariş    günlük ortalama 12
+50.000 TL kâr        390 sipariş    günlük ortalama 13
+100.000 TL kâr       470 sipariş    günlük ortalama 16
+```
+
+Günlük rakam o ayın gerçek gün sayısına bölünür (30 gün, 31 gün, şubat 28).
+
+**Ay sonunda** satışları girdiğinde kart sonuca döner: hedef sipariş,
+gerçekleşen sipariş, gerçek ciro, gerçek gider, gerçek kâr/zarar, kâr marjı
+ve başa baş hedefinin ne kadar üzerinde/altında kalındığı.
+
+**Ara toplam isteğe bağlı.** Ay içinde satış girip "ara toplam olarak
+işaretle" dersen sistem kalan günü ve kalan sipariş hedefini hesaplar.
+İşaretlemezsen hiçbir tempo tahmini yapılmaz.
+
+### Hedef nereden çıkıyor
+
+Sipariş başına ortalama katkı, **son tamamlanmış ayın** gerçek Trendyol /
+Shopify ve ürün dağılımından hesaplanır ve sonuç "yaklaşık" olarak
+gösterilir; hangi aya dayandığı kartta yazar. Bütün siparişler aynı
+kârlılıktaymış gibi varsayılmaz.
+
+İlk ayda geçmiş veri yoksa uydurma rakam verilmez — kartta kanal, ürün ve
+ortalama sipariş tutarını soran küçük bir alan çıkar; hesap bu varsayıma
+dayandığı açıkça yazılır ve ilk gerçek ay tamamlanınca kendiliğinden gerçek
+veriye geçer.
 
 ```
 katkı            = net satış − komisyon − kargo − hizmet bedeli
-                              − ürün maliyeti − ambalaj
+                              − ürün maliyeti − ambalaj − satışa bağlı giderler
 sipariş başına   = katkı ÷ sipariş sayısı
 başa baş         = sabit giderler ÷ sipariş başına katkı
 X TL kâr için    = (sabit giderler + X) ÷ sipariş başına katkı
+günlük ortalama  = gereken sipariş ÷ ayın gün sayısı
 ```
 
 **Sabit ile değişken ayrımını sen belirlersin.** Her giderde "satış arttıkça
-artar mı?" seçeneği var. Reklam varsayılan olarak **satışa bağlı** sayılır
-(performans reklamı satışla birlikte artar); sabit bütçeyle çalışıyorsan
-gider formundan "Sabit gider" seçersin. Ajans, muhasebeci, aylık Shopify
-ücreti sabittir ve başa baş noktasını yukarı iter; komisyon ve kargo ise her
-siparişle artar.
+artar mı?" seçeneği var. Reklam varsayılan olarak **satışa bağlı** sayılır;
+sabit bütçeyle çalışıyorsan "Sabit gider" seçersin. Ajans, muhasebeci, aylık
+Shopify ücreti sabittir ve başa baş noktasını yukarı iter. Bu seçim **kârı
+asla değiştirmez**, sadece başa baş noktasını değiştirir.
 
-Bu seçim **kârı asla değiştirmez**, sadece başa baş noktasını ve sipariş
-başına kazancı değiştirir.
-
-**Nakit çıkışı kâr değildir.** 500 koliye bu ay 5.000 TL ödemek, o 5.000 TL'yi
-bu ayın kârından düşmek anlamına gelmez — kâra yalnızca o ay gerçekten satılan
-ürünlerin ambalaj maliyeti girer. Ödenen tutar ayrıca "bu ay ödenen (nakit
-çıkışı)" olarak gösterilir. Başa baş hesabı kâr tarafını kullanır.
-
-Veri eksikse uydurma kesin rakam verilmez; hangi verinin eksik olduğu yazılır
-(satış yok, sabit gider girilmemiş, ürün maliyeti yok, sipariş sayısı tahmini).
-Sipariş başına kazanç eksiyse başa baş hesaplanmaz — satış arttıkça zarar da
-artacağı söylenir.
+**Nakit çıkışı kâr değildir.** 500 koliye bu ay 5.000 TL ödemek, o tutarı bu
+ayın kârından düşmek anlamına gelmez — kâra yalnızca o ay gerçekten satılan
+ürünlerin maliyeti girer. Ödenen tutar ayrıca "bu ay ödenen (nakit çıkışı)"
+olarak gösterilir. Başa baş hesabı kâr tarafını kullanır.
 
 ---
 

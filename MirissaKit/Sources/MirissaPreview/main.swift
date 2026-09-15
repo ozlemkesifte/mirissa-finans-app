@@ -171,16 +171,21 @@ func run() {
         if render(s.view, to: url, size: size) { ok += 1; print("✓ \(s.title) → \(url.lastPathComponent)") }
         else { print("✗ \(s.title)") }
     }
-    let zararStore = AppStore.inMemory(demoZarar())
-    let zarar = outDir.appendingPathComponent("1b-ana-sayfa-basabas-alti.png")
-    if let ekran = PreviewGallery.screens(store: zararStore, period: Period(month: "2026-09")).first,
-       render(ekran.view, to: zarar, size: size) {
-        ok += 1; print("✓ Ana Sayfa (başa baş altı) → \(zarar.lastPathComponent)")
+    // Ekim: satış girilmemiş -> aylık hedef modu
+    let hedefStore = AppStore.inMemory(demoState())
+    if let ekran = PreviewGallery.screens(store: hedefStore, period: Period(month: "2026-10")).first {
+        let u = outDir.appendingPathComponent("1b-ana-sayfa-hedef.png")
+        if render(ekran.view, to: u, size: size) { ok += 1; print("✓ Ana Sayfa (aylık hedef) → \(u.lastPathComponent)") }
     }
+    let hedefDetay = outDir.appendingPathComponent("1c-hedef-detay.png")
+    if render(PreviewGallery.breakevenCard(store: hedefStore, month: "2026-10"),
+              to: hedefDetay, size: size) { ok += 1; print("✓ Hedef detayı → \(hedefDetay.lastPathComponent)") }
 
-    let hedef = outDir.appendingPathComponent("1c-kar-hedefleri.png")
+    // Başa başın altında kalınan bir ay sonucu
+    let zararStore = AppStore.inMemory(demoZarar())
+    let zarar = outDir.appendingPathComponent("1d-ay-sonucu-zarar.png")
     if render(PreviewGallery.breakevenCard(store: zararStore, month: "2026-09"),
-              to: hedef, size: size) { ok += 1; print("✓ Kâr hedefleri → \(hedef.lastPathComponent)") }
+              to: zarar, size: size) { ok += 1; print("✓ Ay sonucu (zarar) → \(zarar.lastPathComponent)") }
 
     let giderForm = outDir.appendingPathComponent("3b-gider-formu.png")
     if let rek = zararStore.state.expenses.first(where: { $0.category == .reklam }),

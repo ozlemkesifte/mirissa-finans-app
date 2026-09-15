@@ -44,10 +44,10 @@ struct CostBehaviorTests {
         var s = kurulum()
         s.expenses.append(Expense(id: "e_rek", date: "2026-09-05", name: "Meta reklam",
                                   amount: tl(10_000), category: .reklam))   // varsayılan: satışa bağlı
-        let b = Engine(s).breakeven(month: "2026-09", today: "2026-09-20")
+        let b = Engine(s).plan(month: "2026-09", today: "2026-09-20")
         #expect(b.fixedCosts == tl(50_000))
         #expect(approx(b.contributionPerOrder, Double(tl(300))))   // (40.000 − 10.000) / 100
-        #expect(b.breakevenOrders == 167)                          // ceil(50.000 / 300)
+        #expect(b.actual?.breakevenOrders == 167)                          // ceil(50.000 / 300)
     }
 
     /// Aynı gider sabit seçilirse başa baş noktası farklı çıkar
@@ -57,10 +57,10 @@ struct CostBehaviorTests {
                           amount: tl(10_000), category: .reklam)
         rek.behavior = .sabit
         s.expenses.append(rek)
-        let b = Engine(s).breakeven(month: "2026-09", today: "2026-09-20")
+        let b = Engine(s).plan(month: "2026-09", today: "2026-09-20")
         #expect(b.fixedCosts == tl(60_000))
         #expect(approx(b.contributionPerOrder, Double(tl(400))))
-        #expect(b.breakevenOrders == 150)                          // ceil(60.000 / 400)
+        #expect(b.actual?.breakevenOrders == 150)                          // ceil(60.000 / 400)
     }
 
     /// EN ÖNEMLİSİ: sınıflandırma kârı asla değiştirmez, sadece başa başı değiştirir

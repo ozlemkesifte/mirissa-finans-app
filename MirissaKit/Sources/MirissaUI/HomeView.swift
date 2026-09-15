@@ -57,7 +57,8 @@ struct HomeView: View {
             BigStat(
                 title: loss ? "Gerçek Zarar" : "Gerçek Kâr",
                 value: kar.tlCompact,
-                tone: loss ? Palette.zarar : Palette.kar
+                tone: loss ? Palette.zarar : Palette.kar,
+                caption: satisGirilmedi ? "satış girilmedi" : nil
             )
             BigStat(
                 title: "Kâr Marjı",
@@ -67,6 +68,12 @@ struct HomeView: View {
                     ? "Kasa çıkışı \(result.nakitCikisi.tlCompact)" : nil
             )
         }
+    }
+
+    /// Dönemde hiç satış yoksa ve dönem geçmişte değilse, kâr rakamı
+    /// henüz "sonuç" değildir — kullanıcı yanlış okumasın diye belirtilir.
+    private var satisGirilmedi: Bool {
+        result.units == 0 && result.gercekCiro == 0 && period.to >= Dates.currentMonth()
     }
 
     private var trendPoints: [TrendPoint] {

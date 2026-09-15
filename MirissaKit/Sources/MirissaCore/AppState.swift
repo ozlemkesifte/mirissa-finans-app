@@ -1,5 +1,22 @@
 import Foundation
 
+/// Geçmiş veri yokken hedef hesaplamak için kullanıcının verdiği basit varsayım.
+public struct ExpectedMix: Codable, Hashable, Sendable {
+    public var channelId: Id
+    public var productId: Id
+    /// Ortalama sipariş tutarı (müşterinin ödediği)
+    public var averageOrderValue: Kurus
+    /// Sipariş başına ortalama ürün adedi
+    public var unitsPerOrder: Double
+
+    public init(channelId: Id, productId: Id, averageOrderValue: Kurus, unitsPerOrder: Double = 1) {
+        self.channelId = channelId
+        self.productId = productId
+        self.averageOrderValue = averageOrderValue
+        self.unitsPerOrder = max(unitsPerOrder, 0.01)
+    }
+}
+
 public struct AppSettings: Hashable, Sendable {
     /// "Yaklaşık kaç siparişlik kaldı" hesabında kullanılacak geçmiş ay sayısı
     public var consumptionWindowMonths: Int
@@ -8,6 +25,11 @@ public struct AppSettings: Hashable, Sendable {
     public var companyName: String
     /// Kullanıcının kendi belirlediği aylık kâr hedefi: ["2026-09": 7_500_000]
     public var profitGoals: [MonthKey: Kurus]
+    /// "Bu ayın satışları şu tarihe kadar girildi" — ara durum işareti.
+    /// Boşsa girilen satışlar ayın tamamı sayılır.
+    public var progressAsOf: [MonthKey: DateKey]
+    /// Hiç geçmiş ay yokken hedef hesaplamak için kullanılan varsayım
+    public var expectedMix: ExpectedMix?
 
     public func profitGoal(for month: MonthKey) -> Kurus? {
         profitGoals[month].flatMap { $0 > 0 ? $0 : nil }
@@ -17,12 +39,16 @@ public struct AppSettings: Hashable, Sendable {
         consumptionWindowMonths: Int = 3,
         capitalizePurchases: Bool = true,
         companyName: String = "Mirissa Lab",
-        profitGoals: [MonthKey: Kurus] = [:]
+        profitGoals: [MonthKey: Kurus] = [:],
+        progressAsOf: [MonthKey: DateKey] = [:],
+        expectedMix: ExpectedMix? = nil
     ) {
         self.consumptionWindowMonths = consumptionWindowMonths
         self.capitalizePurchases = capitalizePurchases
         self.companyName = companyName
         self.profitGoals = profitGoals
+        self.progressAsOf = progressAsOf
+        self.expectedMix = expectedMix
     }
 }
 
@@ -31,6 +57,7 @@ public struct AppSettings: Hashable, Sendable {
 extension AppSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
+        case progressAsOf, expectedMix
     }
 
     public init(from decoder: Decoder) throws {
@@ -42,6 +69,8 @@ extension AppSettings: Codable {
             ?? d.capitalizePurchases
         companyName = try c.decodeIfPresent(String.self, forKey: .companyName) ?? d.companyName
         profitGoals = try c.decodeIfPresent([MonthKey: Kurus].self, forKey: .profitGoals) ?? [:]
+        progressAsOf = try c.decodeIfPresent([MonthKey: DateKey].self, forKey: .progressAsOf) ?? [:]
+        expectedMix = try c.decodeIfPresent(ExpectedMix.self, forKey: .expectedMix)
     }
 }
 

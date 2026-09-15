@@ -30,7 +30,7 @@ public enum PreviewGallery {
     public static func breakevenCard(store: AppStore, month: MonthKey) -> AnyView {
         AnyView(
             ScrollView {
-                BreakevenCard(month: month, hedeflerAcik: true)
+                BreakevenCard(month: month, detayAcik: true)
                     .padding(Metrics.pad)
             }
             .screenBackground()

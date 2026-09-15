@@ -300,6 +300,19 @@ public final class AppStore {
 
     public func updateSettings(_ s: AppSettings) { mutate { $0.settings = s } }
 
+    /// "Satışlar şu tarihe kadar girildi" işareti. `nil` işareti kaldırır
+    /// ve girilen satışlar ayın tamamı sayılır.
+    public func setProgressAsOf(_ date: DateKey?, for month: MonthKey) {
+        mutate { s in
+            if let d = date { s.settings.progressAsOf[month] = d }
+            else { s.settings.progressAsOf[month] = nil }
+        }
+    }
+
+    public func setExpectedMix(_ mix: ExpectedMix?) {
+        mutate { $0.settings.expectedMix = mix }
+    }
+
     /// Aya özel kâr hedefi. `nil` hedefi kaldırır.
     public func setProfitGoal(_ amount: Kurus?, for month: MonthKey) {
         mutate { s in

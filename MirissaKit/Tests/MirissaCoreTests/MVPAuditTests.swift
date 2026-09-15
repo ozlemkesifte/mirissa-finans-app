@@ -223,21 +223,34 @@ struct MVPAuditTests {
         #expect(agustos.gercekKar == -tl(25_000))     // muhasebeci + ajans
     }
 
-    // 13 — Başa baş ve hedef
-    @Test func madde13_basaBasVeHedef() {
+    // 13 — Aylık hedef (ay başı) ve gerçekleşen sonuç (ay sonu)
+    @Test func madde13_hedefVeGerceklesen() {
         var s = kurulum()
-        s.settings.profitGoals["2026-09"] = tl(50_000)
-        let b = Engine(s).breakeven(month: "2026-09", today: "2026-09-20")
-        #expect(b.canCompute)
-        #expect(b.ordersSoFar == 158)
-        #expect(b.contributionPerOrder > 0)
-        #expect(b.breakevenOrders != nil)
-        #expect(b.remainingDays == 11)
-        #expect(b.projectionSentence != nil)
-        #expect(b.customGoalSentence != nil)
-        #expect(b.goals.contains { $0.isCustom && $0.targetProfit == tl(50_000) })
-        // Katkı − sabit gider = kâr
-        #expect(b.contribution - b.fixedCosts == b.profitSoFar)
+        s.settings.profitGoals["2026-10"] = tl(50_000)
+        let e = Engine(s)
+
+        // Eylül satışları girilmiş -> gerçekleşen sonuç
+        let eylul = e.plan(month: "2026-09", today: "2026-09-30")
+        #expect(eylul.mode == .gerceklesen)
+        let a = eylul.actual!
+        #expect(a.orders == 158)
+        #expect(a.revenue == eylul.actual!.revenue)
+        #expect(a.profit == a.revenue - a.expenses)
+        #expect(a.breakevenOrders != nil)
+        #expect(a.breakevenSentence != nil)
+
+        // Ekim'de satış yok -> aylık hedef, Eylül dağılımına göre, "yaklaşık"
+        let ekim = e.plan(month: "2026-10", today: "2026-09-30")
+        #expect(ekim.mode == .hedef)
+        #expect(ekim.basis == .gecmisAy("2026-09"))
+        #expect(ekim.isApproximate)
+        #expect(ekim.daysInMonth == 31)
+        #expect(ekim.actual == nil)
+        #expect(ekim.progressOrders == nil)          // tempo tahmini yok
+        let basaBas = ekim.targets.first { $0.isBreakeven }!
+        #expect(basaBas.orders > 0)
+        #expect(basaBas.dailyOrders == Int(ceil(Double(basaBas.orders) / 31)))
+        #expect(ekim.targets.contains { $0.isCustom && $0.targetProfit == tl(50_000) })
     }
 
     // 14 — Sabit / satışa bağlı sınıflandırma kullanıcıda
@@ -246,14 +259,17 @@ struct MVPAuditTests {
         var sabit = kurulum()
         sabit.expenses[2].behavior = .sabit
 
-        let a = Engine(degisken).breakeven(month: "2026-09", today: "2026-09-20")
-        let b = Engine(sabit).breakeven(month: "2026-09", today: "2026-09-20")
+        // Ekim hedefi, Eylül dağılımına dayanır -> sınıflandırma hedefi değiştirir
+        let a = Engine(degisken).plan(month: "2026-10", today: "2026-09-30")
+        let b = Engine(sabit).plan(month: "2026-10", today: "2026-09-30")
 
         #expect(a.contributionPerOrder < b.contributionPerOrder)  // satışa bağlıyken katkı düşük
-        #expect(a.fixedCosts < b.fixedCosts)                      // sabitken sabit gider yüksek
-        #expect(a.breakevenOrders != b.breakevenOrders)
-        // Ama kâr ikisinde de aynı
-        #expect(a.profitSoFar == b.profitSoFar)
+        #expect(a.targets.first { $0.isBreakeven }!.orders
+                != b.targets.first { $0.isBreakeven }!.orders)
+
+        // Ama Eylül kârı ikisinde de aynı
+        #expect(Engine(degisken).companyMonth("2026-09").gercekKar
+                == Engine(sabit).companyMonth("2026-09").gercekKar)
 
         degisken.expenses[2].behavior = .satisaBagli
         #expect(Engine(degisken).companyMonth("2026-09").gercekKar
@@ -279,10 +295,11 @@ struct MVPAuditTests {
     /// Denetim özeti
     @Test func denetimOzeti() {
         var s = kurulum()
-        s.settings.profitGoals["2026-09"] = tl(50_000)
+        s.settings.profitGoals["2026-10"] = tl(50_000)
         let e = Engine(s)
         let r = e.companyMonth("2026-09")
-        let b = e.breakeven(month: "2026-09", today: "2026-09-20")
+        let sonuc = e.plan(month: "2026-09", today: "2026-09-30")
+        let hedef = e.plan(month: "2026-10", today: "2026-09-30")
 
         print("\n========= MVP DENETİMİ — EYLÜL 2026 =========")
         func satir(_ a: String, _ v: String) {
@@ -294,17 +311,22 @@ struct MVPAuditTests {
         satir("Kâr marjı", Money.formatPercent(r.karMarjiPct))
         satir("Nakit çıkışı", Money.format(r.nakitCikisi))
         satir("Stok değeri", Money.format(e.totalStockValue))
-        print("  ---")
+        print("  --- kanallar ---")
         for c in r.channels where !c.isEmpty {
             satir(c.channelName + " kalan", Money.format(c.kanaldaKalan)
                   + "  (" + Money.formatPercent(c.marginPct) + ")")
         }
-        print("  ---")
-        satir("Sipariş", "\(b.ordersSoFar)")
-        satir("Sipariş başına katkı", Money.format(Money.roundHalfAwayFromZero(b.contributionPerOrder)))
-        satir("Başa baş", "\(b.breakevenOrders ?? 0) sipariş")
-        satir("Ay sonu tahmini", b.projectionSentence ?? "-")
-        print("  ---")
+        print("  --- eylül sonucu ---")
+        if let a = sonuc.actual {
+            satir("Gerçekleşen sipariş", "\(a.orders)")
+            satir("Başa baş hedefi", "\(a.breakevenOrders ?? 0) sipariş")
+            satir("Sonuç", a.breakevenSentence ?? "-")
+        }
+        print("  --- ekim hedefi (yaklaşık) ---")
+        for t in hedef.targets {
+            satir(t.label, "\(t.orders) sipariş · günde ~\(t.dailyOrders)")
+        }
+        print("  --- stok ---")
         for u in e.stockAlerts(endingAt: "2026-09") {
             satir(u.name, "\(u.qtyText) — \(u.status.shortLabel)")
         }
