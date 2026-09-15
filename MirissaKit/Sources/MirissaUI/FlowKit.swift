@@ -387,3 +387,174 @@ struct TaslakKaydi {
         store.clearDraft(kind, subjectId: subjectId)
     }
 }
+
+// MARK: - Ad girişi
+
+/// Ad soran adım. Metin alanı kendi durumunu tutar: her harfte üst ekran
+/// yeniden kurulmaz, klavye kapanmaz, yazılan kaybolmaz.
+/// Geri dönülüp gelindiğinde yazılan metin korunur.
+struct AdSorusu: View {
+    var soru: String
+    var aciklama: String?
+    var placeholder: String = "Adı yaz"
+    /// Daha önce yazılmışsa alan bununla açılır
+    var baslangic: String = ""
+    var adim: Int?
+    var toplam: Int?
+    var ileriBaslik: String = "Devam"
+    /// Zaten kayıtlı adlar — aynısı yazılırsa uyarılır
+    var mevcutAdlar: [String] = []
+    var geri: (() -> Void)?
+    var vazgec: (() -> Void)?
+    /// "Bu ürünü eklemeyeceğim" gibi ikincil seçenek
+    var ekSecenek: (baslik: String, ikon: String, aksiyon: () -> Void)?
+    var onDevam: (String) -> Void
+
+    @State private var metin = ""
+    @State private var yuklendi = false
+    @FocusState private var odakta: Bool
+
+    private var temiz: String { metin.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var bos: Bool { NameCheck.isBlank(metin) }
+    private var mukerrer: Bool { NameCheck.isDuplicate(metin, among: mevcutAdlar) }
+
+    var body: some View {
+        SoruAdimi(
+            soru: soru,
+            aciklama: aciklama,
+            adim: adim, toplam: toplam,
+            ileriBaslik: ileriBaslik,
+            ileriAktif: !bos && !mukerrer,
+            geri: geri,
+            vazgec: vazgec,
+            ileri: { if !bos && !mukerrer { onDevam(temiz) } }
+        ) {
+            Card {
+                TextField(placeholder, text: $metin)
+                    .font(.title3)
+                    .foregroundStyle(Palette.ink)
+                    .focused($odakta)
+                    .adKlavyesi()
+                    .onSubmit { if !bos && !mukerrer { onDevam(temiz) } }
+                    .accessibilityLabel(soru)
+            }
+            if mukerrer {
+                Card(background: Palette.zararYumusak) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Palette.zarar)
+                        Text("Bu kayıt zaten var.")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Palette.zarar)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            if let ek = ekSecenek {
+                SecenekButonu(baslik: ek.baslik, ikon: ek.ikon,
+                              renk: Palette.inkSoft, action: ek.aksiyon)
+            }
+        }
+        .onAppear {
+            guard !yuklendi else { return }
+            yuklendi = true
+            metin = baslangic
+            // Klavye kendiliğinden açılsın; kullanıcı ikinci kez dokunmasın
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { odakta = true }
+        }
+    }
+}
+
+// MARK: - KDV soruları
+
+/// "Yazdığın tutar KDV dahil mi?" — tek soru, iki büyük seçenek.
+struct KdvDahilSorusu: View {
+    var tutar: Kurus
+    var oran: VatRate
+    var secim: Bool?
+    var adim: Int?
+    var toplam: Int?
+    var geri: (() -> Void)?
+    var vazgec: (() -> Void)?
+    var onSecim: (Bool) -> Void
+
+    var body: some View {
+        SoruAdimi(
+            soru: "Yazdığın tutar KDV dahil mi?",
+            aciklama: "\(Money.format(tutar)) yazdın. Faturada KDV ayrı gösteriliyorsa "
+                + "\"hariç\", toplam tutar buysa \"dahil\" de.",
+            adim: adim, toplam: toplam,
+            geri: geri, vazgec: vazgec
+        ) {
+            EvetHayirSorusu(
+                evet: "Evet, KDV dahil",
+                hayir: "Hayır, KDV hariç",
+                evetAciklama: oran == .yok ? nil
+                    : "\(Money.format(tutar)) içinde KDV var",
+                hayirAciklama: oran == .yok ? nil
+                    : "KDV ayrıca eklenecek",
+                secim: secim,
+                onSecim: onSecim
+            )
+        }
+    }
+}
+
+/// "KDV oranı nedir?" — varsayılan gösterilir ama kullanıcı onaylamadan geçilmez.
+struct KdvOraniSorusu: View {
+    var tutar: Kurus
+    var dahil: Bool
+    var secim: VatRate?
+    var varsayilan: VatRate = .yirmi
+    var adim: Int?
+    var toplam: Int?
+    var geri: (() -> Void)?
+    var vazgec: (() -> Void)?
+    var onSecim: (VatRate) -> Void
+
+    var body: some View {
+        SoruAdimi(
+            soru: "KDV oranı nedir?",
+            aciklama: "Emin değilsen faturaya bak. Çoğu üründe %20.",
+            adim: adim, toplam: toplam,
+            geri: geri, vazgec: vazgec
+        ) {
+            VStack(spacing: Metrics.gap) {
+                // En yaygın oran en üstte
+                ForEach(VatRate.allCases.reversed()) { r in
+                    SecenekButonu(
+                        baslik: r == .yok ? "KDV yok" : r.displayName,
+                        aciklama: r == .yok ? nil : netAciklama(r),
+                        secili: secim == r
+                    ) { onSecim(r) }
+                }
+            }
+        }
+    }
+
+    private func netAciklama(_ r: VatRate) -> String? {
+        guard tutar > 0 else { return nil }
+        let b = Vat.split(tutar, rate: r, included: dahil)
+        return "Net \(Money.format(b.net)) + KDV \(Money.format(b.vat))"
+    }
+}
+
+/// "120 TL KDV dahil → 100 TL net + 20 TL KDV" önizlemesi
+struct KdvOnizlemeKarti: View {
+    var baslik: String = "NET MALİYET"
+    var tutar: Kurus
+    var oran: VatRate
+    var dahil: Bool
+
+    var body: some View {
+        let b = Vat.split(tutar, rate: oran, included: dahil)
+        Card(background: Palette.inset) {
+            VStack(spacing: 9) {
+                LabeledRow(baslik, Money.format(b.net), tone: Palette.accent, strong: true)
+                if oran != .yok {
+                    LabeledRow("KDV (\(oran.displayName))", Money.format(b.vat))
+                }
+            }
+        }
+    }
+}

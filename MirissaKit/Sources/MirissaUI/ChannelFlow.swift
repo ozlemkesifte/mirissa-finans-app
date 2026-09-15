@@ -485,18 +485,18 @@ struct ChannelSetupFlow: View {
     }
 
     private var yeniKalemAdiAdimi: some View {
-        SoruAdimi(
+        AdSorusu(
             soru: "Bu kesintinin adı ne?",
-            ileriAktif: !taslakKalem.label.trimmingCharacters(in: .whitespaces).isEmpty,
+            aciklama: "Faturada nasıl görünüyorsa öyle yazabilirsin.",
+            placeholder: "Örneğin: Depo hizmet bedeli",
+            baslangic: taslakKalem.label,
+            mevcutAdlar: ekler.map(\.label),
             geri: geriGit, vazgec: { dismiss() },
-            ileri: { ileri(.yeniKalemNasil) }
-        ) {
-            Card {
-                TextField("Örneğin: Depo hizmet bedeli", text: $taslakKalem.label)
-                    .font(.title3)
-                    .foregroundStyle(Palette.ink)
+            onDevam: { ad in
+                taslakKalem.label = ad
+                ileri(.yeniKalemNasil)
             }
-        }
+        )
     }
 
     private var yeniKalemNasilAdimi: some View {
@@ -786,23 +786,16 @@ struct ChannelAddFlow: View {
     }
 
     private var adAdimi: some View {
-        SoruAdimi(
+        AdSorusu(
             soru: "Kanalın adı ne?",
-            ileriAktif: !yeniAd.trimmingCharacters(in: .whitespaces).isEmpty,
+            aciklama: "Örneğin bir pazaryeri, bir mağaza ya da toptan müşteri.",
+            placeholder: "Örneğin: Toptan müşteri",
+            ileriBaslik: "Ekle",
+            mevcutAdlar: store.state.channels.map(\.name),
             geri: { withAnimation { adYaziliyor = false } },
             vazgec: { dismiss() },
-            ileri: {
-                let ad = yeniAd.trimmingCharacters(in: .whitespaces)
-                ekle(id: "kanal_" + ad.lowercased().replacingOccurrences(of: " ", with: "_"),
-                     ad: ad, kind: .other)
-            }
-        ) {
-            Card {
-                TextField("Kanal adı", text: $yeniAd)
-                    .font(.title3)
-                    .foregroundStyle(Palette.ink)
-            }
-        }
+            onDevam: { ad in ekle(id: Ids.make(.channel), ad: ad, kind: .other) }
+        )
     }
 
     private func ekle(id: Id, ad: String, kind: ChannelKind) {

@@ -58,6 +58,14 @@ public enum Palette {
 public extension String {
     /// Türkçe büyük harf: "gider" -> "GİDER" (varsayılan `uppercased()` "GIDER" üretir)
     var trUpper: String { uppercased(with: Locale(identifier: "tr_TR")) }
+    var trLower: String { lowercased(with: Locale(identifier: "tr_TR")) }
+    /// Karşılaştırma için sadeleştirilmiş hâl: baştaki/sondaki boşluklar atılır,
+    /// Türkçe kurallarına göre küçültülür. "Şampuan" ile "şampuan" aynı sayılır.
+    var adAnahtari: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .trLower
+            .replacingOccurrences(of: "  ", with: " ")
+    }
 }
 
 public enum Metrics {
@@ -97,6 +105,18 @@ public extension View {
         self.keyboardType(.decimalPad)
         #else
         self
+        #endif
+    }
+
+    /// Ad yazan alanlar: kelime başlarını büyütür, otomatik düzeltmeyi kapatır,
+    /// klavyeye "bitti" tuşu koyar. Türkçe karakterler normal klavyeden gelir.
+    @ViewBuilder func adKlavyesi() -> some View {
+        #if os(iOS)
+        self.textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+        #else
+        self.autocorrectionDisabled()
         #endif
     }
 

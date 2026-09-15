@@ -97,11 +97,14 @@ public enum PreviewGallery {
     }
 
     public enum SetupPreviewStep: String, CaseIterable, Sendable {
-        case urunSayisi, setVarMi, setBilesenleri, setAmbalaji, kanalSecimi
+        case urunSayisi, urunAdi, urunMaliyetKdv, urunMaliyetOran, setVarMi, setBilesenleri, setAmbalaji, kanalSecimi
 
         var iceri: SetupWizard.Adim {
             switch self {
             case .urunSayisi: return .urunSayisi
+            case .urunAdi: return .urunAdi(0)
+            case .urunMaliyetKdv: return .urunMaliyetKdv(0)
+            case .urunMaliyetOran: return .urunMaliyetOran(0)
             case .setVarMi: return .setVarMi
             case .setBilesenleri: return .setBilesenleri(0)
             case .setAmbalaji: return .setAmbalaji(0)

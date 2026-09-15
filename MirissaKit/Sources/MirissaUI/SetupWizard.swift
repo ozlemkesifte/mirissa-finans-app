@@ -14,12 +14,15 @@ public struct SetupWizard: View {
         case urunAdi(Int)
         case urunStok(Int)
         case urunMaliyet(Int)
+        case urunMaliyetKdv(Int)
+        case urunMaliyetOran(Int)
         case ambalajDahil(Int)
         case setVarMi
         case setSayisi
         case setAdi(Int)
         case setBilesenleri(Int)
         case malzemeSecimi
+        case malzemeAdi
         case malzemeDetay(Int)
         case setAmbalaji(Int)
         case kanalSecimi
@@ -134,12 +137,15 @@ public struct SetupWizard: View {
         case let .urunAdi(i): urunAdiAdimi(i)
         case let .urunStok(i): urunStokAdimi(i)
         case let .urunMaliyet(i): urunMaliyetAdimi(i)
+        case let .urunMaliyetKdv(i): urunMaliyetKdvAdimi(i)
+        case let .urunMaliyetOran(i): urunMaliyetOranAdimi(i)
         case let .ambalajDahil(i): ambalajDahilAdimi(i)
         case .setVarMi: setVarMiAdimi
         case .setSayisi: setSayisiAdimi
         case let .setAdi(i): setAdiAdimi(i)
         case let .setBilesenleri(i): setBilesenleriAdimi(i)
         case .malzemeSecimi: malzemeSecimAdimi
+        case .malzemeAdi: malzemeAdiAdimi
         case let .malzemeDetay(i): malzemeDetayAdimi(i)
         case let .setAmbalaji(i): setAmbalajiAdimi(i)
         case .kanalSecimi: kanalSecimAdimi
@@ -217,26 +223,27 @@ public struct SetupWizard: View {
     // MARK: 2 — Ürün adı
 
     private func urunAdiAdimi(_ i: Int) -> some View {
-        SoruAdimi(
+        AdSorusu(
             soru: "\(i + 1). ürünün adı ne?",
+            placeholder: "Örneğin: Şampuan",
+            baslangic: urunTaslak(i).ad,
             adim: i + 1, toplam: urunler.count,
-            ileriAktif: !urunTaslak(i).ad.trimmingCharacters(in: .whitespaces).isEmpty,
+            mevcutAdlar: urunler.enumerated()
+                .filter { $0.offset != i }.map { $0.element.ad }
+                + setler.map(\.ad),
             geri: geriGit,
-            ileri: { ileri(.urunStok(i)) }
-        ) {
-            Card {
-                TextField("Ürün adı", text: urunBinding(i).ad)
-                    .font(.title3)
-                    .foregroundStyle(Palette.ink)
-            }
-            if urunler.count > 1 {
-                SecenekButonu(baslik: "Bu ürünü eklemeyeceğim",
-                              ikon: "minus.circle", renk: Palette.inkSoft) {
+            ekSecenek: urunler.count > 1
+                ? ("Bu ürünü eklemeyeceğim", "minus.circle", {
                     urunler.remove(at: i)
                     ileri(sonrakiUrunAdimi(i))
-                }
+                })
+                : nil,
+            onDevam: { ad in
+                if urunler.indices.contains(i) { urunler[i].ad = ad }
+                ileri(.urunStok(i))
             }
-        }
+        )
+        .id("urunAd-\(i)")
     }
 
     // MARK: 3 — Ürün stoğu
@@ -262,9 +269,44 @@ public struct SetupWizard: View {
             aciklama: "Üretim, fason ve hammadde dahil. Bilmiyorsan boş bırak, sonra girebilirsin.",
             adim: i + 1, toplam: urunler.count,
             geri: geriGit,
-            ileri: { ileri(.ambalajDahil(i)) }
+            ileri: {
+                // Tutar girildiyse KDV'si sorulmadan kaydedilmez.
+                ileri(urunTaslak(i).maliyet > 0 ? .urunMaliyetKdv(i) : .ambalajDahil(i))
+            }
         ) {
             BuyukParaAlani(baslik: "1 adet \(urunAdi(i))", deger: urunBinding(i).maliyet)
+        }
+    }
+
+    /// "Yazdığın tutar KDV dahil mi?"
+    private func urunMaliyetKdvAdimi(_ i: Int) -> some View {
+        KdvDahilSorusu(
+            tutar: urunTaslak(i).maliyet,
+            oran: urunTaslak(i).maliyetKdvOrani,
+            secim: urunTaslak(i).maliyetKdvDahil,
+            adim: i + 1, toplam: urunler.count,
+            geri: geriGit
+        ) { secim in
+            if urunler.indices.contains(i) { urunler[i].maliyetKdvDahil = secim }
+            ileri(.urunMaliyetOran(i))
+        }
+    }
+
+    /// "KDV oranı nedir?" — seçim yapılmadan geçilmez
+    private func urunMaliyetOranAdimi(_ i: Int) -> some View {
+        let t = urunTaslak(i)
+        return KdvOraniSorusu(
+            tutar: t.maliyet,
+            dahil: t.maliyetKdvDahil ?? true,
+            secim: t.maliyetKdvOranSecildi ? t.maliyetKdvOrani : nil,
+            adim: i + 1, toplam: urunler.count,
+            geri: geriGit
+        ) { oran in
+            if urunler.indices.contains(i) {
+                urunler[i].maliyetKdvOrani = oran
+                urunler[i].maliyetKdvOranSecildi = true
+            }
+            ileri(.ambalajDahil(i))
         }
     }
 
@@ -278,6 +320,14 @@ public struct SetupWizard: View {
             adim: i + 1, toplam: urunler.count,
             geri: geriGit
         ) {
+            if urunTaslak(i).maliyet > 0 {
+                KdvOnizlemeKarti(
+                    baslik: "NET ÜRÜN MALİYETİ",
+                    tutar: urunTaslak(i).maliyet,
+                    oran: urunTaslak(i).maliyetKdvOrani,
+                    dahil: urunTaslak(i).maliyetKdvDahil ?? true
+                )
+            }
             EvetHayirSorusu(
                 evet: "Evet, fiyata dahil",
                 hayir: "Hayır, ayrıca alıyorum",
@@ -341,20 +391,21 @@ public struct SetupWizard: View {
     }
 
     private func setAdiAdimi(_ i: Int) -> some View {
-        SoruAdimi(
+        AdSorusu(
             soru: "\(i + 1). paketin adı ne?",
             aciklama: "Müşterinin gördüğü isim: \"Saç Derisi Bakım Seti\", \"2'li Şampuan Paketi\".",
+            placeholder: "Örneğin: Saç Derisi Bakım Seti",
+            baslangic: setTaslak(i).ad,
             adim: i + 1, toplam: setler.count,
-            ileriAktif: !setTaslak(i).ad.trimmingCharacters(in: .whitespaces).isEmpty,
+            mevcutAdlar: doluUrunler.map(\.ad)
+                + setler.enumerated().filter { $0.offset != i }.map { $0.element.ad },
             geri: geriGit,
-            ileri: { ileri(.setBilesenleri(i)) }
-        ) {
-            Card {
-                TextField("Paket adı", text: setBinding(i).ad)
-                    .font(.title3)
-                    .foregroundStyle(Palette.ink)
+            onDevam: { ad in
+                if setler.indices.contains(i) { setler[i].ad = ad }
+                ileri(.setBilesenleri(i))
             }
-        }
+        )
+        .id("setAd-\(i)")
     }
 
     private func setBilesenleriAdimi(_ i: Int) -> some View {
@@ -522,9 +573,24 @@ public struct SetupWizard: View {
                 }
             }
             BigButton("Listede olmayan malzeme ekle", icon: "plus", tone: Palette.gider) {
-                malzemeler.append(MalzemeTaslak(ad: "", birim: .adet, secili: true, yeni: true))
+                ileri(.malzemeAdi)
             }
         }
+    }
+
+    private var malzemeAdiAdimi: some View {
+        AdSorusu(
+            soru: "Eklemek istediğin malzemenin adı ne?",
+            aciklama: "Kutu, koli, etiket, poşet gibi satışta kullandığın her şey.",
+            placeholder: "Örneğin: Altın yaldızlı kurdele",
+            ileriBaslik: "Ekle",
+            mevcutAdlar: malzemeler.map(\.ad),
+            geri: geriGit,
+            onDevam: { ad in
+                malzemeler.append(MalzemeTaslak(ad: ad, birim: .adet, secili: true, yeni: true))
+                geriGit()
+            }
+        )
     }
 
     // MARK: 7 — Malzeme detayı
@@ -540,18 +606,50 @@ public struct SetupWizard: View {
                 + "kullandığını yaz. Sadece sette kullanıyorsan sıfır bırak — "
                 + "setin ambalajını birazdan ayrıca soracağım.",
             adim: sira + 1, toplam: indisler.count,
+            ileriAktif: m.maliyet == 0 || m.maliyetKdvDahil != nil,
             geri: geriGit,
             ileri: { ileri(sonrakiMalzemeAdimi(sira)) }
         ) {
-            if m.yeni {
-                Card {
-                    TextField("Malzeme adı", text: malzemeBinding(i).ad)
-                        .font(.title3)
-                        .foregroundStyle(Palette.ink)
-                }
-            }
             BuyukSayiAlani(baslik: "Şu anda elinde", birim: birim, deger: malzemeBinding(i).stok)
             BuyukParaAlani(baslik: "1 \(birim) maliyeti", deger: malzemeBinding(i).maliyet)
+            if m.maliyet > 0 {
+                // Tutarın KDV'si sorulmadan maliyet kaydedilmez.
+                VStack(alignment: .leading, spacing: Metrics.gap) {
+                    Text("Bu tutar KDV dahil mi?".trUpper)
+                        .font(.caption.weight(.semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(Palette.inkFaint)
+                    EvetHayirSorusu(
+                        evet: "Evet, KDV dahil",
+                        hayir: "Hayır, KDV hariç",
+                        secim: m.maliyetKdvDahil
+                    ) { secim in
+                        if malzemeler.indices.contains(i) {
+                            malzemeler[i].maliyetKdvDahil = secim
+                        }
+                    }
+                    if m.maliyetKdvDahil != nil {
+                        Text("KDV oranı".trUpper)
+                            .font(.caption.weight(.semibold))
+                            .tracking(0.6)
+                            .foregroundStyle(Palette.inkFaint)
+                        ForEach(VatRate.allCases.reversed()) { r in
+                            SecenekButonu(baslik: r == .yok ? "KDV yok" : r.displayName,
+                                          secili: m.maliyetKdvOrani == r) {
+                                if malzemeler.indices.contains(i) {
+                                    malzemeler[i].maliyetKdvOrani = r
+                                }
+                            }
+                        }
+                        KdvOnizlemeKarti(
+                            baslik: "NET BİRİM MALİYET",
+                            tutar: m.maliyet,
+                            oran: m.maliyetKdvOrani,
+                            dahil: m.maliyetKdvDahil ?? true
+                        )
+                    }
+                }
+            }
             BuyukSayiAlani(baslik: "Bir siparişte kullandığın",
                            birim: birim, deger: malzemeBinding(i).siparisBasi)
         }
@@ -660,26 +758,19 @@ public struct SetupWizard: View {
     }
 
     private var kanalAdiAdimi: some View {
-        SoruAdimi(
+        AdSorusu(
             soru: "Kanalın adı ne?",
             aciklama: "Örneğin bir pazaryeri, bir mağaza ya da toptan müşteri.",
-            ileriAktif: !yeniKanalAdi.trimmingCharacters(in: .whitespaces).isEmpty,
+            placeholder: "Örneğin: Toptan müşteri",
+            ileriBaslik: "Ekle",
+            mevcutAdlar: kanalSecenekleri.map(\.name),
             geri: geriGit,
-            ileri: {
-                let ad = yeniKanalAdi.trimmingCharacters(in: .whitespaces)
-                let id = "kanal_" + ad.lowercased()
-                    .replacingOccurrences(of: " ", with: "_")
-                ekKanallar.append(ChannelPreset(id: id, name: ad, kind: .other))
-                seciliKanallar.insert(id)
+            onDevam: { ad in
+                ekKanallar.append(ChannelPreset(id: Ids.make(.channel), name: ad, kind: .other))
+                seciliKanallar.insert(ekKanallar.last!.id)
                 geriGit()
             }
-        ) {
-            Card {
-                TextField("Kanal adı", text: $yeniKanalAdi)
-                    .font(.title3)
-                    .foregroundStyle(Palette.ink)
-            }
-        }
+        )
     }
 
     /// Seçilen kanalı tek tek kuran soru-cevap. Kanal bağımsızdır:
@@ -754,6 +845,13 @@ public struct SetupWizard: View {
         if !stoklu.isEmpty {
             satirlar.append("Başlangıç stoğu girilen ürün: \(stoklu.count)")
         }
+        // Maliyetler her zaman KDV hariç net tutarla kaydedilir
+        for t in u where t.maliyet > 0 {
+            let dahil = t.maliyetKdvDahil ?? true
+            satirlar.append("\(t.ad) birim maliyeti: \(Money.format(t.maliyet)) KDV "
+                + (dahil ? "dahil" : "hariç")
+                + " → net \(Money.format(t.netMaliyet))")
+        }
         let gecerliSetler = setler.filter {
             !$0.ad.trimmingCharacters(in: .whitespaces).isEmpty
                 && $0.bilesenler.values.contains { $0 > 0 }
@@ -795,7 +893,8 @@ public struct SetupWizard: View {
         return SaveSummary(
             lines: satirlar,
             note: "Başlangıç stoğu bu ayın gideri veya nakit çıkışı sayılmaz, "
-                + "KDV kaydı oluşturmaz. Set maliyetini elle girmene gerek yok; "
+                + "indirilecek KDV oluşturmaz — KDV bilgisi yalnızca net maliyeti "
+                + "bulmak için kullanılır. Set maliyetini elle girmene gerek yok; "
                 + "içindeki ürünlerden hesaplanır. Hepsini sonradan değiştirebilirsin."
         )
     }
@@ -1006,7 +1105,7 @@ public struct SetupWizard: View {
                     p.name = t.ad
                     Self.fiyatlariUygula(&p, liste: t.listeFiyat, kanal: t.kanalFiyat)
                     p.openingQty = t.stok > 0 ? t.stok : nil
-                    p.openingUnitCost = t.maliyet > 0 ? t.maliyet : nil
+                    p.openingUnitCost = t.maliyet > 0 ? t.netMaliyet : nil
                     p.openingDate = ay
                     // Maliyet değişikliği geçmiş raporları bozmaz:
                     // eski kalem kapatılır, yenisi bugünden başlar.
@@ -1014,7 +1113,7 @@ public struct SetupWizard: View {
                         let mevcut = p.costLines(on: nil).first
                         p.applyCostLines(
                             [CostLine(id: mevcut?.id ?? Ids.make(.costLine),
-                                      label: "Birim maliyet", amount: t.maliyet)],
+                                      label: "Birim maliyet", amount: t.netMaliyet)],
                             today: Dates.today()
                         )
                     }
@@ -1023,9 +1122,9 @@ public struct SetupWizard: View {
                     var yeni = Product(
                         id: t.id, name: t.ad,
                         costLines: t.maliyet > 0
-                            ? [CostLine(label: "Birim maliyet", amount: t.maliyet)] : [],
+                            ? [CostLine(label: "Birim maliyet", amount: t.netMaliyet)] : [],
                         openingQty: t.stok > 0 ? t.stok : nil,
-                        openingUnitCost: t.maliyet > 0 ? t.maliyet : nil,
+                        openingUnitCost: t.maliyet > 0 ? t.netMaliyet : nil,
                         openingDate: ay
                     )
                     Self.fiyatlariUygula(&yeni, liste: t.listeFiyat, kanal: t.kanalFiyat)
@@ -1084,14 +1183,14 @@ public struct SetupWizard: View {
                     m.name = t.ad
                     m.archived = !t.secili
                     m.openingQty = t.secili && t.stok > 0 ? t.stok : nil
-                    m.openingUnitCost = t.secili && t.maliyet > 0 ? t.maliyet : nil
+                    m.openingUnitCost = t.secili && t.maliyet > 0 ? t.netMaliyet : nil
                     m.openingDate = ay
                     yeniMalzemeler.append(m)
                 } else if t.secili {
                     yeniMalzemeler.append(StockMaterial(
                         id: t.id, name: t.ad, baseUnit: t.birim,
                         openingQty: t.stok > 0 ? t.stok : nil,
-                        openingUnitCost: t.maliyet > 0 ? t.maliyet : nil,
+                        openingUnitCost: t.maliyet > 0 ? t.netMaliyet : nil,
                         openingDate: ay
                     ))
                 }
@@ -1186,8 +1285,17 @@ struct UrunTaslak: Identifiable, Codable {
     var ad: String
     var stok: Double = 0
     var maliyet: Kurus = 0
+    /// Girilen maliyet KDV dahil mi? nil = henüz sorulmadı
+    var maliyetKdvDahil: Bool?
+    var maliyetKdvOrani: VatRate = .yirmi
+    var maliyetKdvOranSecildi = false
     /// Şişe/kapak/etiket üretim fiyatına dahil mi? nil = henüz sorulmadı
     var ambalajDahil: Bool?
+
+    /// Kâr ve stok hesabında kullanılan KDV hariç maliyet
+    var netMaliyet: Kurus {
+        Vat.net(maliyet, rate: maliyetKdvOrani, included: maliyetKdvDahil ?? true)
+    }
     var listeFiyat: Kurus = 0
     var kanalFiyat: [Id: Kurus] = [:]
 }
@@ -1212,10 +1320,18 @@ struct MalzemeTaslak: Identifiable, Codable {
     var secili: Bool
     var stok: Double = 0
     var maliyet: Kurus = 0
+    /// Girilen birim maliyet KDV dahil mi? nil = henüz sorulmadı
+    var maliyetKdvDahil: Bool?
+    var maliyetKdvOrani: VatRate = .yirmi
     /// Bir siparişte kullanılan miktar (reçete)
     var siparisBasi: Double = 0
     /// Kuruluma girerken reçetede yazan miktar; sıfırlanırsa satır kaldırılır
     var ilkSiparisBasi: Double = 0
+
+    /// KDV hariç birim maliyet
+    var netMaliyet: Kurus {
+        Vat.net(maliyet, rate: maliyetKdvOrani, included: maliyetKdvDahil ?? true)
+    }
     var yeni: Bool = false
 }
 

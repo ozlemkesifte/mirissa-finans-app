@@ -510,6 +510,12 @@ public extension Validation {
         if draft.landedTotal > 0 {
             lines.append("\(Money.format(draft.landedTotal)) nakit çıkışı")
         }
+        if draft.resolvedVatRate != .yok, draft.landedTotal > 0 {
+            lines.append("\(Money.format(draft.landedTotal)) KDV "
+                + (draft.resolvedVatIncluded ? "dahil" : "hariç")
+                + " → \(Money.format(net)) net + "
+                + "\(Money.format(draft.landedSplit.vat)) KDV")
+        }
         if base > 0, net > 0 {
             let birimMaliyet = Money.roundHalfAwayFromZero(Double(net) / base)
             lines.append("\(Money.format(birimMaliyet)) / \(birim.displayName) maliyet"
@@ -561,6 +567,11 @@ public extension Validation {
         let bolum = Vat.split(draft.amount, rate: draft.resolvedVatRate,
                               included: draft.resolvedVatIncluded)
         var lines = ["\(Money.format(draft.amount)) nakit çıkışı"]
+        if draft.resolvedVatRate != .yok, draft.amount > 0 {
+            lines.append("\(Money.format(draft.amount)) KDV "
+                + (draft.resolvedVatIncluded ? "dahil" : "hariç")
+                + " → \(Money.format(bolum.net)) net + \(Money.format(bolum.vat)) KDV")
+        }
         if bolum.vat > 0 {
             lines.append("\(Money.format(bolum.net)) kâra gider (KDV hariç)")
             lines.append("\(Money.format(bolum.vat)) indirilecek KDV")
@@ -575,5 +586,41 @@ public extension Validation {
         let not = draft.scope.channelId.flatMap { state.channel($0)?.name }
             .map { "Yalnızca \($0) kârlılığından düşülecek." }
         return SaveSummary(lines: lines, note: not)
+    }
+}
+
+// MARK: - Ad kontrolü
+
+/// Yeni ürün, malzeme, kanal veya kesinti adı girilirken kullanılır.
+/// Türkçe büyük/küçük harf kuralları gözetilir: "ŞAMPUAN" ile "şampuan" aynıdır.
+public enum NameCheck {
+    /// Karşılaştırma için sadeleştirilmiş hâl
+    public static func key(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(with: Locale(identifier: "tr_TR"))
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .joined(separator: " ")
+    }
+
+    public static func isBlank(_ name: String) -> Bool { key(name).isEmpty }
+
+    public static func isDuplicate(_ name: String, among others: [String]) -> Bool {
+        let k = key(name)
+        guard !k.isEmpty else { return false }
+        return others.contains { key($0) == k }
+    }
+
+    /// Kaydedilebilir mi; değilse sebebi.
+    public static func issue(_ name: String, among others: [String]) -> ValidationIssue? {
+        if isBlank(name) {
+            return ValidationIssue(.eksikBilgi, .engel, "Ad girilmedi",
+                                   "Devam etmek için bir ad yazman gerekiyor.")
+        }
+        if isDuplicate(name, among: others) {
+            return ValidationIssue(.eksikBilgi, .engel, "Bu kayıt zaten var.",
+                                   "Aynı adla bir kayıt bulunuyor. Farklı bir ad yaz "
+                                       + "veya mevcut kaydı düzenle.")
+        }
+        return nil
     }
 }

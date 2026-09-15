@@ -6,7 +6,7 @@ struct ExpenseFlow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    private enum Adim: Hashable, Codable { case kategori, ad, tutar, kdv, tekrar, kapsam, ozet }
+    private enum Adim: Hashable, Codable { case kategori, ad, tutar, kdv, kdvOran, tekrar, kapsam, ozet }
 
     @State private var adim: Adim = .kategori
     @State private var gecmis: [Adim] = []
@@ -16,6 +16,8 @@ struct ExpenseFlow: View {
     @State private var tutar: Kurus = 0
     @State private var kdvDahil = true
     @State private var kdvOrani: VatRate = .yirmi
+    @State private var kdvSecildi = false
+    @State private var oranSecildi = false
     @State private var tekrar: Recurrence = .tek
     @State private var kapsam = "ortak"
     @State private var tarih: DateKey = Dates.today()
@@ -30,6 +32,8 @@ struct ExpenseFlow: View {
         var tutar: Kurus
         var kdvDahil: Bool
         var kdvOrani: VatRate
+        var kdvSecildi: Bool
+        var oranSecildi: Bool
         var tekrar: Recurrence
         var kapsam: String
         var tarih: DateKey
@@ -44,7 +48,7 @@ struct ExpenseFlow: View {
 
     private var kdvAcik: Bool { store.state.settings.vatEnabled }
     private var kanalSorulsun: Bool { store.state.activeChannels.count > 1 }
-    private var toplamAdim: Int { 4 + (kdvAcik ? 1 : 0) + (kanalSorulsun ? 1 : 0) }
+    private var toplamAdim: Int { 4 + (kdvAcik ? 2 : 0) + (kanalSorulsun ? 1 : 0) }
 
     private var taslak: Expense {
         Expense(
@@ -85,6 +89,7 @@ struct ExpenseFlow: View {
         case .ad: adAdimi
         case .tutar: tutarAdimi
         case .kdv: kdvAdimi
+        case .kdvOran: kdvOranAdimi
         case .tekrar: tekrarAdimi
         case .kapsam: kapsamAdimi
         case .ozet: ozetAdimi
@@ -95,13 +100,15 @@ struct ExpenseFlow: View {
         guard let t = taslakKaydi.oku(store, Kayit.self) else { return }
         adim = t.adim; gecmis = t.gecmis; secilenKategori = t.kategori
         ad = t.ad; tutar = t.tutar; kdvDahil = t.kdvDahil; kdvOrani = t.kdvOrani
+        kdvSecildi = t.kdvSecildi; oranSecildi = t.oranSecildi
         tekrar = t.tekrar; kapsam = t.kapsam; tarih = t.tarih
     }
 
     private func taslakKaydet() {
         taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Kayit(
             adim: adim, gecmis: gecmis, kategori: secilenKategori, ad: ad, tutar: tutar,
-            kdvDahil: kdvDahil, kdvOrani: kdvOrani, tekrar: tekrar,
+            kdvDahil: kdvDahil, kdvOrani: kdvOrani,
+            kdvSecildi: kdvSecildi, oranSecildi: oranSecildi, tekrar: tekrar,
             kapsam: kapsam, tarih: tarih))
     }
 
@@ -139,35 +146,18 @@ struct ExpenseFlow: View {
     }
 
     private var adAdimi: some View {
-        SoruAdimi(
+        AdSorusu(
             soru: "Kime veya ne için?",
             aciklama: "Kısa bir ad yeter: \"Muhasebeci\", \"Meta reklam\", \"ABC Kargo\".",
+            placeholder: "Gider adı",
+            baslangic: ad,
             adim: 2, toplam: toplamAdim,
-            ileriAktif: !ad.trimmingCharacters(in: .whitespaces).isEmpty,
             geri: geriGit, vazgec: { dismiss() },
-            ileri: { ileri(.tutar) }
-        ) {
-            Card {
-                TextField("Gider adı", text: $ad)
-                    .font(.title3)
-                    .foregroundStyle(Palette.ink)
+            onDevam: { yeni in
+                ad = yeni
+                ileri(.tutar)
             }
-            if !hazirAdlar.isEmpty {
-                VStack(spacing: Metrics.gap) {
-                    Text("Sık kullandıkların".trUpper)
-                        .font(.caption.weight(.semibold))
-                        .tracking(0.6)
-                        .foregroundStyle(Palette.inkFaint)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ForEach(hazirAdlar, id: \.self) { h in
-                        SecenekButonu(baslik: h, renk: Palette.gider) {
-                            ad = h
-                            ileri(.tutar)
-                        }
-                    }
-                }
-            }
-        }
+        )
     }
 
     private var hazirAdlar: [String] {
@@ -181,41 +171,35 @@ struct ExpenseFlow: View {
             adim: 3, toplam: toplamAdim,
             ileriAktif: tutar > 0,
             geri: geriGit, vazgec: { dismiss() },
-            ileri: { ileri(kdvAcik ? .kdv : .tekrar) }
+            ileri: { ileri(kdvAcik && tutar > 0 ? .kdv : .tekrar) }
         ) {
             BuyukParaAlani(baslik: ad.isEmpty ? "Tutar" : ad, deger: $tutar)
         }
     }
 
     private var kdvAdimi: some View {
-        SoruAdimi(
-            soru: "Bu tutara KDV dahil mi?",
+        KdvDahilSorusu(
+            tutar: tutar, oran: kdvOrani, secim: kdvSecildi ? kdvDahil : nil,
             adim: 4, toplam: toplamAdim,
             geri: geriGit, vazgec: { dismiss() }
-        ) {
-            EvetHayirSorusu(
-                evet: "Evet, KDV dahil",
-                hayir: "Hayır, KDV hariç",
-                evetAciklama: kdvOrani == .yok ? nil
-                    : "\(Money.format(Vat.split(tutar, rate: kdvOrani, included: true).net)) net + "
-                      + "\(Money.format(Vat.split(tutar, rate: kdvOrani, included: true).vat)) KDV",
-                hayirAciklama: kdvOrani == .yok ? nil
-                    : "Üzerine \(Money.format(Vat.split(tutar, rate: kdvOrani, included: false).vat)) KDV eklenir",
-                secim: nil
-            ) { secim in
-                kdvDahil = secim
-                ileri(.tekrar)
-            }
-            Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("KDV oranı").font(.caption).foregroundStyle(Palette.inkFaint)
-                    Picker("", selection: $kdvOrani) {
-                        ForEach(VatRate.allCases) { r in Text(r.displayName).tag(r) }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-            }
+        ) { secim in
+            kdvDahil = secim
+            kdvSecildi = true
+            ileri(.kdvOran)
+        }
+    }
+
+    /// KDV oranı ayrı soru: varsayılan görünür ama seçilmeden geçilmez
+    private var kdvOranAdimi: some View {
+        KdvOraniSorusu(
+            tutar: tutar, dahil: kdvDahil,
+            secim: oranSecildi ? kdvOrani : nil,
+            adim: 5, toplam: toplamAdim,
+            geri: geriGit, vazgec: { dismiss() }
+        ) { oran in
+            kdvOrani = oran
+            oranSecildi = true
+            ileri(.tekrar)
         }
     }
 
