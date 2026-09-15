@@ -81,6 +81,27 @@ public enum PreviewGallery {
         ]
     }
 
+    /// Kurulumun belirli bir adımı — görsel doğrulama için
+    @MainActor
+    public static func setupStep(store: AppStore, _ adim: SetupPreviewStep) -> AnyView {
+        AnyView(SetupWizard(baslangic: adim.iceri)
+            .environment(store).environment(Period()))
+    }
+
+    public enum SetupPreviewStep: String, CaseIterable, Sendable {
+        case urunSayisi, setVarMi, setBilesenleri, setAmbalaji, fiyat
+
+        var iceri: SetupWizard.Adim {
+            switch self {
+            case .urunSayisi: return .urunSayisi
+            case .setVarMi: return .setVarMi
+            case .setBilesenleri: return .setBilesenleri(0)
+            case .setAmbalaji: return .setAmbalaji(0)
+            case .fiyat: return .fiyat(0)
+            }
+        }
+    }
+
     /// İlk kurulum sihirbazı
     @MainActor
     public static func setupWizard(store: AppStore) -> AnyView {

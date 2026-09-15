@@ -209,6 +209,15 @@ func run() {
         else { print("✗ \(f.title)") }
     }
 
+    // Kurulumun set/SKU adımları
+    for adim in PreviewGallery.SetupPreviewStep.allCases {
+        let st = AppStore.inMemory(demoState())
+        let u = outDir.appendingPathComponent("k-\(adim.rawValue).png")
+        if render(PreviewGallery.setupStep(store: st, adim), to: u, size: size) {
+            ok += 1; print("✓ Kurulum: \(adim.rawValue) → \(u.lastPathComponent)")
+        } else { print("✗ Kurulum: \(adim.rawValue)") }
+    }
+
     // İlk kurulum sihirbazı — birkaç adım
     let bosStore = AppStore.inMemory(SeedData.initialState())
     let sihirbaz = outDir.appendingPathComponent("10-ilk-kurulum.png")

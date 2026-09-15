@@ -185,6 +185,18 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var openingUnitCost: Kurus?
     public var openingDate: DateKey?
     public var archived: Bool
+    /// Etiket fiyatı — kanal belirtilmemişse geçerli olan satış fiyatı (KDV dahil).
+    /// Kâr hesabı gerçek satış tutarından yapılır; bu yalnızca giriş kolaylığı
+    /// ve birim kâr göstergesi içindir.
+    public var listPrice: Kurus?
+    /// Kanala özel satış fiyatları (kanal id → fiyat)
+    public var channelPrices: [Id: Kurus]?
+
+    /// Bu kanalda geçerli satış fiyatı; kanala özel yoksa etiket fiyatı.
+    public func price(for channelId: Id? = nil) -> Kurus? {
+        if let channelId, let p = channelPrices?[channelId], p > 0 { return p }
+        return (listPrice ?? 0) > 0 ? listPrice : nil
+    }
 
     /// Setler kendi stoklarını tutmaz; satıldığında bileşenleri düşer.
     public var tracksOwnStock: Bool { !isBundle }
@@ -208,7 +220,9 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         openingQty: BaseQty? = nil,
         openingUnitCost: Kurus? = nil,
         openingDate: DateKey? = nil,
-        archived: Bool = false
+        archived: Bool = false,
+        listPrice: Kurus? = nil,
+        channelPrices: [Id: Kurus]? = nil
     ) {
         self.id = id
         self.name = name
@@ -224,6 +238,8 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         self.openingUnitCost = openingUnitCost
         self.openingDate = openingDate
         self.archived = archived
+        self.listPrice = listPrice
+        self.channelPrices = channelPrices
     }
 }
 

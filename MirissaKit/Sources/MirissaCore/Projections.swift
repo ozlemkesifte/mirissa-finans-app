@@ -153,6 +153,34 @@ public extension Engine {
         return Int((q / rate.perOrder).rounded(.down))
     }
 
+    /// Eldeki bileşen stoğuyla bu setten en fazla kaç adet hazırlanabilir.
+    /// Set değilse veya bileşeni yoksa `nil`.
+    /// Setin kendi stoğu tutulmaz; sayı her zaman bileşenlerden türetilir.
+    func buildable(_ productId: Id) -> Int? {
+        let byId = Dictionary(uniqueKeysWithValues: state.products.map { ($0.id, $0) })
+        guard let p = byId[productId], p.isBundle, !p.components.isEmpty else { return nil }
+        let leaves = Costing.explodeToLeafProducts(products: byId, productId: productId, qty: 1)
+        var enAz: Int?
+        for (leafId, mult) in leaves where mult > 0 {
+            let adet = Int((qty(.product(leafId)) / mult).rounded(.down))
+            enAz = min(enAz ?? adet, adet)
+        }
+        return enAz.map { max(0, $0) }
+    }
+
+    /// Setin hazırlanmasını sınırlayan bileşen — "en az hangisi yetiyor".
+    func buildableBottleneck(_ productId: Id) -> (productId: Id, adet: Int)? {
+        let byId = Dictionary(uniqueKeysWithValues: state.products.map { ($0.id, $0) })
+        guard let p = byId[productId], p.isBundle, !p.components.isEmpty else { return nil }
+        let leaves = Costing.explodeToLeafProducts(products: byId, productId: productId, qty: 1)
+        var en: (Id, Int)?
+        for (leafId, mult) in leaves where mult > 0 {
+            let adet = Int((qty(.product(leafId)) / mult).rounded(.down))
+            if en == nil || adet < en!.1 { en = (leafId, adet) }
+        }
+        return en.map { ($0.0, max(0, $0.1)) }
+    }
+
     /// Eldeki stok yaklaşık kaç ay yeter. Veri yoksa `nil`.
     func monthsLeft(_ item: ItemRef, endingAt month: MonthKey? = nil) -> Double? {
         let rate = consumptionRate(item, endingAt: month)

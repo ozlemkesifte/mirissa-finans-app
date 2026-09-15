@@ -293,3 +293,39 @@ struct OzetAdimi: View {
         }
     }
 }
+
+/// Küçük artı/eksi sayacı — "bir pakette kaç adet" gibi sorular için.
+struct SayiSayaci: View {
+    @Binding var deger: Double
+    var adim: Double = 1
+    var enAz: Double = 0
+
+    var body: some View {
+        HStack(spacing: 14) {
+            buton("minus", aktif: deger > enAz) {
+                deger = max(enAz, deger - adim)
+            }
+            Text(Units.formatNumber(deger))
+                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .foregroundStyle(deger > 0 ? Palette.ink : Palette.inkFaint)
+                .frame(minWidth: 44)
+                .contentTransition(.numericText())
+            buton("plus", aktif: true) { deger += adim }
+        }
+    }
+
+    private func buton(_ icon: String, aktif: Bool,
+                       _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.headline)
+                .foregroundStyle(aktif ? Palette.accent : Palette.inkFaint)
+                .frame(width: 36, height: 36)
+                .background(Palette.inset)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!aktif)
+        .accessibilityLabel(icon == "plus" ? "Artır" : "Azalt")
+    }
+}

@@ -97,7 +97,9 @@ struct ProductDetail: View {
     }
 
     private func componentsCard(_ p: Product) -> some View {
-        VStack(spacing: Metrics.gap) {
+        let hazir = store.engine.buildable(p.id)
+        let darBogaz = store.engine.buildableBottleneck(p.id)
+        return VStack(spacing: Metrics.gap) {
             SectionTitle("Setin İçindekiler")
             Card {
                 VStack(spacing: 9) {
@@ -107,6 +109,24 @@ struct ProductDetail: View {
                             "\(NumberInput.display(c.qty).isEmpty ? "0" : NumberInput.display(c.qty)) adet"
                         )
                     }
+                    if let hazir {
+                        Divider().overlay(Palette.separator)
+                        LabeledRow("Eldeki stokla hazırlanabilir", "\(hazir) adet",
+                                   tone: hazir == 0 ? Palette.zarar : Palette.ink, strong: true)
+                        if hazir > 0, let darBogaz,
+                           let ad = store.state.product(darBogaz.productId)?.name {
+                            Text("Sınırlayan: \(ad)")
+                                .font(.caption)
+                                .foregroundStyle(Palette.inkFaint)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    Text("Setin ayrı stoğu tutulmaz. Satıldığında içindeki ürünler düşer, "
+                         + "maliyeti de onlardan hesaplanır.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }

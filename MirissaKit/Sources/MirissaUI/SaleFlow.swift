@@ -137,6 +137,13 @@ struct SaleFlow: View {
     }
 
     // 4 — Her ürün için adet + tutar
+    /// Kurulumda girilmiş satış fiyatı — kanala özel varsa o geçerli.
+    private func kayitliFiyat(_ i: Int) -> Kurus? {
+        guard satirlar.indices.contains(i),
+              let p = store.state.product(satirlar[i].urunId) else { return nil }
+        return p.price(for: kanalId.isEmpty ? nil : kanalId)
+    }
+
     private func urunDetayAdimi(_ i: Int) -> some View {
         let satir = satirlar[safe: i]
         return SoruAdimi(
@@ -152,7 +159,19 @@ struct SaleFlow: View {
             if satirlar.indices.contains(i) {
                 BuyukSayiAlani(baslik: "Satılan adet", birim: "adet",
                                deger: Binding(get: { satirlar[i].adet },
-                                              set: { satirlar[i].adet = $0 }))
+                                              set: { adet in
+                                                  let onceki = satirlar[i].adet
+                                                  satirlar[i].adet = adet
+                                                  // Fiyat tanımlıysa tutarı önden doldur;
+                                                  // kullanıcı elle değiştirdiyse dokunma.
+                                                  guard let fiyat = kayitliFiyat(i) else { return }
+                                                  let beklenen = Money.roundHalfAwayFromZero(
+                                                    Double(fiyat) * onceki)
+                                                  if satirlar[i].tutar == 0 || satirlar[i].tutar == beklenen {
+                                                      satirlar[i].tutar = Money.roundHalfAwayFromZero(
+                                                        Double(fiyat) * adet)
+                                                  }
+                                              }))
                 BuyukParaAlani(baslik: "Toplam satış tutarı",
                                deger: Binding(get: { satirlar[i].tutar },
                                               set: { satirlar[i].tutar = $0 }))

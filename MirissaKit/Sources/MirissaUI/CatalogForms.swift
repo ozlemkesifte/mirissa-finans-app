@@ -144,6 +144,8 @@ struct ProductForm: View {
 
     @State private var minQty: Double?
     @State private var criticalQty: Double?
+    @State private var listeFiyat: Kurus = 0
+    @State private var kanalFiyat: [Id: Kurus] = [:]
     @State private var loaded = false
     @State private var showDelete = false
 
@@ -188,6 +190,22 @@ struct ProductForm: View {
                     }
                     .foregroundStyle(Palette.accent)
                 }
+            }
+
+            Section {
+                MoneyField("Etiket fiyatı", value: $listeFiyat)
+                ForEach(store.state.activeChannels) { c in
+                    MoneyField("\(c.name) fiyatı", value: Binding(
+                        get: { kanalFiyat[c.id] ?? 0 },
+                        set: { kanalFiyat[c.id] = $0 > 0 ? $0 : nil }
+                    ))
+                }
+            } header: {
+                Text("Satış fiyatları")
+            } footer: {
+                Text("Kâr her zaman girdiğin gerçek satış tutarından hesaplanır. "
+                     + "Buradaki fiyat satış girişinde tutarı önden doldurur. "
+                     + "Boş bıraktığın kanalda etiket fiyatı geçerli olur.")
             }
 
             Section {
@@ -262,6 +280,7 @@ struct ProductForm: View {
         loaded = true
         guard let id = editingId, let p = store.state.product(id) else { return }
         name = p.name; isBundle = p.isBundle; components = p.components
+        listeFiyat = p.listPrice ?? 0; kanalFiyat = p.channelPrices ?? [:]
         costLines = p.costLines; recipe = p.recipe
         minQty = p.minQty; criticalQty = p.criticalQty
     }
@@ -286,13 +305,17 @@ struct ProductForm: View {
             p.components = isBundle ? components : []
             p.costLines = cleanCost; p.recipe = recipe
             p.minQty = minQty; p.criticalQty = criticalQty
+            p.listPrice = listeFiyat > 0 ? listeFiyat : nil
+            p.channelPrices = kanalFiyat.isEmpty ? nil : kanalFiyat
             store.updateProduct(p)
         } else {
             store.addProduct(Product(
                 name: name, isBundle: isBundle,
                 components: isBundle ? components : [],
                 costLines: cleanCost, recipe: recipe,
-                minQty: minQty, criticalQty: criticalQty
+                minQty: minQty, criticalQty: criticalQty,
+                listPrice: listeFiyat > 0 ? listeFiyat : nil,
+                channelPrices: kanalFiyat.isEmpty ? nil : kanalFiyat
             ))
         }
     }

@@ -124,6 +124,18 @@ public enum Units {
         return out
     }
 
+    /// Birimsiz sayı: 2 -> "2", 0,5 -> "0,5"
+    public static func formatNumber(_ v: Double, digits: Int = 2) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "tr_TR")
+        f.groupingSeparator = "."
+        f.decimalSeparator = ","
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = digits
+        return f.string(from: NSNumber(value: v)) ?? "0"
+    }
+
     /// Temel birimdeki miktarı okunur biçimde yazar: 1200 gram -> "1,2 kg", 70 -> "70 adet"
     public static func formatQty(_ base: BaseQty, baseUnit: UnitCode, forceBase: Bool = false) -> String {
         func num(_ v: Double, _ digits: Int) -> String {

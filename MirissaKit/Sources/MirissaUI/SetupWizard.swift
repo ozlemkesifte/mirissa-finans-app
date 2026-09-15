@@ -8,15 +8,22 @@ import MirissaCore
 public struct SetupWizard: View {
     @Environment(AppStore.self) private var store
 
-    enum Adim: Hashable {
+    public enum Adim: Hashable {
         case karsilama
         case urunSayisi
         case urunAdi(Int)
         case urunStok(Int)
         case urunMaliyet(Int)
         case ambalajDahil(Int)
+        case setVarMi
+        case setSayisi
+        case setAdi(Int)
+        case setBilesenleri(Int)
         case malzemeSecimi
         case malzemeDetay(Int)
+        case setAmbalaji(Int)
+        case fiyatSorusu
+        case fiyat(Int)
         case giderVarMi
         case giderler
         case kanalKullanim(Int)
@@ -28,11 +35,15 @@ public struct SetupWizard: View {
     @State private var gecmis: [Adim] = []
     @State private var urunler: [UrunTaslak] = []
     @State private var malzemeler: [MalzemeTaslak] = []
+    @State private var setler: [SetTaslak] = []
     @State private var giderler: [GiderTaslak] = []
     @State private var kanallar: [KanalTaslak] = []
     @State private var yuklendi = false
 
     public init() {}
+
+    /// Yalnızca önizleme/görsel doğrulama için: belirli bir adımdan başlatır.
+    init(baslangic: Adim) { _adim = State(initialValue: baslangic) }
 
     /// Seçili malzemelerin `malzemeler` içindeki sıraları
     private var seciliIndisler: [Int] {
@@ -60,8 +71,15 @@ public struct SetupWizard: View {
         case let .urunStok(i): urunStokAdimi(i)
         case let .urunMaliyet(i): urunMaliyetAdimi(i)
         case let .ambalajDahil(i): ambalajDahilAdimi(i)
+        case .setVarMi: setVarMiAdimi
+        case .setSayisi: setSayisiAdimi
+        case let .setAdi(i): setAdiAdimi(i)
+        case let .setBilesenleri(i): setBilesenleriAdimi(i)
         case .malzemeSecimi: malzemeSecimAdimi
         case let .malzemeDetay(i): malzemeDetayAdimi(i)
+        case let .setAmbalaji(i): setAmbalajiAdimi(i)
+        case .fiyatSorusu: fiyatSorusuAdimi
+        case let .fiyat(i): fiyatAdimi(i)
         case .giderVarMi: giderVarMiAdimi
         case .giderler: giderAdimi
         case let .kanalKullanim(i): kanalKullanimAdimi(i)
@@ -111,9 +129,9 @@ public struct SetupWizard: View {
 
     private var urunSayisiAdimi: some View {
         SoruAdimi(
-            soru: "Kaç ürün satıyorsun?",
-            aciklama: "Set gibi birden çok üründen oluşanları saymana gerek yok, "
-                + "onları sonra ekleyebilirsin.",
+            soru: "Kaç temel fiziksel ürünün var?",
+            aciklama: "Sadece gerçekten stoğunu tuttuğun ürünleri say — şampuan, serum gibi. "
+                + "Set ve çoklu paketleri sayma, onları birazdan ayrıca soracağım.",
             geri: geriGit
         ) {
             VStack(spacing: Metrics.gap) {
@@ -211,7 +229,245 @@ public struct SetupWizard: View {
     }
 
     private func sonrakiUrunAdimi(_ i: Int) -> Adim {
-        i + 1 < urunler.count ? .urunAdi(i + 1) : .malzemeSecimi
+        i + 1 < urunler.count ? .urunAdi(i + 1) : .setVarMi
+    }
+
+    // MARK: 5b — Set ve çoklu paketler
+
+    private var setVarMiAdimi: some View {
+        SoruAdimi(
+            soru: "Set veya çoklu paket satıyor musun?",
+            aciklama: "\"Şampuan + Serum Seti\" ya da \"2'li Şampuan Paketi\" gibi. "
+                + "Bunların ayrı stoğunu tutmam; satıldığında içindeki ürünleri düşerim.",
+            geri: geriGit
+        ) {
+            EvetHayirSorusu(
+                evet: "Evet, satıyorum",
+                hayir: "Hayır, sadece tekil ürün",
+                evetAciklama: "Her paket için içinde ne olduğunu soracağım",
+                secim: setler.isEmpty ? nil : true
+            ) { secim in
+                if secim {
+                    if setler.isEmpty { setler = [SetTaslak(ad: "")] }
+                    ileri(.setSayisi)
+                } else {
+                    setler = []
+                    ileri(.malzemeSecimi)
+                }
+            }
+        }
+    }
+
+    private var setSayisiAdimi: some View {
+        SoruAdimi(
+            soru: "Kaç farklı set veya paket satıyorsun?",
+            aciklama: "Aynı ürünlerden oluşan her farklı satış seçeneği ayrı sayılır.",
+            geri: geriGit
+        ) {
+            VStack(spacing: Metrics.gap) {
+                ForEach([1, 2, 3, 4, 5], id: \.self) { n in
+                    SecenekButonu(baslik: n == 5 ? "5 veya daha fazla" : "\(n) tane",
+                                  secili: setler.count == n) {
+                        if setler.count > n { setler.removeLast(setler.count - n) }
+                        while setler.count < n { setler.append(SetTaslak(ad: "")) }
+                        ileri(.setAdi(0))
+                    }
+                }
+            }
+        }
+    }
+
+    private func setAdiAdimi(_ i: Int) -> some View {
+        SoruAdimi(
+            soru: "\(i + 1). paketin adı ne?",
+            aciklama: "Müşterinin gördüğü isim: \"Saç Derisi Bakım Seti\", \"2'li Şampuan Paketi\".",
+            adim: i + 1, toplam: setler.count,
+            ileriAktif: !setTaslak(i).ad.trimmingCharacters(in: .whitespaces).isEmpty,
+            geri: geriGit,
+            ileri: { ileri(.setBilesenleri(i)) }
+        ) {
+            Card {
+                TextField("Paket adı", text: setBinding(i).ad)
+                    .font(.title3)
+                    .foregroundStyle(Palette.ink)
+            }
+        }
+    }
+
+    private func setBilesenleriAdimi(_ i: Int) -> some View {
+        let t = setTaslak(i)
+        return SoruAdimi(
+            soru: "\(t.ad.isEmpty ? "Bu pakette" : t.ad) — içinde ne var?",
+            aciklama: "Bir adet satıldığında stoktan düşecek ürünler.",
+            adim: i + 1, toplam: setler.count,
+            ileriAktif: t.bilesenler.values.contains { $0 > 0 },
+            geri: geriGit,
+            ileri: { ileri(sonrakiSetAdimi(i)) }
+        ) {
+            VStack(spacing: Metrics.gap) {
+                ForEach(doluUrunler) { u in
+                    Card {
+                        HStack(spacing: 12) {
+                            Text(u.ad)
+                                .font(.headline)
+                                .foregroundStyle(Palette.ink)
+                            Spacer()
+                            SayiSayaci(deger: bilesenBinding(i, u.id))
+                        }
+                    }
+                }
+            }
+            setOzetKarti(i)
+        }
+    }
+
+    @ViewBuilder
+    private func setOzetKarti(_ i: Int) -> some View {
+        let t = setTaslak(i)
+        let maliyet = setMaliyeti(t)
+        let hazir = hazirlanabilir(t)
+        if maliyet > 0 || hazir != nil {
+            Card(background: Palette.inset) {
+                VStack(spacing: 10) {
+                    if maliyet > 0 {
+                        LabeledRow("İçindekilerin maliyeti", Money.format(maliyet), strong: true)
+                    }
+                    if let hazir {
+                        LabeledRow("Eldeki stokla hazırlanabilir", "\(hazir) adet")
+                    }
+                    Text("Bu maliyeti ayrıca girmene gerek yok; içindeki ürünlerden "
+                         + "kendim hesaplıyorum.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    /// Bileşenlerin taslak maliyetlerinden hesaplanır — elle girilmez.
+    private func setMaliyeti(_ t: SetTaslak) -> Kurus {
+        doluUrunler.reduce(0) { acc, u in
+            let adet = t.bilesenler[u.id] ?? 0
+            return acc + Money.roundHalfAwayFromZero(Double(u.maliyet) * adet)
+        }
+    }
+
+    /// 500 şampuan + 300 serum → en fazla 300 set.
+    /// Ürün kayıtlıysa gerçek stok, yeni giriliyorsa az önce yazılan miktar kullanılır.
+    private func hazirlanabilir(_ t: SetTaslak) -> Int? {
+        var en: Int?
+        var stokBilgisiVar = false
+        for u in doluUrunler {
+            let adet = t.bilesenler[u.id] ?? 0
+            guard adet > 0 else { continue }
+            let mevcut = store.state.product(u.id) != nil
+                ? store.engine.qty(.product(u.id))
+                : u.stok
+            if mevcut > 0 { stokBilgisiVar = true }
+            let kac = Int((mevcut / adet).rounded(.down))
+            en = min(en ?? kac, kac)
+        }
+        return stokBilgisiVar ? en : nil
+    }
+
+    private func sonrakiSetAdimi(_ i: Int) -> Adim {
+        i + 1 < setler.count ? .setAdi(i + 1) : .malzemeSecimi
+    }
+
+    // MARK: 7b — Sete özel ambalaj
+
+    private func setAmbalajiAdimi(_ i: Int) -> some View {
+        let t = setTaslak(i)
+        return SoruAdimi(
+            soru: "\(t.ad) paketlenirken ne kullanılıyor?",
+            aciklama: "Sadece bu pakete özel olanları yaz. İçindeki ürünlerin kendi "
+                + "kutuları bu satışta kullanılmıyorsa sıfır bırak.",
+            adim: i + 1, toplam: setler.count,
+            geri: geriGit,
+            ileri: { ileri(sonrakiSetAmbalajAdimi(i)) }
+        ) {
+            VStack(spacing: Metrics.gap) {
+                ForEach(seciliIndisler, id: \.self) { mi in
+                    let m = malzemeTaslak(mi)
+                    Card {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(m.ad).font(.headline).foregroundStyle(Palette.ink)
+                                Text(m.birim.displayName)
+                                    .font(.caption).foregroundStyle(Palette.inkFaint)
+                            }
+                            Spacer()
+                            SayiSayaci(deger: setAmbalajBinding(i, m.id))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Ambalajı hiç girilmemiş setler için tekil siparişteki kullanımı öneri olarak doldurur.
+    private func setAmbalajlariniHazirla() {
+        let standart = seciliIndisler
+            .map { malzemeler[$0] }
+            .filter { $0.siparisBasi > 0 }
+        guard !standart.isEmpty else { return }
+        for i in setler.indices where setler[i].ambalaj.isEmpty {
+            for m in standart { setler[i].ambalaj[m.id] = m.siparisBasi }
+        }
+    }
+
+    private func sonrakiSetAmbalajAdimi(_ i: Int) -> Adim {
+        i + 1 < setler.count ? .setAmbalaji(i + 1) : .fiyatSorusu
+    }
+
+    // MARK: 8b — Satış fiyatları
+
+    /// Fiyatı sorulacak her satış seçeneği: önce tekil ürünler, sonra paketler
+    private var fiyatliKalemler: [(ad: String, set: Bool, sira: Int)] {
+        doluUrunler.enumerated().map { ($0.element.ad, false, $0.offset) }
+            + setler.enumerated()
+                .filter { !$0.element.ad.trimmingCharacters(in: .whitespaces).isEmpty }
+                .map { ($0.element.ad, true, $0.offset) }
+    }
+
+    private var fiyatSorusuAdimi: some View {
+        SoruAdimi(
+            soru: "Satış fiyatlarını şimdi girmek ister misin?",
+            aciklama: "Her satış seçeneği için ayrı fiyat girebilirsin. Kâr hesabı yine "
+                + "gerçek satış tutarından yapılır; fiyat sadece giriş kolaylığı sağlar.",
+            geri: geriGit
+        ) {
+            EvetHayirSorusu(
+                evet: "Evet, girelim",
+                hayir: "Şimdilik geç",
+                hayirAciklama: "Sonra ürün ekranından girebilirsin"
+            ) { secim in
+                ileri(secim && !fiyatliKalemler.isEmpty ? .fiyat(0) : .giderVarMi)
+            }
+        }
+    }
+
+    private func fiyatAdimi(_ sira: Int) -> some View {
+        let kalemler = fiyatliKalemler
+        let kalem: (ad: String, set: Bool, sira: Int) =
+            kalemler.indices.contains(sira) ? kalemler[sira] : (ad: "", set: false, sira: 0)
+        return SoruAdimi(
+            soru: "\(kalem.ad) kaça satılıyor?",
+            aciklama: "Kanala göre fiyatın değişiyorsa ayrı ayrı yazabilirsin. "
+                + "Boş bıraktığın kanalda etiket fiyatı geçerli olur.",
+            adim: sira + 1, toplam: kalemler.count,
+            geri: geriGit,
+            ileri: { ileri(sira + 1 < kalemler.count ? .fiyat(sira + 1) : .giderVarMi) }
+        ) {
+            BuyukParaAlani(baslik: "Etiket fiyatı",
+                           deger: fiyatBinding(kalem.set, kalem.sira, kanal: nil))
+            ForEach(kanallar.filter(\.acik)) { k in
+                BuyukParaAlani(baslik: "\(k.ad) fiyatı",
+                               deger: fiyatBinding(kalem.set, kalem.sira, kanal: k.id))
+            }
+        }
     }
 
     // MARK: 6 — Malzeme seçimi
@@ -264,8 +520,9 @@ public struct SetupWizard: View {
         let birim = m.birim.displayName
         return SoruAdimi(
             soru: m.ad.isEmpty ? "Bu malzemeyi anlat" : "\(m.ad)",
-            aciklama: "Elindeki miktarı, birim maliyetini ve bir siparişte kaç tane "
-                + "kullandığını yaz. Bilmiyorsan boş bırak.",
+            aciklama: "Elindeki miktarı, birim maliyetini ve tek ürünlük bir siparişte kaç tane "
+                + "kullandığını yaz. Sadece sette kullanıyorsan sıfır bırak — "
+                + "setin ambalajını birazdan ayrıca soracağım.",
             adim: sira + 1, toplam: indisler.count,
             geri: geriGit,
             ileri: { ileri(sonrakiMalzemeAdimi(sira)) }
@@ -285,7 +542,10 @@ public struct SetupWizard: View {
     }
 
     private func sonrakiMalzemeAdimi(_ sira: Int) -> Adim {
-        sira + 1 < seciliIndisler.count ? .malzemeDetay(sira + 1) : .giderVarMi
+        if sira + 1 < seciliIndisler.count { return .malzemeDetay(sira + 1) }
+        guard !setler.isEmpty else { return .fiyatSorusu }
+        setAmbalajlariniHazirla()
+        return .setAmbalaji(0)
     }
 
     // MARK: 8 — Sabit gider var mı
@@ -404,6 +664,24 @@ public struct SetupWizard: View {
         if !stoklu.isEmpty {
             satirlar.append("Başlangıç stoğu girilen ürün: \(stoklu.count)")
         }
+        let gecerliSetler = setler.filter {
+            !$0.ad.trimmingCharacters(in: .whitespaces).isEmpty
+                && $0.bilesenler.values.contains { $0 > 0 }
+        }
+        if !gecerliSetler.isEmpty {
+            satirlar.append("\(gecerliSetler.count) set/paket: "
+                + gecerliSetler.map(\.ad).joined(separator: ", "))
+            satirlar.append("Setlerin ayrı stoğu tutulmaz; satıldıkça içindeki ürünler düşer")
+            for t in gecerliSetler where setMaliyeti(t) > 0 {
+                satirlar.append("\(t.ad) maliyeti içindekilerden hesaplanacak: "
+                    + Money.format(setMaliyeti(t)))
+            }
+            for t in gecerliSetler {
+                if let hazir = hazirlanabilir(t) {
+                    satirlar.append("\(t.ad) — eldeki stokla \(hazir) adet hazırlanabilir")
+                }
+            }
+        }
         let sec = seciliIndisler
         satirlar.append("\(sec.count) ambalaj/sarf malzemesi takip edilecek")
         let recete = sec.filter { malzemeler[$0].siparisBasi > 0 }
@@ -427,7 +705,8 @@ public struct SetupWizard: View {
         return SaveSummary(
             lines: satirlar,
             note: "Başlangıç stoğu bu ayın gideri veya nakit çıkışı sayılmaz, "
-                + "KDV kaydı oluşturmaz. Hepsini sonradan değiştirebilirsin."
+                + "KDV kaydı oluşturmaz. Set maliyetini elle girmene gerek yok; "
+                + "içindeki ürünlerden hesaplanır. Hepsini sonradan değiştirebilirsin."
         )
     }
 
@@ -457,6 +736,76 @@ public struct SetupWizard: View {
     private func malzemeTaslak(_ i: Int) -> MalzemeTaslak {
         malzemeler.indices.contains(i) ? malzemeler[i]
             : MalzemeTaslak(ad: "", birim: .adet, secili: false)
+    }
+
+    private func setTaslak(_ i: Int) -> SetTaslak {
+        setler.indices.contains(i) ? setler[i] : SetTaslak(ad: "")
+    }
+
+    private func setBinding(_ i: Int) -> Binding<SetTaslak> {
+        Binding(
+            get: { setler.indices.contains(i) ? setler[i] : SetTaslak(ad: "") },
+            set: { if setler.indices.contains(i) { setler[i] = $0 } }
+        )
+    }
+
+    private func bilesenBinding(_ i: Int, _ urunId: Id) -> Binding<Double> {
+        Binding(
+            get: { setler.indices.contains(i) ? (setler[i].bilesenler[urunId] ?? 0) : 0 },
+            set: { yeni in
+                guard setler.indices.contains(i) else { return }
+                var t = setler[i]
+                if yeni <= 0 { t.bilesenler[urunId] = nil } else { t.bilesenler[urunId] = yeni }
+                setler[i] = t
+            }
+        )
+    }
+
+    private func setAmbalajBinding(_ i: Int, _ malzemeId: Id) -> Binding<Double> {
+        Binding(
+            get: { setler.indices.contains(i) ? (setler[i].ambalaj[malzemeId] ?? 0) : 0 },
+            set: { yeni in
+                guard setler.indices.contains(i) else { return }
+                var t = setler[i]
+                if yeni <= 0 { t.ambalaj[malzemeId] = nil } else { t.ambalaj[malzemeId] = yeni }
+                setler[i] = t
+            }
+        )
+    }
+
+    /// kanal nil ise etiket fiyatı
+    private func fiyatBinding(_ set: Bool, _ sira: Int, kanal: Id?) -> Binding<Kurus> {
+        Binding(
+            get: {
+                if set {
+                    guard setler.indices.contains(sira) else { return 0 }
+                    return kanal.map { setler[sira].kanalFiyat[$0] ?? 0 } ?? setler[sira].listeFiyat
+                }
+                let dolu = doluUrunler
+                guard dolu.indices.contains(sira),
+                      let i = urunler.firstIndex(where: { $0.id == dolu[sira].id })
+                else { return 0 }
+                return kanal.map { urunler[i].kanalFiyat[$0] ?? 0 } ?? urunler[i].listeFiyat
+            },
+            set: { yeni in
+                if set {
+                    guard setler.indices.contains(sira) else { return }
+                    var t = setler[sira]
+                    if let kanal { t.kanalFiyat[kanal] = yeni > 0 ? yeni : nil }
+                    else { t.listeFiyat = yeni }
+                    setler[sira] = t
+                    return
+                }
+                let dolu = doluUrunler
+                guard dolu.indices.contains(sira),
+                      let i = urunler.firstIndex(where: { $0.id == dolu[sira].id })
+                else { return }
+                var t = urunler[i]
+                if let kanal { t.kanalFiyat[kanal] = yeni > 0 ? yeni : nil }
+                else { t.listeFiyat = yeni }
+                urunler[i] = t
+            }
+        )
     }
 
     private func kanalTaslak(_ i: Int) -> KanalTaslak {
@@ -502,7 +851,9 @@ public struct SetupWizard: View {
                        stok: p.openingQty ?? 0,
                        maliyet: p.costLines.reduce(0) { $0 + $1.amount },
                        ambalajDahil: p.recipe.isEmpty ? nil
-                        : p.recipe.allSatisfy { !$0.resolvedAddsCost })
+                        : p.recipe.allSatisfy { !$0.resolvedAddsCost },
+                       listeFiyat: p.listPrice ?? 0,
+                       kanalFiyat: p.channelPrices ?? [:])
         }
         if urunler.isEmpty { urunler = [UrunTaslak(ad: "")] }
         let receteler = s.products.flatMap(\.recipe)
@@ -517,6 +868,17 @@ public struct SetupWizard: View {
                           ilkSiparisBasi: receteler
                             .filter { $0.materialId == m.id }
                             .map(\.qty).max() ?? 0)
+        }
+        setler = s.products.filter { $0.isBundle && !$0.archived }.map { p in
+            SetTaslak(
+                id: p.id, ad: p.name,
+                bilesenler: Dictionary(p.components.map { ($0.productId, $0.qty) },
+                                       uniquingKeysWith: { a, _ in a }),
+                ambalaj: Dictionary(p.recipe.map { ($0.materialId, $0.qty) },
+                                    uniquingKeysWith: { a, _ in a }),
+                listeFiyat: p.listPrice ?? 0,
+                kanalFiyat: p.channelPrices ?? [:]
+            )
         }
         kanallar = s.channels.map {
             KanalTaslak(id: $0.id, ad: $0.name, acik: !$0.archived,
@@ -533,6 +895,8 @@ public struct SetupWizard: View {
             for t in urunler where !t.ad.trimmingCharacters(in: .whitespaces).isEmpty {
                 if var p = s.products.first(where: { $0.id == t.id }) {
                     p.name = t.ad
+                    p.listPrice = t.listeFiyat > 0 ? t.listeFiyat : nil
+                    p.channelPrices = t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
                     p.openingQty = t.stok > 0 ? t.stok : nil
                     p.openingUnitCost = t.maliyet > 0 ? t.maliyet : nil
                     p.openingDate = ay
@@ -548,11 +912,53 @@ public struct SetupWizard: View {
                             ? [CostLine(label: "Birim maliyet", amount: t.maliyet)] : [],
                         openingQty: t.stok > 0 ? t.stok : nil,
                         openingUnitCost: t.maliyet > 0 ? t.maliyet : nil,
-                        openingDate: ay
+                        openingDate: ay,
+                        listPrice: t.listeFiyat > 0 ? t.listeFiyat : nil,
+                        channelPrices: t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
                     ))
                 }
             }
-            // Setleri koru
+            // --- Setler / çoklu paketler ---
+            // Kendi stokları tutulmaz, kendi maliyet kalemleri yazılmaz:
+            // maliyet bileşenlerden hesaplanır, aksi halde çift sayılır.
+            let sadeIdler = Set(yeniUrunler.map(\.id))
+            for t in setler {
+                let ad = t.ad.trimmingCharacters(in: .whitespaces)
+                let bilesenler = t.bilesenler
+                    .filter { sadeIdler.contains($0.key) && $0.value > 0 }
+                    .map { BundleComponent(productId: $0.key, qty: $0.value) }
+                    .sorted { $0.productId < $1.productId }
+                guard !ad.isEmpty, !bilesenler.isEmpty else { continue }
+                let recete = t.ambalaj
+                    .filter { $0.value > 0 }
+                    .sorted { $0.key < $1.key }
+                    .map { pair -> RecipeLine in
+                        let birim = s.materials.first { $0.id == pair.key }?.baseUnit ?? .adet
+                        return RecipeLine(id: "rcp_\(t.id)_\(pair.key)",
+                                          materialId: pair.key, qty: pair.value, unit: birim)
+                    }
+                if var p = s.products.first(where: { $0.id == t.id }) {
+                    p.name = ad
+                    p.isBundle = true
+                    p.components = bilesenler
+                    p.recipe = recete
+                    p.costLines = []          // bileşen maliyeti ikinci kez yazılmaz
+                    p.openingQty = nil        // setin kendi stoğu yok
+                    p.openingUnitCost = nil
+                    p.archived = false
+                    p.listPrice = t.listeFiyat > 0 ? t.listeFiyat : nil
+                    p.channelPrices = t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
+                    yeniUrunler.append(p)
+                } else {
+                    yeniUrunler.append(Product(
+                        id: t.id, name: ad, isBundle: true,
+                        components: bilesenler, costLines: [], recipe: recete,
+                        listPrice: t.listeFiyat > 0 ? t.listeFiyat : nil,
+                        channelPrices: t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
+                    ))
+                }
+            }
+            // Kuruluma girmeyen eski setler olduğu gibi kalır
             yeniUrunler += s.products.filter { p in
                 p.isBundle && !yeniUrunler.contains { $0.id == p.id }
             }
@@ -589,15 +995,20 @@ public struct SetupWizard: View {
 
             // --- Sipariş başı kullanım → paketleme reçetesi ---
             // Motor değişmiyor; yalnızca reçete satırları yazılıyor.
+            // Setlerin reçetesi ayrı soruldu; burada yalnızca tekil ürünler güncellenir.
             let sade = Set(s.products.filter { !$0.isBundle }.map(\.id))
+            let seteOzel = Set(setler.flatMap { $0.ambalaj.filter { $0.value > 0 }.keys })
             for t in malzemeler where t.secili && t.siparisBasi > 0 && aktif.contains(t.id) {
                 let gecenler = s.products.filter { p in
-                    p.recipe.contains { $0.materialId == t.id }
+                    !p.isBundle && p.recipe.contains { $0.materialId == t.id }
                 }.map(\.id)
+                // Yalnızca sette kullanılan bir malzeme tüm ürünlere eklenmez
+                if gecenler.isEmpty && seteOzel.contains(t.id) { continue }
                 // Malzeme hiçbir reçetede yoksa tüm sade ürünlere eklenir,
                 // varsa yalnızca zaten kullandığı ürünlerin miktarı güncellenir.
                 let hedefler = gecenler.isEmpty ? Array(sade) : gecenler
-                for i in s.products.indices where hedefler.contains(s.products[i].id) {
+                for i in s.products.indices
+                where hedefler.contains(s.products[i].id) && !s.products[i].isBundle {
                     var p = s.products[i]
                     if let j = p.recipe.firstIndex(where: { $0.materialId == t.id }) {
                         p.recipe[j].qty = t.siparisBasi
@@ -615,7 +1026,7 @@ public struct SetupWizard: View {
                 .filter { $0.ilkSiparisBasi > 0 && $0.siparisBasi == 0 }
                 .map(\.id))
             if !sifirlanan.isEmpty {
-                for i in s.products.indices {
+                for i in s.products.indices where !s.products[i].isBundle {
                     s.products[i].recipe.removeAll { sifirlanan.contains($0.materialId) }
                 }
             }
@@ -624,7 +1035,8 @@ public struct SetupWizard: View {
             // Evet → malzeme stoktan düşer ama maliyete ikinci kez eklenmez.
             for t in urunler {
                 guard let dahil = t.ambalajDahil,
-                      let i = s.products.firstIndex(where: { $0.id == t.id }) else { continue }
+                      let i = s.products.firstIndex(where: { $0.id == t.id }),
+                      !s.products[i].isBundle else { continue }
                 var p = s.products[i]
                 for j in p.recipe.indices {
                     p.recipe[j].consumesStock = true
@@ -674,6 +1086,21 @@ struct UrunTaslak: Identifiable {
     var maliyet: Kurus = 0
     /// Şişe/kapak/etiket üretim fiyatına dahil mi? nil = henüz sorulmadı
     var ambalajDahil: Bool?
+    var listeFiyat: Kurus = 0
+    var kanalFiyat: [Id: Kurus] = [:]
+}
+
+/// Set / çoklu paket — fiziksel ürün değil, satış kombinasyonu (SKU).
+/// Kendi stoğu tutulmaz, maliyeti bileşenlerinden hesaplanır.
+struct SetTaslak: Identifiable {
+    var id: Id = Ids.make(.product)
+    var ad: String
+    /// ürün id → bir pakette kaç adet
+    var bilesenler: [Id: Double] = [:]
+    /// malzeme id → pakete özel ambalaj miktarı
+    var ambalaj: [Id: Double] = [:]
+    var listeFiyat: Kurus = 0
+    var kanalFiyat: [Id: Kurus] = [:]
 }
 
 struct MalzemeTaslak: Identifiable {

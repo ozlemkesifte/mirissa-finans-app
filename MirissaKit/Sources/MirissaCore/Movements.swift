@@ -89,6 +89,9 @@ public enum Movements {
             ))
         }
         for p in s.products {
+            // Setlerin kendi stoğu yoktur: bileşenleri zaten sayılır.
+            // Aksi halde aynı mal iki kez stokta görünür.
+            guard p.tracksOwnStock else { continue }
             guard let q = p.openingQty, q != 0 else { continue }
             out.append(Movement(
                 id: "mv:opening:\(p.id)",
