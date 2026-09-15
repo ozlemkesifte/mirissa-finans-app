@@ -182,8 +182,16 @@ private struct CategoryCard: View {
                                 HStack(spacing: 8) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(i.name).font(.subheadline).foregroundStyle(Palette.ink)
-                                        Text(Dates.displayDateShort(i.date))
-                                            .font(.caption2).foregroundStyle(Palette.inkFaint)
+                                        HStack(spacing: 5) {
+                                            Text(Dates.displayDateShort(i.date))
+                                            if i.behavior == .satisaBagli { Text("· satışa bağlı") }
+                                        }
+                                        .font(.caption2).foregroundStyle(Palette.inkFaint)
+                                    }
+                                    if i.attachment != nil {
+                                        Image(systemName: "paperclip")
+                                            .font(.caption2)
+                                            .foregroundStyle(Palette.inkFaint)
                                     }
                                     if i.sourceKind == .duzenli { Pill("her ay") }
                                     Spacer(minLength: 8)
@@ -254,6 +262,11 @@ private struct PurchaseRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(Palette.inkFaint)
+            }
+            if purchase.attachment != nil {
+                Image(systemName: "paperclip")
+                    .font(.caption2)
+                    .foregroundStyle(Palette.inkFaint)
             }
             if purchase.excludeFromExpenses { Pill("hariç") } else { Pill("stoğa girdi") }
             Spacer(minLength: 8)

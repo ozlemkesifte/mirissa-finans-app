@@ -369,6 +369,44 @@ public enum ExpenseCategory: String, Codable, Sendable, CaseIterable, Identifiab
     }
 }
 
+/// Bir giderin satış arttıkça artıp artmadığı.
+/// Başa baş hesabı buna göre yapılır: sabit giderleri katkı karşılar,
+/// satışa bağlı giderler sipariş başına kazancı düşürür.
+public enum CostBehavior: String, Codable, Sendable, CaseIterable, Identifiable {
+    case sabit
+    case satisaBagli
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .sabit: return "Sabit gider"
+        case .satisaBagli: return "Satışa bağlı"
+        }
+    }
+
+    public var explanation: String {
+        switch self {
+        case .sabit:
+            return "Kaç sipariş çıkarsa çıksın aynı kalır. Başa baş noktasını yukarı iter."
+        case .satisaBagli:
+            return "Satış arttıkça artar. Sipariş başına kazancı düşürür."
+        }
+    }
+}
+
+public extension ExpenseCategory {
+    /// Kategorinin makul varsayılanı — kullanıcı her gider için değiştirebilir.
+    /// Reklam varsayılan olarak satışa bağlı sayılır; sabit bütçeyle
+    /// çalışılıyorsa gider formundan "Sabit gider" seçilebilir.
+    var defaultBehavior: CostBehavior {
+        switch self {
+        case .reklam, .kargo, .ambalaj, .urunUretimi, .komisyon: return .satisaBagli
+        case .influencer, .sabit, .diger: return .sabit
+        }
+    }
+}
+
 public enum ExpenseScope: Codable, Hashable, Sendable {
     case ortak
     case channel(Id)
@@ -396,11 +434,18 @@ public struct ExpenseOverride: Codable, Hashable, Sendable {
     public var amount: Kurus?
     public var name: String?
     public var skipped: Bool
+    /// O aya ait fatura — düzenli giderlerde her ayın kendi faturası olabilir
+    public var attachment: String?
 
-    public init(amount: Kurus? = nil, name: String? = nil, skipped: Bool = false) {
+    public init(amount: Kurus? = nil, name: String? = nil, skipped: Bool = false, attachment: String? = nil) {
         self.amount = amount
         self.name = name
         self.skipped = skipped
+        self.attachment = attachment
+    }
+
+    public var isEmpty: Bool {
+        amount == nil && name == nil && !skipped && attachment == nil
     }
 }
 
@@ -418,6 +463,10 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var endMonth: MonthKey?
     public var overrides: [MonthKey: ExpenseOverride]
     public var note: String?
+    /// Satış arttıkça artar mı. `nil` ise kategorinin varsayılanı kullanılır.
+    public var behavior: CostBehavior?
+    /// Fatura/fiş dosyasının adı (uygulamanın ekler klasöründe durur)
+    public var attachment: String?
 
     public init(
         id: Id = Ids.make(.expense),
@@ -429,7 +478,9 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         recurrence: Recurrence = .tek,
         endMonth: MonthKey? = nil,
         overrides: [MonthKey: ExpenseOverride] = [:],
-        note: String? = nil
+        note: String? = nil,
+        behavior: CostBehavior? = nil,
+        attachment: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -441,7 +492,11 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         self.endMonth = endMonth
         self.overrides = overrides
         self.note = note
+        self.behavior = behavior
+        self.attachment = attachment
     }
+
+    public var resolvedBehavior: CostBehavior { behavior ?? category.defaultBehavior }
 
     public var startMonth: MonthKey { Dates.month(of: date) }
     public var isRecurring: Bool { recurrence != .tek }
@@ -466,6 +521,8 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
     /// Giderler listesinde hiç görünmesin (ör. başka bir kasadan ödendi)
     public var excludeFromExpenses: Bool
     public var note: String?
+    /// Fatura/fiş dosyasının adı
+    public var attachment: String?
 
     public init(
         id: Id = Ids.make(.purchase),
@@ -479,7 +536,8 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
         expenseCategory: ExpenseCategory? = nil,
         expenseScope: ExpenseScope = .ortak,
         excludeFromExpenses: Bool = false,
-        note: String? = nil
+        note: String? = nil,
+        attachment: String? = nil
     ) {
         self.id = id
         self.date = date
@@ -493,6 +551,7 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
         self.expenseScope = expenseScope
         self.excludeFromExpenses = excludeFromExpenses
         self.note = note
+        self.attachment = attachment
     }
 
     public var landedTotal: Kurus { totalPaid + shippingCost }

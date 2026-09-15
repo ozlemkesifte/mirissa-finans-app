@@ -18,6 +18,8 @@ struct PurchaseForm: View {
     @State private var shipping: Kurus = 0
     @State private var vendor = ""
     @State private var excludeFromExpenses = false
+    @State private var picked: PickedFile?
+    @State private var invoiceRemoved = false
     @State private var loaded = false
 
     init(preselected: ItemRef? = nil) {
@@ -94,6 +96,11 @@ struct PurchaseForm: View {
                      : "Bu alım giderlere otomatik yazılır. Stoğa girdiği için kârdan doğrudan düşülmez; ürün satıldıkça maliyet olarak yansır.")
             }
 
+            InvoiceSection(
+                current: editingId.flatMap { id in store.state.purchases.first { $0.id == id }?.attachment },
+                picked: $picked, removed: $invoiceRemoved
+            )
+
             if let id = editingId {
                 Section {
                     Button(role: .destructive) { store.deletePurchase(id); dismiss() } label: {
@@ -123,14 +130,21 @@ struct PurchaseForm: View {
 
     private func save() {
         guard let item else { return }
+        let mevcutEk = editingId.flatMap { id in store.state.purchases.first { $0.id == id }?.attachment }
         let p = StockPurchase(
             id: editingId ?? Ids.make(.purchase),
             date: date, item: item, qty: qty, unit: unit,
             totalPaid: paid, shippingCost: shipping,
             vendor: vendor.isEmpty ? nil : vendor,
-            excludeFromExpenses: excludeFromExpenses
+            excludeFromExpenses: excludeFromExpenses,
+            attachment: invoiceRemoved ? nil : mevcutEk
         )
         editingId == nil ? store.addPurchase(p) : store.updatePurchase(p)
+        if let f = picked {
+            store.attachInvoice(data: f.data, ext: f.ext, toPurchase: p.id)
+        } else if invoiceRemoved {
+            store.pruneAttachments()
+        }
     }
 }
 
@@ -314,7 +328,7 @@ struct CountForm: View {
                     }
                     TextField("Not (isteğe bağlı)", text: $note)
                 } footer: {
-                    Text("Sayımı uyguladığında stok, senin saydığın gerçek miktara sabitlenir. Birim maliyet değişmez.")
+                    Text("Sayımı uyguladığında stok, senin saydığın gerçek miktara sabitlenir. Birim maliyet değişmez. Sayım ait olduğu ayın son sözüdür: o ayın satışları düşüldükten sonra uygulanır.")
                 }
             }
         }

@@ -24,7 +24,12 @@ public enum MovementSource: String, Codable, Sendable {
 public struct Movement: Identifiable, Hashable, Sendable {
     public var id: String
     public var item: ItemRef
+    /// Kullanıcıya gösterilen tarih
     public var date: DateKey
+    /// Sıralamada kullanılan tarih. Sayımlar ayın sonuna alınır:
+    /// aylık satış toplu girildiği için, ay içinde yapılan bir sayımın
+    /// ardından o ayın satışlarının tekrar düşülmesi yanlış olurdu.
+    public var sortDate: DateKey?
     public var kind: MovementKind
     /// Temel birim cinsinden işaretli değişim. `sayim` için katlama sırasında doldurulur.
     public var delta: BaseQty
@@ -37,9 +42,11 @@ public struct Movement: Identifiable, Hashable, Sendable {
     public var reason: AdjustReason?
     public var label: String
 
+    public var effectiveDate: DateKey { sortDate ?? date }
+
     /// (tarih, tür, kaynak, kalem) ile tam belirli sıralama
     public func isBefore(_ o: Movement) -> Bool {
-        if date != o.date { return date < o.date }
+        if effectiveDate != o.effectiveDate { return effectiveDate < o.effectiveDate }
         if kind.seq != o.kind.seq { return kind.seq < o.kind.seq }
         if sourceId != o.sourceId { return sourceId < o.sourceId }
         return item.id < o.item.id
@@ -70,6 +77,7 @@ public enum Movements {
                 id: "mv:opening:\(m.id)",
                 item: .material(m.id),
                 date: m.openingDate ?? "1970-01-01",
+                sortDate: nil,
                 kind: .opening,
                 delta: q,
                 absoluteTo: nil,
@@ -86,6 +94,7 @@ public enum Movements {
                 id: "mv:opening:\(p.id)",
                 item: .product(p.id),
                 date: p.openingDate ?? "1970-01-01",
+                sortDate: nil,
                 kind: .opening,
                 delta: q,
                 absoluteTo: nil,
@@ -113,6 +122,7 @@ public enum Movements {
                 id: "mv:purchase:\(p.id)",
                 item: p.item,
                 date: p.date,
+                sortDate: nil,
                 kind: .purchase,
                 delta: base,
                 absoluteTo: nil,
@@ -139,6 +149,7 @@ public enum Movements {
                 id: "mv:adjustment:\(a.id)",
                 item: a.item,
                 date: a.date,
+                sortDate: nil,
                 kind: .duzeltme,
                 delta: a.isIncrease ? base : -base,
                 absoluteTo: nil,
@@ -165,6 +176,8 @@ public enum Movements {
                 id: "mv:count:\(c.id)",
                 item: c.item,
                 date: c.date,
+                // Sayım, ait olduğu ayın son sözüdür: o ayın satışlarından sonra uygulanır
+                sortDate: Dates.monthEnd(Dates.month(of: c.date)),
                 kind: .sayim,
                 delta: 0,
                 absoluteTo: base,
@@ -200,6 +213,7 @@ public enum Movements {
                         id: "mv:sales:\(e.id):p:\(leafId)",
                         item: .product(leafId),
                         date: date,
+                        sortDate: nil,
                         kind: .satis,
                         delta: -grossOut,
                         absoluteTo: nil,
@@ -216,6 +230,7 @@ public enum Movements {
                         id: "mv:sales:\(e.id):r:\(leafId)",
                         item: .product(leafId),
                         date: date,
+                        sortDate: nil,
                         kind: .iade,
                         delta: backIn,
                         absoluteTo: nil,
@@ -244,6 +259,7 @@ public enum Movements {
                     id: "mv:sales:\(e.id):m:\(line.id)",
                     item: .material(mat.id),
                     date: date,
+                    sortDate: nil,
                     kind: .satis,
                     delta: -total,
                     absoluteTo: nil,

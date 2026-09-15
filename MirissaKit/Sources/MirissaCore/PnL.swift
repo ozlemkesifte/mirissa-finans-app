@@ -36,8 +36,12 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     /// (aylık platform ücreti, aylık sabit kesinti) — başa baş hesabı için ayrılır
     public var fixedDeduction: Kurus
     public var ads: Figure
+    /// Reklamın sabit sayılan kısmı — kullanıcının gider başına yaptığı seçime göre
+    public var adsFixed: Kurus
     /// Bu kanala işaretlenmiş diğer giderler (influencer, sabit vb.)
     public var otherChannelExpenses: [ExpenseCategory: Kurus]
+    /// Bu kanala işaretlenmiş diğer giderlerin sabit kısmı
+    public var otherChannelExpensesFixed: Kurus
     public var productCost: Kurus
     public var packagingCost: Kurus
 
@@ -47,16 +51,23 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
         otherChannelExpenses.values.reduce(0, +)
     }
 
+    public var adsVariable: Kurus { max(ads.amount - adsFixed, 0) }
+    public var otherChannelExpensesVariable: Kurus {
+        max(otherChannelExpensesTotal - otherChannelExpensesFixed, 0)
+    }
+
     /// Sipariş adedine bağlı giderler — bir sipariş daha gelirse artan kısım
     public var variableCost: Kurus {
         commission.amount + shipping.amount + serviceFee.amount
             + max(otherDeduction.amount - fixedDeduction, 0)
             + productCost + packagingCost
+            + adsVariable + otherChannelExpensesVariable
     }
 
     /// Sipariş adedinden bağımsız giderler — ay boyunca sabit
     public var fixedCost: Kurus {
-        min(fixedDeduction, otherDeduction.amount) + ads.amount + otherChannelExpensesTotal
+        min(fixedDeduction, otherDeduction.amount) + min(adsFixed, ads.amount)
+            + min(otherChannelExpensesFixed, otherChannelExpensesTotal)
     }
 
     /// KATKI = net satış − değişken giderler. Sabit giderleri bu tutar karşılar.
@@ -89,8 +100,9 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
             grossSales: 0, discount: 0, returnsAmount: 0, netSales: 0,
             units: 0, returnedUnits: 0, orders: 0, ordersIsEstimate: true,
             commission: .zero, shipping: .zero, serviceFee: .zero,
-            otherDeduction: .zero, fixedDeduction: 0, ads: .zero,
-            otherChannelExpenses: [:], productCost: 0, packagingCost: 0
+            otherDeduction: .zero, fixedDeduction: 0, ads: .zero, adsFixed: 0,
+            otherChannelExpenses: [:], otherChannelExpensesFixed: 0,
+            productCost: 0, packagingCost: 0
         )
     }
 }
@@ -100,6 +112,8 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
     public var channels: [ChannelMonthResult]
     /// Hiçbir kanala ait olmayan şirket giderleri (kâra etki eden)
     public var ortakGider: Kurus
+    /// Ortak giderlerin satışa bağlı kısmı
+    public var ortakGiderDegisken: Kurus
     /// Stoğa giren alımlar — kasadan çıktı ama kâra satıldıkça yansır
     public var stokAlimi: Kurus
     /// Kasadan bu ay çıkan toplam
@@ -132,18 +146,23 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
         channels.reduce(0) { $0 + $1.productCost + $1.packagingCost }
     }
 
-    /// Bütün kanalların katkısı — sabit giderleri karşılayan tutar
-    public var toplamKatki: Kurus { channels.reduce(0) { $0 + $1.contribution } }
+    public var ortakGiderSabit: Kurus { max(ortakGider - ortakGiderDegisken, 0) }
 
-    /// Sipariş adedinden bağımsız bütün giderler (kanal sabitleri + ortak giderler)
+    /// Bütün kanalların katkısı — sabit giderleri karşılayan tutar
+    public var toplamKatki: Kurus {
+        channels.reduce(0) { $0 + $1.contribution } - ortakGiderDegisken
+    }
+
+    /// Sipariş adedinden bağımsız bütün giderler (kanal sabitleri + ortak sabit giderler)
     public var toplamSabitGider: Kurus {
-        channels.reduce(0) { $0 + $1.fixedCost } + ortakGider
+        channels.reduce(0) { $0 + $1.fixedCost } + ortakGiderSabit
     }
 
     public var hasData: Bool { gercekCiro != 0 || toplamGider != 0 || nakitCikisi != 0 }
 
     public static func empty(_ m: MonthKey) -> CompanyMonthResult {
-        .init(month: m, channels: [], ortakGider: 0, stokAlimi: 0, nakitCikisi: 0, expenseBreakdown: [:])
+        .init(month: m, channels: [], ortakGider: 0, ortakGiderDegisken: 0,
+              stokAlimi: 0, nakitCikisi: 0, expenseBreakdown: [:])
     }
 }
 
@@ -208,6 +227,8 @@ public extension Array where Element == ChannelMonthResult {
             r.otherDeduction.amount += c.otherDeduction.amount; manualOther = manualOther || c.otherDeduction.isManual
             r.fixedDeduction += c.fixedDeduction
             r.ads.amount += c.ads.amount; manualAds = manualAds || c.ads.isManual
+            r.adsFixed += c.adsFixed
+            r.otherChannelExpensesFixed += c.otherChannelExpensesFixed
             r.productCost += c.productCost
             r.packagingCost += c.packagingCost
             for (k, v) in c.otherChannelExpenses { r.otherChannelExpenses[k, default: 0] += v }

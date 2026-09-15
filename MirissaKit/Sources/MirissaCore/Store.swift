@@ -175,7 +175,62 @@ public final class AppStore {
         }
     }
 
-    public func deleteExpense(_ id: Id) { mutate { $0.expenses.removeAll { $0.id == id } } }
+    public func deleteExpense(_ id: Id) {
+        mutate { $0.expenses.removeAll { $0.id == id } }
+        pruneAttachments()
+    }
+
+    /// Faturayı kaydeder ve gidere bağlar. Düzenli giderlerde `month` verilirse
+    /// fatura sadece o aya bağlanır.
+    public func attachInvoice(data: Data, ext: String, toExpense id: Id, month: MonthKey? = nil) {
+        guard let name = try? AttachmentStore.save(data: data, suggestedExtension: ext) else { return }
+        mutate { s in
+            guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
+            if let month, s.expenses[i].isRecurring {
+                var ov = s.expenses[i].overrides[month] ?? ExpenseOverride()
+                AttachmentStore.delete(ov.attachment)
+                ov.attachment = name
+                s.expenses[i].overrides[month] = ov
+            } else {
+                AttachmentStore.delete(s.expenses[i].attachment)
+                s.expenses[i].attachment = name
+            }
+        }
+    }
+
+    public func removeInvoice(fromExpense id: Id, month: MonthKey? = nil) {
+        mutate { s in
+            guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
+            if let month, var ov = s.expenses[i].overrides[month], ov.attachment != nil {
+                ov.attachment = nil
+                s.expenses[i].overrides[month] = ov.isEmpty ? nil : ov
+            } else {
+                s.expenses[i].attachment = nil
+            }
+        }
+        pruneAttachments()
+    }
+
+    public func attachInvoice(data: Data, ext: String, toPurchase id: Id) {
+        guard let name = try? AttachmentStore.save(data: data, suggestedExtension: ext) else { return }
+        mutate { s in
+            guard let i = s.purchases.firstIndex(where: { $0.id == id }) else { return }
+            AttachmentStore.delete(s.purchases[i].attachment)
+            s.purchases[i].attachment = name
+        }
+    }
+
+    public func removeInvoice(fromPurchase id: Id) {
+        mutate { s in
+            if let i = s.purchases.firstIndex(where: { $0.id == id }) { s.purchases[i].attachment = nil }
+        }
+        pruneAttachments()
+    }
+
+    /// Hiçbir kayda bağlı olmayan fatura dosyalarını temizler
+    public func pruneAttachments() {
+        AttachmentStore.prune(keeping: state.attachmentNames)
+    }
 
     /// Düzenli gideri durdurur: geçmiş aylar olduğu gibi kalır.
     public func stopExpense(_ id: Id, lastMonth: MonthKey) {
@@ -194,11 +249,10 @@ public final class AppStore {
     public func overrideExpense(_ id: Id, month: MonthKey, amount: Kurus?, skipped: Bool = false) {
         mutate { s in
             guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
-            if amount == nil && !skipped {
-                s.expenses[i].overrides[month] = nil
-            } else {
-                s.expenses[i].overrides[month] = ExpenseOverride(amount: amount, skipped: skipped)
-            }
+            var ov = s.expenses[i].overrides[month] ?? ExpenseOverride()
+            ov.amount = amount
+            ov.skipped = skipped
+            s.expenses[i].overrides[month] = ov.isEmpty ? nil : ov
         }
     }
 
@@ -212,7 +266,10 @@ public final class AppStore {
         }
     }
 
-    public func deletePurchase(_ id: Id) { mutate { $0.purchases.removeAll { $0.id == id } } }
+    public func deletePurchase(_ id: Id) {
+        mutate { $0.purchases.removeAll { $0.id == id } }
+        pruneAttachments()
+    }
 
     public func addAdjustment(_ a: StockAdjustment) { mutate { $0.adjustments.append(a) } }
 
@@ -251,7 +308,10 @@ public final class AppStore {
         }
     }
 
-    public func resetToSeed() { apply(SeedData.initialState()) }
+    public func resetToSeed() {
+        apply(SeedData.initialState())
+        pruneAttachments()
+    }
 
     public func eraseAllData() {
         var s = state
@@ -262,6 +322,7 @@ public final class AppStore {
         s.counts = []
         s.channelMonths = []
         apply(s)
+        pruneAttachments()
     }
 
     public func exportJSON() throws -> Data { try Persistence.encode(state) }

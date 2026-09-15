@@ -182,6 +182,13 @@ func run() {
     if render(PreviewGallery.breakevenCard(store: zararStore, month: "2026-09"),
               to: hedef, size: size) { ok += 1; print("✓ Kâr hedefleri → \(hedef.lastPathComponent)") }
 
+    let giderForm = outDir.appendingPathComponent("3b-gider-formu.png")
+    if let rek = zararStore.state.expenses.first(where: { $0.category == .reklam }),
+       render(PreviewGallery.expenseForm(store: zararStore, month: "2026-09", expenseId: rek.id),
+              to: giderForm, size: size) {
+        ok += 1; print("✓ Gider formu → \(giderForm.lastPathComponent)")
+    }
+
     let detay = outDir.appendingPathComponent("6-malzeme-detay.png")
     if render(PreviewGallery.detail(store: store, period: period, materialId: SeedData.M.koli),
               to: detay, size: size) { ok += 1; print("✓ Malzeme detayı → \(detay.lastPathComponent)") }

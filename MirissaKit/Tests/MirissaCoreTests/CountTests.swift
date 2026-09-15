@@ -64,6 +64,30 @@ struct CountTests {
         #expect(Fx.engine(s).qty(.material(Fx.koliId)) == 300)
     }
 
+    /// Ay içinde yapılan sayım, o ayın satışlarından SONRA uygulanır.
+    /// Aylık satış toplu girildiği için, sayımdan sonra ayın satışlarının
+    /// tekrar düşülmesi stoğu olduğundan az gösterirdi.
+    @Test func ayIcindekiSayimAyinSatislarindanSonraUygulanir() {
+        var s = Fx.base()
+        s.addPurchase("pur_1", "2026-09-01", .material(Fx.koliId), qty: 600, paid: tl(6000))
+        s.addSale("sal_1", "2026-09", channel: ChannelIds.trendyol, product: Fx.sampuanId,
+                  qty: 160, gross: tl(100_000))
+        // Kullanıcı ayın 20'sinde sayım yapıyor: depoda 420 koli var
+        s.counts.append(StockCount(id: "cnt_1", date: "2026-09-20", item: .material(Fx.koliId),
+                                   countedQty: 420, unit: .adet, reason: .sayimFarki))
+        let e = Fx.engine(s)
+
+        #expect(e.qty(.material(Fx.koliId)) == 420)      // sayım son sözdür
+        let sayim = e.history(.material(Fx.koliId)).first { $0.kind == .sayim }
+        #expect(sayim?.delta == -20)                      // sistem 440 bekliyordu
+        #expect(sayim?.date == "2026-09-20")              // kullanıcının girdiği tarih korunur
+
+        // Ertesi ayın satışı sayımdan sonra düşer
+        s.addSale("sal_2", "2026-10", channel: ChannelIds.trendyol, product: Fx.sampuanId,
+                  qty: 20, gross: tl(12_000))
+        #expect(Fx.engine(s).qty(.material(Fx.koliId)) == 400)
+    }
+
     /// Sayım aynı gün alımdan SONRA uygulanır (gün sonunda gözlenen gerçektir)
     @Test func ayniGunSayimAlimdanSonra() {
         var s = Fx.base()

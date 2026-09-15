@@ -120,9 +120,11 @@ public final class Engine {
         let instances = expenseInstances(month: month)
         let salesOfMonth = state.sales.filter { $0.month == month }
 
-        // Giderleri kapsamlarına göre ayır
+        // Giderleri kapsamlarına göre ayır; sabit/satışa bağlı ayrımı korunur
         var ortakByCat: [ExpenseCategory: Kurus] = [:]
+        var ortakDegisken: Kurus = 0
         var channelByCat: [Id: [ExpenseCategory: Kurus]] = [:]
+        var channelDegiskenByCat: [Id: [ExpenseCategory: Kurus]] = [:]
         var stokAlimi: Kurus = 0
         var nakit: Kurus = 0
 
@@ -132,8 +134,12 @@ public final class Engine {
             guard i.expenseAmount != 0 else { continue }
             if let ch = i.scope.channelId {
                 channelByCat[ch, default: [:]][i.category, default: 0] += i.expenseAmount
+                if i.behavior == .satisaBagli {
+                    channelDegiskenByCat[ch, default: [:]][i.category, default: 0] += i.expenseAmount
+                }
             } else {
                 ortakByCat[i.category, default: 0] += i.expenseAmount
+                if i.behavior == .satisaBagli { ortakDegisken += i.expenseAmount }
             }
         }
 
@@ -144,7 +150,11 @@ public final class Engine {
             guard !rows.isEmpty || !catBucket.isEmpty || state.channelMonth(month: month, channelId: ch.id) != nil else {
                 continue
             }
-            results.append(computeChannel(ch, month: month, asOf: asOf, rows: rows, channelExpenses: catBucket))
+            results.append(computeChannel(
+                ch, month: month, asOf: asOf, rows: rows,
+                channelExpenses: catBucket,
+                channelVariableExpenses: channelDegiskenByCat[ch.id] ?? [:]
+            ))
         }
         // Satışı olmayan ama tanımlı kanallar da boş kartla görünsün
         for ch in state.activeChannels where !results.contains(where: { $0.channelId == ch.id }) {
@@ -175,6 +185,7 @@ public final class Engine {
             month: month,
             channels: results,
             ortakGider: ortakByCat.values.reduce(0, +),
+            ortakGiderDegisken: ortakDegisken,
             stokAlimi: stokAlimi,
             nakitCikisi: nakit,
             expenseBreakdown: breakdown
@@ -186,7 +197,8 @@ public final class Engine {
         month: MonthKey,
         asOf: DateKey,
         rows: [SalesEntry],
-        channelExpenses: [ExpenseCategory: Kurus]
+        channelExpenses: [ExpenseCategory: Kurus],
+        channelVariableExpenses: [ExpenseCategory: Kurus]
     ) -> ChannelMonthResult {
         var r = ChannelMonthResult.empty(channelId: ch.id, channelName: ch.name, month: month)
         let cm = state.channelMonth(month: month, channelId: ch.id)
@@ -223,11 +235,25 @@ public final class Engine {
         // Aylık sabit kesintiler sipariş adedinden bağımsızdır; başa baş hesabı
         // için değişken kısımdan ayrı tutulur.
         r.fixedDeduction = min(ch.platformFeeMonthly + ch.otherDeductionMonthly, r.otherDeduction.amount)
-        r.ads = figure(cm?.adsActual, auto: Double(channelExpenses[.reklam] ?? 0))
+        let reklamToplam = channelExpenses[.reklam] ?? 0
+        let reklamDegisken = channelVariableExpenses[.reklam] ?? 0
+        r.ads = figure(cm?.adsActual, auto: Double(reklamToplam))
+        // Elle aylık tutar girilmişse, altındaki giderlerin sabit/değişken
+        // oranı korunur; hiç gider yoksa aylık rakam sabit sayılır.
+        if let manual = cm?.adsActual {
+            r.adsFixed = reklamToplam > 0
+                ? manual - Money.roundHalfAwayFromZero(Double(manual) * Double(reklamDegisken) / Double(reklamToplam))
+                : manual
+        } else {
+            r.adsFixed = reklamToplam - reklamDegisken
+        }
 
         var others = channelExpenses
         others[.reklam] = nil
         r.otherChannelExpenses = others.filter { $0.value != 0 }
+        r.otherChannelExpensesFixed = r.otherChannelExpenses.reduce(0) { acc, kv in
+            acc + max(kv.value - (channelVariableExpenses[kv.key] ?? 0), 0)
+        }
         return r
     }
 
@@ -264,6 +290,7 @@ public final class Engine {
         var byChannel: [Id: [ChannelMonthResult]] = [:]
         for m in months {
             out.ortakGider += m.ortakGider
+            out.ortakGiderDegisken += m.ortakGiderDegisken
             out.stokAlimi += m.stokAlimi
             out.nakitCikisi += m.nakitCikisi
             for (k, v) in m.expenseBreakdown { out.expenseBreakdown[k, default: 0] += v }

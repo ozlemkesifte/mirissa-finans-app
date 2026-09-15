@@ -14,6 +14,10 @@ struct ExpenseForm: View {
     @State private var category: ExpenseCategory = .diger
     @State private var scopeId: String = "ortak"
     @State private var recurrence: Recurrence = .tek
+    @State private var behavior: CostBehavior = .sabit
+    @State private var behaviorTouched = false
+    @State private var picked: PickedFile?
+    @State private var invoiceRemoved = false
     @State private var loaded = false
     @State private var showStopConfirm = false
     @State private var showDeleteConfirm = false
@@ -55,6 +59,9 @@ struct ExpenseForm: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.inline)
+                .onChange(of: category) { _, yeni in
+                    if !behaviorTouched { behavior = yeni.defaultBehavior }
+                }
             }
 
             Section {
@@ -66,6 +73,19 @@ struct ExpenseForm: View {
                 Text(scopeId == "ortak"
                      ? "Ortak giderler şirket kârından düşülür."
                      : "Bu gider sadece seçtiğin kanalın kârlılığından düşülür, iki kez sayılmaz.")
+            }
+
+            Section {
+                Picker("", selection: $behavior) {
+                    ForEach(CostBehavior.allCases) { b in Text(b.displayName).tag(b) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .onChange(of: behavior) { _, _ in behaviorTouched = true }
+            } header: {
+                Text("Satış arttıkça artar mı?")
+            } footer: {
+                Text(behavior.explanation)
             }
 
             Section {
@@ -97,6 +117,8 @@ struct ExpenseForm: View {
                     Text("Durdurmak geçmiş ayları bozmaz; sadece sonraki aylarda görünmez.")
                 }
             }
+
+            InvoiceSection(current: mevcutFatura, picked: $picked, removed: $invoiceRemoved)
 
             if editingId != nil {
                 Section {
@@ -141,33 +163,59 @@ struct ExpenseForm: View {
         recurrence = e.recurrence
         category = e.category
         scopeId = e.scope.channelId ?? "ortak"
+        behavior = e.resolvedBehavior
+        behaviorTouched = e.behavior != nil
         let ov = e.overrides[contextMonth]
         name = ov?.name ?? e.name
         amount = ov?.amount ?? e.amount
-        onlyThisMonth = ov?.amount != nil
+        // Düzenli giderlerde varsayılan "sadece bu ay": geçmiş aylar kazara bozulmasın
+        onlyThisMonth = e.isRecurring
     }
 
     private func save() {
         let scope: ExpenseScope = scopeId == "ortak" ? .ortak : .channel(scopeId)
+        let hedefId: Id
+        var ayaOzel = false
+
         if let e = editing {
+            hedefId = e.id
             if e.isRecurring && onlyThisMonth {
                 store.overrideExpense(e.id, month: contextMonth, amount: amount)
-                return
+                ayaOzel = true
+            } else {
+                var updated = e
+                updated.date = date
+                updated.name = name
+                updated.amount = amount
+                updated.category = category
+                updated.scope = scope
+                updated.recurrence = recurrence
+                updated.behavior = behavior
+                if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
+                store.updateExpense(updated)
             }
-            var updated = e
-            updated.date = date
-            updated.name = name
-            updated.amount = amount
-            updated.category = category
-            updated.scope = scope
-            updated.recurrence = recurrence
-            if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
-            store.updateExpense(updated)
         } else {
-            store.addExpense(Expense(
+            let yeni = Expense(
+                id: Ids.make(.expense),
                 date: date, name: name, amount: amount,
-                category: category, scope: scope, recurrence: recurrence
-            ))
+                category: category, scope: scope, recurrence: recurrence,
+                behavior: behavior
+            )
+            store.addExpense(yeni)
+            hedefId = yeni.id
         }
+
+        let ay: MonthKey? = ayaOzel ? contextMonth : nil
+        if let p = picked {
+            store.attachInvoice(data: p.data, ext: p.ext, toExpense: hedefId, month: ay)
+        } else if invoiceRemoved {
+            store.removeInvoice(fromExpense: hedefId, month: ay)
+        }
+    }
+
+    /// Bu ay için geçerli fatura — düzenli giderde aya özel fatura önceliklidir
+    private var mevcutFatura: String? {
+        guard let e = editing else { return nil }
+        return e.overrides[contextMonth]?.attachment ?? e.attachment
     }
 }

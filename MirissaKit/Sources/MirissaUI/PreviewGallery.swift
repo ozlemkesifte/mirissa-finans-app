@@ -39,6 +39,15 @@ public enum PreviewGallery {
         )
     }
 
+    /// Gider formu — sınıflandırma ve fatura bölümlerini görmek için
+    @MainActor
+    public static func expenseForm(store: AppStore, month: MonthKey, expenseId: Id) -> AnyView {
+        AnyView(
+            ExpenseForm(editing: expenseId, month: month)
+                .environment(store).environment(Period(month: month))
+        )
+    }
+
     @MainActor
     public static func detail(store: AppStore, period: Period, materialId: Id) -> AnyView {
         AnyView(

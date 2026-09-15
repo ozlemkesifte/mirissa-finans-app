@@ -15,6 +15,7 @@ Mirissa Lab için finans, kârlılık ve otomatik stok takibi yapan native iOS u
 - Fire, kırık, numune ve sayım farklarını stok geçmişine işler
 - Hangi malzemenin bitmek üzere olduğunu ve yaklaşık kaç siparişlik kaldığını gösterir
 - Aylık / yıllık / kanal raporları üretir, CSV olarak dışa aktarır
+- Gider ve stok alımlarına fatura fotoğrafı veya PDF eklenebilir
 
 Veriler **sadece telefonda** saklanır, internet gerektirmez.
 
@@ -144,9 +145,15 @@ başa baş         = sabit giderler ÷ sipariş başına katkı
 X TL kâr için    = (sabit giderler + X) ÷ sipariş başına katkı
 ```
 
-**Sabit ile değişken ayrımı önemli:** aylık Shopify ücreti, reklam, ajans,
-muhasebeci gibi kalemler sipariş adedinden bağımsızdır ve başa baş noktasını
-yukarı iter. Komisyon ve kargo ise her siparişle birlikte artar.
+**Sabit ile değişken ayrımını sen belirlersin.** Her giderde "satış arttıkça
+artar mı?" seçeneği var. Reklam varsayılan olarak **satışa bağlı** sayılır
+(performans reklamı satışla birlikte artar); sabit bütçeyle çalışıyorsan
+gider formundan "Sabit gider" seçersin. Ajans, muhasebeci, aylık Shopify
+ücreti sabittir ve başa baş noktasını yukarı iter; komisyon ve kargo ise her
+siparişle artar.
+
+Bu seçim **kârı asla değiştirmez**, sadece başa baş noktasını ve sipariş
+başına kazancı değiştirir.
 
 **Nakit çıkışı kâr değildir.** 500 koliye bu ay 5.000 TL ödemek, o 5.000 TL'yi
 bu ayın kârından düşmek anlamına gelmez — kâra yalnızca o ay gerçekten satılan

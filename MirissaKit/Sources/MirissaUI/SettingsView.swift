@@ -38,6 +38,12 @@ struct SettingsView: View {
 
     private var bounds: (first: MonthKey, last: MonthKey) { store.state.dataMonthBounds }
 
+    private var faturalar: [URL] {
+        store.state.attachmentNames.sorted().map(AttachmentStore.url).filter {
+            FileManager.default.fileExists(atPath: $0.path)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -99,6 +105,12 @@ struct SettingsView: View {
                         }
                         .foregroundStyle(Palette.accent)
                     }
+                    if !faturalar.isEmpty {
+                        ShareLink(items: faturalar) {
+                            Label("Fatura eklerini paylaş (\(faturalar.count))", systemImage: "paperclip")
+                        }
+                        .foregroundStyle(Palette.accent)
+                    }
                     Button {
                         showImporter = true
                     } label: {
@@ -107,7 +119,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Yedekleme")
                 } footer: {
-                    Text("Yedek dosyası bütün verilerini içerir. iCloud Drive'a veya kendine e-posta ile gönderip saklayabilirsin.")
+                    Text("Yedek dosyası bütün kayıtlarını içerir. Fatura fotoğrafları ayrı dosyalar olduğu için onları ayrıca paylaşman gerekir.")
                 }
 
                 Section {

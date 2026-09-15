@@ -16,6 +16,10 @@ public struct ExpenseInstance: Identifiable, Hashable, Sendable {
     public var amount: Kurus
     public var category: ExpenseCategory
     public var scope: ExpenseScope
+    /// Satış arttıkça artar mı — başa baş hesabında kullanılır
+    public var behavior: CostBehavior
+    /// Fatura/fiş dosyası
+    public var attachment: String?
     /// Stoğa giren alım: nakit çıkışıdır ama kâra satıldıkça maliyet olarak yansır.
     public var capitalized: Bool
     /// Doğrudan düzenlenebilir mi (stok alımları kendi ekranından düzenlenir)
@@ -62,6 +66,8 @@ public enum Expenses {
                 amount: p.landedTotal,
                 category: p.resolvedCategory,
                 scope: p.expenseScope,
+                behavior: .satisaBagli,
+                attachment: p.attachment,
                 capitalized: s.settings.capitalizePurchases,
                 editable: false
             ))
@@ -104,6 +110,8 @@ public enum Expenses {
             amount: ov?.amount ?? e.amount,
             category: e.category,
             scope: e.scope,
+            behavior: e.resolvedBehavior,
+            attachment: ov?.attachment ?? e.attachment,
             capitalized: false,
             editable: true
         )
