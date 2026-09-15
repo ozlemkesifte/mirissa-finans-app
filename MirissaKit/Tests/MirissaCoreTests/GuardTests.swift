@@ -11,10 +11,10 @@ struct GuardTests {
         return s
     }
 
-    // MARK: Kural 1 — ürün maliyeti + ambalaj reçetesi
+    // MARK: Kural 1 — stok tüketimi ile maliyet birbirinden ayrı
 
-    /// Üretim maliyetine dahil malzeme reçetede ikinci kez sayılmaz
-    @Test func kural1_uretimMaliyetineDahilKalemTekrarSayilmaz() {
+    /// "Maliyete dahil değil" işaretli satır maliyete eklenmez
+    @Test func kural1_maliyeteDahilDegilSatirMaliyetEklemez() {
         var s = temel()
         s.purchases.append(StockPurchase(id: "p1", date: "2026-08-01",
                                          item: .material(SeedData.M.sampuanKutu),
@@ -22,42 +22,107 @@ struct GuardTests {
         guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }) else { return }
         s.products[i].costLines = [CostLine(label: "Üretim (şişe+kapak+etiket dahil)", amount: tl(132))]
 
-        // Kutu hem reçetede hem üretim maliyetine dahil DEĞİLKEN sayılır
         let oncesi = Engine(s).cost(of: SeedData.P.sampuan).packaging
         #expect(oncesi >= tl(8))
 
-        // "Bu üretim maliyetine dahil" işaretlenince maliyeti bir daha sayılmaz
-        s.products[i].costIncludesMaterials = [SeedData.M.sampuanKutu]
+        guard let j = s.products[i].recipe.firstIndex(where: { $0.materialId == SeedData.M.sampuanKutu })
+        else { return }
+        s.products[i].recipe[j].addsCost = false
         let sonrasi = Engine(s).cost(of: SeedData.P.sampuan).packaging
         #expect(oncesi - sonrasi == tl(8))
     }
 
-    /// Ama malzeme stoktan yine de düşer — fiziksel olarak kullanılıyor
-    @Test func kural1_dahilKalemStoktanYineDuser() {
+    /// EN KRİTİK: maliyete dahil değil işaretlemek stok hareketini YOK ETMEZ
+    @Test func kural1_maliyetKapaliykenStokYineDuser() {
         var s = temel()
         s.purchases.append(StockPurchase(id: "p1", date: "2026-08-01",
                                          item: .material(SeedData.M.sampuanKutu),
                                          qty: 100, unit: .adet, totalPaid: tl(800), vatRate: .yok))
-        guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }) else { return }
-        s.products[i].costIncludesMaterials = [SeedData.M.sampuanKutu]
+        guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }),
+              let j = s.products[i].recipe.firstIndex(where: { $0.materialId == SeedData.M.sampuanKutu })
+        else { return }
+        s.products[i].recipe[j].addsCost = false      // maliyete girmesin
+        #expect(s.products[i].recipe[j].resolvedConsumesStock)   // ama stoktan düşsün
+
         s.addSale("sal", "2026-09", channel: ChannelIds.trendyol,
                   product: SeedData.P.sampuan, qty: 10, gross: tl(7000))
-        #expect(Engine(s).qty(.material(SeedData.M.sampuanKutu)) == 90)
+        let e = Engine(s)
+        #expect(e.qty(.material(SeedData.M.sampuanKutu)) == 90)   // 10 adet düştü
+        #expect(e.history(.material(SeedData.M.sampuanKutu)).contains { $0.delta == -10 })
+        #expect(e.cost(of: SeedData.P.sampuan).packaging < tl(8) + tl(100))  // maliyete girmedi
     }
 
-    /// Reçeteye eklemeye çalışınca engellenir
-    @Test func kural1_receteyeEklemeEngellenir() {
+    /// İki kavram bağımsız: dört kombinasyonun her biri kendi etkisini yapar
+    @Test func kural1_ikiKavramBagimsiz() {
+        func kur(_ stok: Bool, _ maliyet: Bool) -> (miktar: Double, maliyet: Kurus) {
+            var s = temel()
+            s.purchases.append(StockPurchase(id: "p1", date: "2026-08-01",
+                                             item: .material(SeedData.M.sampuanKutu),
+                                             qty: 100, unit: .adet, totalPaid: tl(800), vatRate: .yok))
+            guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }),
+                  let j = s.products[i].recipe.firstIndex(where: {
+                      $0.materialId == SeedData.M.sampuanKutu
+                  })
+            else { return (0, 0) }
+            s.products[i].recipe[j].consumesStock = stok
+            s.products[i].recipe[j].addsCost = maliyet
+            s.addSale("sal", "2026-09", channel: ChannelIds.trendyol,
+                      product: SeedData.P.sampuan, qty: 10, gross: tl(7000))
+            let e = Engine(s)
+            return (e.qty(.material(SeedData.M.sampuanKutu)),
+                    e.cost(of: SeedData.P.sampuan).packaging)
+        }
+        let hepsi = kur(true, true)
+        let stokVarMaliyetYok = kur(true, false)
+        let stokYokMaliyetVar = kur(false, true)
+        let ikisiDeYok = kur(false, false)
+
+        #expect(hepsi.miktar == 90)
+        #expect(stokVarMaliyetYok.miktar == 90)          // stok aynı
+        #expect(stokYokMaliyetVar.miktar == 100)         // stok düşmedi
+        #expect(ikisiDeYok.miktar == 100)
+
+        #expect(stokVarMaliyetYok.maliyet == hepsi.maliyet - tl(8))
+        #expect(stokYokMaliyetVar.maliyet == hepsi.maliyet)   // maliyet aynı
+        #expect(ikisiDeYok.maliyet == hepsi.maliyet - tl(8))
+    }
+
+    /// Reçeteye ekleme artık engellenmez; sadece aynı malzemenin tekrarı uyarır
+    @Test func kural1_receteyeEklemeEngellenmez() {
+        var s = temel()
+        guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }),
+              let j = s.products[i].recipe.firstIndex(where: {
+                  $0.materialId == SeedData.M.sampuanKutu
+              })
+        else { return }
+        s.products[i].recipe[j].addsCost = false
+
+        // Maliyete dahil olmayan bir satır sorun değil
+        #expect(!Validation.product(s.products[i], state: s).hasBlocking)
+
+        // Aynı malzemeyi ikinci kez eklemek uyarır ama engellemez
+        let sorunlar = Validation.recipeLine(materialId: SeedData.M.sampuanKutu,
+                                             in: s.products[i], state: s)
+        #expect(!sorunlar.hasBlocking)
+        #expect(sorunlar.first?.severity == .uyari)
+
+        // Reçetede olmayan malzeme tamamen serbest
+        #expect(Validation.recipeLine(materialId: SeedData.M.balonluPoset,
+                                      in: s.products[i], state: s).isEmpty)
+    }
+
+    /// Eski ürün bazlı liste satır bazlı bayrağa taşınır, stok etkilenmez
+    @Test func kural1_eskiVeriYeniModeleTasinir() throws {
         var s = temel()
         guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }) else { return }
         s.products[i].costIncludesMaterials = [SeedData.M.sampuanKutu]
-        let sorunlar = Validation.recipeLine(materialId: SeedData.M.sampuanKutu,
-                                             in: s.products[i], state: s)
-        #expect(sorunlar.hasBlocking)
-        #expect(sorunlar.first?.code == .receteMaliyetiCiftSayim)
 
-        // Başka bir malzeme serbest
-        #expect(Validation.recipeLine(materialId: SeedData.M.koli,
-                                      in: s.products[i], state: s).isEmpty)
+        let geri = try Persistence.decode(try Persistence.encode(s))
+        let urun = geri.product(SeedData.P.sampuan)!
+        #expect(urun.costIncludesMaterials.isEmpty)
+        let satir = urun.recipe.first { $0.materialId == SeedData.M.sampuanKutu }!
+        #expect(satir.resolvedAddsCost == false)
+        #expect(satir.resolvedConsumesStock == true)   // stok tüketimi korundu
     }
 
     // MARK: Kural 2 — başlangıç stoğu
@@ -95,32 +160,62 @@ struct GuardTests {
         #expect(!Validation.purchase(farkli, state: s).contains { $0.code == .baslangicStoguTekrarAlim })
     }
 
-    // MARK: Kural 3 — stok alımı + gider
+    // MARK: Kural 3 — mükerrer kayıt ayrımı
 
-    /// Aynı fatura numarası ikinci kez girilemez
-    @Test func kural3_ayniFaturaIkiKezGirilemez() {
+    /// Aynı fatura numarası + aynı tedarikçi kesin engel
+    @Test func kural3_ayniFaturaAyniTedarikciEngellenir() {
         var s = temel()
         s.purchases.append(StockPurchase(id: "p1", date: "2026-09-05",
                                          item: .material(SeedData.M.koli), qty: 500,
-                                         unit: .adet, totalPaid: tl(6000), invoiceNo: "ABC-123"))
-        let gider = Expense(date: "2026-09-05", name: "Koli faturası", amount: tl(6000),
-                            category: .ambalaj, invoiceNo: "abc-123")
+                                         unit: .adet, totalPaid: tl(6000),
+                                         vendor: "ABC Ambalaj", invoiceNo: "FTR-123"))
+        let gider = Expense(date: "2026-09-20", name: "Koli faturası", amount: tl(6000),
+                            category: .ambalaj, invoiceNo: "ftr-123", vendor: "abc ambalaj")
         let sorunlar = Validation.expense(gider, state: s)
+        let engel = sorunlar.first { $0.code == .mukerrerFatura && $0.severity == .engel }
+        #expect(engel != nil)
         #expect(sorunlar.hasBlocking)
-        #expect(sorunlar.contains { $0.code == .mukerrerFatura })
     }
 
-    /// Fatura numarası olmasa da aynı tarih ve tutar yakalanır
-    @Test func kural3_ayniTarihTutarYakalanir() {
+    /// Aynı numara farklı tedarikçi: uyarı, engel değil
+    @Test func kural3_ayniNumaraFarkliTedarikciUyarir() {
+        var s = temel()
+        s.purchases.append(StockPurchase(id: "p1", date: "2026-09-05",
+                                         item: .material(SeedData.M.koli), qty: 500,
+                                         unit: .adet, totalPaid: tl(6000),
+                                         vendor: "ABC Ambalaj", invoiceNo: "FTR-123"))
+        let gider = Expense(date: "2026-09-20", name: "Kutu faturası", amount: tl(4000),
+                            category: .ambalaj, invoiceNo: "FTR-123", vendor: "XYZ Kutu")
+        let sorunlar = Validation.expense(gider, state: s)
+        #expect(sorunlar.contains { $0.code == .mukerrerFatura && $0.severity == .uyari })
+        #expect(!sorunlar.hasBlocking)
+    }
+
+    /// Sadece tarih + tutar eşleşiyorsa uyarı — iki farklı gerçek fatura olabilir
+    @Test func kural3_ayniTarihTutarSadeceUyarir() {
         var s = temel()
         s.purchases.append(StockPurchase(id: "p1", date: "2026-09-05",
                                          item: .material(SeedData.M.koli), qty: 500,
                                          unit: .adet, totalPaid: tl(6000)))
-        let gider = Expense(date: "2026-09-05", name: "Koli alımı", amount: tl(6000), category: .ambalaj)
-        #expect(Validation.expense(gider, state: s).hasBlocking)
+        let gider = Expense(date: "2026-09-05", name: "Başka bir fatura",
+                            amount: tl(6000), category: .diger)
+        let sorunlar = Validation.expense(gider, state: s)
+        #expect(sorunlar.contains { $0.code == .mukerrerFatura })
+        #expect(!sorunlar.hasBlocking)   // engellenmiyor
     }
 
-    /// Stok alımı zaten giderlerde görünür — ikinci kayda gerek yok
+    /// Tedarikçi bilinmiyorsa kesin engel verilmez
+    @Test func kural3_tedarikciBilinmiyorsaEngelYok() {
+        var s = temel()
+        s.purchases.append(StockPurchase(id: "p1", date: "2026-09-05",
+                                         item: .material(SeedData.M.koli), qty: 500,
+                                         unit: .adet, totalPaid: tl(6000), invoiceNo: "FTR-9"))
+        let gider = Expense(date: "2026-09-20", name: "X", amount: tl(1000),
+                            category: .diger, invoiceNo: "FTR-9")
+        #expect(!Validation.expense(gider, state: s).hasBlocking)
+    }
+
+    /// Stok alımı zaten giderlerde görünür — kâra gider yazılmaz
     @Test func kural3_alimGiderlerdeZatenGorunur() {
         var s = temel()
         s.purchases.append(StockPurchase(id: "p1", date: "2026-09-05",
@@ -129,8 +224,8 @@ struct GuardTests {
         let liste = Engine(s).expenseInstances(month: "2026-09")
         #expect(liste.count == 1)
         #expect(liste[0].sourceKind == .stokAlimi)
-        #expect(liste[0].expenseAmount == 0)      // kâra gider yazılmaz
-        #expect(liste[0].cashAmount == tl(6000))  // nakit çıkışı olarak görünür
+        #expect(liste[0].expenseAmount == 0)
+        #expect(liste[0].cashAmount == tl(6000))
     }
 
     // MARK: Kural 4 — sabit gider

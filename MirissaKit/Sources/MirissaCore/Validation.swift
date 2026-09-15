@@ -116,18 +116,18 @@ public enum Validation {
         return t
     }
 
-    // MARK: - Reçete satırı (Kural 1)
+    // MARK: - Reçete satırı
 
-    /// Üretim maliyetine zaten dahil olan bir malzeme reçeteye eklenirse
+    /// Aynı malzeme reçetede ikinci kez yer alırsa stoktan iki kez düşer.
+    /// Maliyete dahil olup olmaması artık satırın kendi ayarıdır; engel değildir.
     public static func recipeLine(materialId: Id, in product: Product, state: AppState) -> [ValidationIssue] {
-        guard product.costAlreadyIncludes(materialId) else { return [] }
+        guard product.recipe.contains(where: { $0.materialId == materialId }) else { return [] }
         let ad = state.material(materialId)?.name ?? "Bu malzeme"
         return [ValidationIssue(
-            .receteMaliyetiCiftSayim, .engel,
-            "\(ad) ürün maliyetinde zaten var",
-            "\(ad) üretim maliyetine dahil olarak işaretlenmiş. Reçeteye maliyet olarak "
-                + "ikinci kez eklemek çift sayım oluşturur. Malzeme stoktan yine düşer; "
-                + "sadece maliyeti tekrar sayılmaz."
+            .receteMaliyetiCiftSayim, .uyari,
+            "\(ad) reçetede zaten var",
+            "İkinci bir satır eklersen \(ad) her satışta iki kez stoktan düşer. "
+                + "Miktarı değiştirmek istiyorsan mevcut satırı düzenle."
         )]
     }
 
@@ -141,17 +141,17 @@ public enum Validation {
                 "Maliyet eksi olamaz", "Maliyet kalemlerinden biri eksi değer taşıyor."))
         }
 
-        // Reçetede olup üretim maliyetine de dahil işaretlenmiş kalemler
-        let cakisan = draft.recipe
-            .map(\.materialId)
-            .filter { draft.costAlreadyIncludes($0) }
-        if !cakisan.isEmpty {
-            let adlar = cakisan.compactMap { state.material($0)?.name }.joined(separator: ", ")
+        // Aynı malzemenin birden çok satırı stoktan iki kez düşer
+        let tekrarlayan = Dictionary(grouping: draft.recipe, by: \.materialId)
+            .filter { $0.value.count > 1 }
+            .keys
+            .compactMap { state.material($0)?.name }
+        if !tekrarlayan.isEmpty {
             out.append(ValidationIssue(
                 .receteMaliyetiCiftSayim, .uyari,
-                "Bu kalemler ürün maliyetinde zaten var",
-                "\(adlar) üretim maliyetine dahil işaretli. Stoktan düşmeye devam edecek "
-                    + "ama maliyeti ikinci kez sayılmayacak."
+                "Aynı malzeme reçetede birden çok kez var",
+                "\(tekrarlayan.joined(separator: ", ")) için birden fazla satır var; "
+                    + "her satışta üst üste stoktan düşer."
             ))
         }
 
@@ -216,7 +216,7 @@ public extension Validation {
                 "Tutar girilmedi", "Sıfır tutarlı gider kaydedilmez."))
         }
 
-        out += invoiceDuplicates(invoiceNo: draft.invoiceNo, state: state,
+        out += invoiceDuplicates(invoiceNo: draft.invoiceNo, vendor: draft.vendor, state: state,
                                  excludingExpense: editingId, excludingPurchase: nil)
 
         // Aynı tarih + tutar + benzer ad (Kural 3 ve 11)
@@ -227,11 +227,11 @@ public extension Validation {
         }
         if let benzerGider {
             out.append(ValidationIssue(
-                .mukerrerFatura, .engel,
+                .mukerrerFatura, .uyari,
                 "Bu gider zaten girilmiş",
                 "\(Dates.displayDate(benzerGider.date)) tarihli \(Money.format(benzerGider.amount)) "
-                    + "tutarında \"\(benzerGider.name)\" gideri zaten var. Aynısını ikinci kez "
-                    + "eklemek çift sayım oluşturur."
+                    + "tutarında \"\(benzerGider.name)\" gideri zaten var. İki farklı gerçek "
+                    + "fatura olabilir; aynıysa ikinci kez ekleme."
             ))
         }
 
@@ -241,7 +241,7 @@ public extension Validation {
         }
         if let benzerAlim {
             out.append(ValidationIssue(
-                .mukerrerFatura, .engel,
+                .mukerrerFatura, .uyari,
                 "Bu tutar stok alımı olarak zaten girilmiş",
                 "\(Dates.displayDate(benzerAlim.date)) tarihinde \(state.itemName(benzerAlim.item)) "
                     + "için \(Money.format(benzerAlim.landedTotal)) tutarında stok alımı var. "
@@ -321,7 +321,7 @@ public extension Validation {
                     + "eder tanımlı değil. Malzeme ayarlarından gir."))
         }
 
-        out += invoiceDuplicates(invoiceNo: draft.invoiceNo, state: state,
+        out += invoiceDuplicates(invoiceNo: draft.invoiceNo, vendor: draft.vendor, state: state,
                                  excludingExpense: nil, excludingPurchase: editingId)
 
         // Aynı kalem, aynı tarih, aynı tutar (Kural 3, 11)
@@ -330,8 +330,8 @@ public extension Validation {
                 && $0.landedTotal == draft.landedTotal && draft.landedTotal > 0
         }) {
             out.append(ValidationIssue(
-                .mukerrerFatura, .engel,
-                "Bu alım zaten girilmiş",
+                .mukerrerFatura, .uyari,
+                "Aynı tarih ve tutarda bir alım daha var",
                 "\(Dates.displayDate(benzer.date)) tarihinde \(state.itemName(benzer.item)) için "
                     + "\(Money.format(benzer.landedTotal)) tutarında alım kaydın var."
             ))
@@ -453,28 +453,43 @@ public extension Validation {
 
     // MARK: - Fatura numarası çakışması
 
-    static func invoiceDuplicates(invoiceNo: String?, state: AppState,
+    /// Aynı fatura numarası VE aynı tedarikçi kesin engeldir.
+    /// Numara aynı ama tedarikçi farklı/bilinmiyorsa yalnızca uyarı verilir —
+    /// farklı firmalar aynı numarayı kullanabilir.
+    static func invoiceDuplicates(invoiceNo: String?, vendor: String?, state: AppState,
                                   excludingExpense: Id?, excludingPurchase: Id?) -> [ValidationIssue] {
         guard let no = normalized(invoiceNo) else { return [] }
+        let tedarikci = normalized(vendor)
+
+        func sorun(_ nerede: String, _ tarih: DateKey, _ karsiTedarikci: String?) -> ValidationIssue {
+            let ayniTedarikci = tedarikci != nil && karsiTedarikci != nil && tedarikci == karsiTedarikci
+            if ayniTedarikci {
+                return ValidationIssue(
+                    .mukerrerFatura, .engel,
+                    "Bu fatura zaten kayıtlı",
+                    "\(no.uppercased()) numaralı \(vendor ?? "") faturası \(nerede) olarak "
+                        + "\(Dates.displayDate(tarih)) tarihinde girilmiş. Aynı faturayı ikinci kez "
+                        + "kaydedemezsin."
+                )
+            }
+            return ValidationIssue(
+                .mukerrerFatura, .uyari,
+                "Aynı fatura numarası başka bir kayıtta var",
+                "\(no.uppercased()) numarası \(nerede) olarak \(Dates.displayDate(tarih)) "
+                    + "tarihinde kullanılmış. Tedarikçiler farklıysa sorun yok; aynı faturaysa "
+                    + "ikinci kez girme."
+            )
+        }
+
         if let g = state.expenses.first(where: {
             $0.id != excludingExpense && normalized($0.invoiceNo) == no
         }) {
-            return [ValidationIssue(
-                .mukerrerFatura, .engel,
-                "Bu fatura numarası zaten kayıtlı",
-                "\(no.uppercased()) numaralı fatura \"\(g.name)\" gideri olarak "
-                    + "\(Dates.displayDate(g.date)) tarihinde girilmiş."
-            )]
+            return [sorun("\"\(g.name)\" gideri", g.date, normalized(g.vendor))]
         }
         if let p = state.purchases.first(where: {
             $0.id != excludingPurchase && normalized($0.invoiceNo) == no
         }) {
-            return [ValidationIssue(
-                .mukerrerFatura, .engel,
-                "Bu fatura numarası zaten kayıtlı",
-                "\(no.uppercased()) numaralı fatura \(state.itemName(p.item)) alımı olarak "
-                    + "\(Dates.displayDate(p.date)) tarihinde girilmiş."
-            )]
+            return [sorun("\(state.itemName(p.item)) alımı", p.date, normalized(p.vendor))]
         }
         return []
     }
@@ -491,9 +506,7 @@ public extension Validation {
                                      baseUnit: birim,
                                      packSizes: state.itemPackSizes(draft.item)) ?? 0
         let net = draft.landedSplit.net
-        var lines = [
-            "+\(Units.formatQty(base, baseUnit: birim)) \(state.itemName(draft.item))",
-        ]
+        var lines = ["+\(Units.formatQty(base, baseUnit: birim)) \(state.itemName(draft.item))"]
         if draft.landedTotal > 0 {
             lines.append("\(Money.format(draft.landedTotal)) nakit çıkışı")
         }
@@ -524,7 +537,6 @@ public extension Validation {
                      + (draft.resolvedVatRate == .yok ? "" : " (KDV hariç)"))
         if bolum.vat > 0 { lines.append("\(Money.format(bolum.vat)) hesaplanan KDV") }
 
-        // Stoktan düşecekler
         let leaves = Costing.explodeToLeafProducts(
             products: Dictionary(state.products.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }),
             productId: draft.productId, qty: draft.qty
@@ -534,7 +546,8 @@ public extension Validation {
             return "\(l.name) −\(Int(adet))"
         }.sorted()
         if !urunler.isEmpty { lines.append("Stoktan: " + urunler.joined(separator: ", ")) }
-        if !p.recipe.isEmpty { lines.append("Ayrıca \(p.recipe.count) paketleme malzemesi düşecek") }
+        let dusecek = p.recipe.filter(\.resolvedConsumesStock).count
+        if dusecek > 0 { lines.append("Ayrıca \(dusecek) paketleme malzemesi düşecek") }
 
         let toplamMaliyet = Money.roundHalfAwayFromZero(Double(maliyet.intrinsic) * draft.netQty)
             + Money.roundHalfAwayFromZero(Double(maliyet.packaging) * draft.qty)

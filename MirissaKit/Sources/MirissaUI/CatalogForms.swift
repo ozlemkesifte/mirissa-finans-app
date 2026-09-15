@@ -141,8 +141,7 @@ struct ProductForm: View {
     @State private var components: [BundleComponent] = []
     @State private var costLines: [CostLine] = []
     @State private var recipe: [RecipeLine] = []
-    @State private var maliyeteDahil: [Id] = []
-    @State private var engelMesaji: String?
+
     @State private var minQty: Double?
     @State private var criticalQty: Double?
     @State private var loaded = false
@@ -216,39 +215,6 @@ struct ProductForm: View {
             }
 
             Section {
-                DisclosureGroup("Bu üretim maliyetine neler dahil?") {
-                    if store.state.activeMaterials.isEmpty {
-                        Text("Önce ambalaj ve sarf malzemesi ekle.")
-                            .font(.footnote).foregroundStyle(Palette.inkFaint)
-                    }
-                    ForEach(store.state.activeMaterials) { m in
-                        Button {
-                            if let i = maliyeteDahil.firstIndex(of: m.id) {
-                                maliyeteDahil.remove(at: i)
-                            } else {
-                                maliyeteDahil.append(m.id)
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: maliyeteDahil.contains(m.id)
-                                      ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(maliyeteDahil.contains(m.id)
-                                                     ? Palette.accent : Palette.inkFaint)
-                                Text(m.name).foregroundStyle(Palette.ink)
-                                Spacer()
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            } footer: {
-                Text(maliyeteDahil.isEmpty
-                     ? "Yukarıdaki maliyete şişe, kapak, etiket gibi kalemler dahilse burada işaretle — reçetede ikinci kez sayılmasınlar."
-                     : "İşaretlediklerin stoktan düşmeye devam eder, maliyetleri ikinci kez sayılmaz.")
-            }
-
-            Section {
                 ForEach($recipe) { $line in
                     RecipeLineRow(line: $line)
                 }
@@ -284,13 +250,6 @@ struct ProductForm: View {
             }
         }
         .onAppear(perform: load)
-        .alert("Çift sayım oluşur", isPresented: Binding(
-            get: { engelMesaji != nil }, set: { if !$0 { engelMesaji = nil } }
-        )) {
-            Button("Tamam", role: .cancel) {}
-        } message: {
-            Text(engelMesaji ?? "")
-        }
         .confirmationDialog("Ürün, satışları ve stok geçmişiyle birlikte silinecek.",
                             isPresented: $showDelete, titleVisibility: .visible) {
             Button("Sil", role: .destructive) { store.deleteProduct(editingId!); dismiss() }
@@ -304,7 +263,6 @@ struct ProductForm: View {
         guard let id = editingId, let p = store.state.product(id) else { return }
         name = p.name; isBundle = p.isBundle; components = p.components
         costLines = p.costLines; recipe = p.recipe
-        maliyeteDahil = p.costIncludesMaterials
         minQty = p.minQty; criticalQty = p.criticalQty
     }
 
@@ -313,18 +271,11 @@ struct ProductForm: View {
             id: editingId ?? "taslak", name: name, isBundle: isBundle,
             components: isBundle ? components : [],
             costLines: costLines, recipe: recipe,
-            costIncludesMaterials: maliyeteDahil,
             minQty: minQty, criticalQty: criticalQty
         )
     }
 
-    /// Üretim maliyetine dahil bir malzeme reçeteye eklenmek istenirse engelle
     private func receteyeEkle(_ m: StockMaterial) {
-        let sorunlar = Validation.recipeLine(materialId: m.id, in: taslak, state: store.state)
-        if let engel = sorunlar.first(where: { $0.severity == .engel }) {
-            engelMesaji = engel.detail
-            return
-        }
         recipe.append(RecipeLine(materialId: m.id, qty: 1, unit: m.baseUnit))
     }
 
@@ -334,7 +285,6 @@ struct ProductForm: View {
             p.name = name; p.isBundle = isBundle
             p.components = isBundle ? components : []
             p.costLines = cleanCost; p.recipe = recipe
-            p.costIncludesMaterials = maliyeteDahil
             p.minQty = minQty; p.criticalQty = criticalQty
             store.updateProduct(p)
         } else {
@@ -342,7 +292,6 @@ struct ProductForm: View {
                 name: name, isBundle: isBundle,
                 components: isBundle ? components : [],
                 costLines: cleanCost, recipe: recipe,
-                costIncludesMaterials: maliyeteDahil,
                 minQty: minQty, criticalQty: criticalQty
             ))
         }
@@ -354,21 +303,46 @@ private struct RecipeLineRow: View {
     @Environment(AppStore.self) private var store
 
     private var material: StockMaterial? { store.state.material(line.materialId) }
+    private var ad: String { material?.name ?? "Silinmiş malzeme" }
 
     var body: some View {
-        HStack {
-            Text(material?.name ?? "Silinmiş malzeme")
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            QtyField("", value: $line.qty).frame(maxWidth: 90)
-            if let m = material {
-                Picker("", selection: $line.unit) {
-                    ForEach(Units.allowedUnits(baseUnit: m.baseUnit, packSizes: m.packSizes)) { u in
-                        Text(u.displayName).tag(u)
+        DisclosureGroup {
+            HStack {
+                Text("Miktar").foregroundStyle(Palette.inkSoft)
+                Spacer(minLength: 8)
+                QtyField("", value: $line.qty).frame(maxWidth: 90)
+                if let m = material {
+                    Picker("", selection: $line.unit) {
+                        ForEach(Units.allowedUnits(baseUnit: m.baseUnit, packSizes: m.packSizes)) { u in
+                            Text(u.displayName).tag(u)
+                        }
                     }
+                    .labelsHidden()
+                    .frame(maxWidth: 96)
                 }
-                .labelsHidden()
-                .frame(maxWidth: 96)
+            }
+            Toggle("Fiziksel stok tüketimi", isOn: Binding(
+                get: { line.resolvedConsumesStock },
+                set: { line.consumesStock = $0 }
+            ))
+            Toggle("Maliyete dahil et", isOn: Binding(
+                get: { line.resolvedAddsCost },
+                set: { line.addsCost = $0 }
+            ))
+            Text(line.resolvedAddsCost
+                 ? "Bu malzemenin maliyeti ürün maliyetine eklenir."
+                 : "Maliyeti üretim fiyatına zaten dahil. Stoktan yine düşer, maliyeti ikinci kez sayılmaz.")
+                .font(.caption2)
+                .foregroundStyle(Palette.inkFaint)
+                .fixedSize(horizontal: false, vertical: true)
+        } label: {
+            HStack(spacing: 6) {
+                Text(ad).foregroundStyle(Palette.ink).lineLimit(1)
+                if let not = line.noteLabel { Pill(not) }
+                Spacer(minLength: 8)
+                Text("\(NumberInput.display(line.qty).isEmpty ? "0" : NumberInput.display(line.qty)) \(line.unit.displayName)")
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.inkSoft)
             }
         }
     }

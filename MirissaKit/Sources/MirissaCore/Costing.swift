@@ -78,8 +78,8 @@ public enum Costing {
         var total = 0.0
         for line in product.recipe {
             // Üretim maliyetine zaten dahilse maliyeti tekrar sayma.
-            // Malzeme stoktan yine de düşer; sadece çift maliyet oluşmaz.
-            guard !product.costAlreadyIncludes(line.materialId) else { continue }
+            // Stok hareketi bundan etkilenmez; yalnızca çift maliyet önlenir.
+            guard line.resolvedAddsCost else { continue }
             guard let mat = materials[line.materialId] else { continue }
             guard let base = Units.toBaseOrNil(
                 qty: line.qty, unit: line.unit,

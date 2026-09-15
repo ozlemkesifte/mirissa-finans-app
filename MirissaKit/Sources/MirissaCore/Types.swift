@@ -112,12 +112,42 @@ public struct RecipeLine: Codable, Identifiable, Hashable, Sendable {
     public var materialId: Id
     public var qty: Double
     public var unit: UnitCode
+    /// Fiziksel stok tüketimi. Kapalıysa malzeme stoktan düşmez.
+    public var consumesStock: Bool?
+    /// Maliyete dahil et. Kapalıysa malzeme stoktan düşer ama
+    /// maliyeti ürün maliyetine ikinci kez eklenmez.
+    public var addsCost: Bool?
 
-    public init(id: Id = Ids.make(.recipeLine), materialId: Id, qty: Double, unit: UnitCode) {
+    public init(
+        id: Id = Ids.make(.recipeLine),
+        materialId: Id,
+        qty: Double,
+        unit: UnitCode,
+        consumesStock: Bool? = nil,
+        addsCost: Bool? = nil
+    ) {
         self.id = id
         self.materialId = materialId
         self.qty = qty
         self.unit = unit
+        self.consumesStock = consumesStock
+        self.addsCost = addsCost
+    }
+
+    /// Varsayılan: hem stoktan düşer hem maliyete girer
+    public var resolvedConsumesStock: Bool { consumesStock ?? true }
+    public var resolvedAddsCost: Bool { addsCost ?? true }
+
+    public var isDefault: Bool { resolvedConsumesStock && resolvedAddsCost }
+
+    /// Satırın özel durumunu anlatan kısa etiket
+    public var noteLabel: String? {
+        switch (resolvedConsumesStock, resolvedAddsCost) {
+        case (true, true): return nil
+        case (true, false): return "maliyete dahil değil"
+        case (false, true): return "stoktan düşmez"
+        case (false, false): return "stok ve maliyet dışı"
+        }
     }
 }
 
@@ -503,6 +533,8 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var note: String?
     /// Mükerrer kayıt kontrolü için fatura/fiş numarası
     public var invoiceNo: String?
+    /// Faturayı kesen taraf — fatura numarası tek başına ayırt edici değil
+    public var vendor: String?
     /// Satış arttıkça artar mı. `nil` ise kategorinin varsayılanı kullanılır.
     public var behavior: CostBehavior?
     /// Fatura/fiş dosyasının adı (uygulamanın ekler klasöründe durur)
@@ -523,6 +555,7 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         overrides: [MonthKey: ExpenseOverride] = [:],
         note: String? = nil,
         invoiceNo: String? = nil,
+        vendor: String? = nil,
         behavior: CostBehavior? = nil,
         attachment: String? = nil,
         vatRate: VatRate? = nil,
@@ -539,6 +572,7 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         self.overrides = overrides
         self.note = note
         self.invoiceNo = invoiceNo
+        self.vendor = vendor
         self.behavior = behavior
         self.attachment = attachment
         self.vatRate = vatRate

@@ -17,6 +17,7 @@ struct ExpenseForm: View {
     @State private var behavior: CostBehavior = .sabit
     @State private var behaviorTouched = false
     @State private var invoiceNo = ""
+    @State private var vendor = ""
     @State private var vatRate: VatRate = .yirmi
     @State private var vatIncluded = true
     @State private var picked: PickedFile?
@@ -109,6 +110,7 @@ struct ExpenseForm: View {
                     .onChange(of: behavior) { _, _ in behaviorTouched = true }
                     VatSection(rate: $vatRate, included: $vatIncluded, amount: amount,
                                asSection: false)
+                    TextField("Tedarikçi (isteğe bağlı)", text: $vendor)
                     TextField("Fatura no (isteğe bağlı)", text: $invoiceNo)
                 }
             } footer: {
@@ -169,6 +171,7 @@ struct ExpenseForm: View {
         vatRate = e.resolvedVatRate
         vatIncluded = e.resolvedVatIncluded
         invoiceNo = e.invoiceNo ?? ""
+        vendor = e.vendor ?? ""
         let ov = e.overrides[contextMonth]
         name = ov?.name ?? e.name
         amount = ov?.amount ?? e.amount
@@ -183,6 +186,7 @@ struct ExpenseForm: View {
             scope: scopeId == "ortak" ? .ortak : .channel(scopeId),
             recurrence: recurrence,
             invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
+            vendor: vendor.isEmpty ? nil : vendor,
             behavior: behavior,
             vatRate: store.state.settings.vatEnabled ? vatRate : nil,
             vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
@@ -209,6 +213,7 @@ struct ExpenseForm: View {
                 updated.recurrence = recurrence
                 updated.behavior = behavior
                 updated.invoiceNo = invoiceNo.isEmpty ? nil : invoiceNo
+                updated.vendor = vendor.isEmpty ? nil : vendor
                 updated.vatRate = store.state.settings.vatEnabled ? vatRate : nil
                 updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : nil
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
@@ -220,6 +225,7 @@ struct ExpenseForm: View {
                 date: date, name: name, amount: amount,
                 category: category, scope: scope, recurrence: recurrence,
                 invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
+                vendor: vendor.isEmpty ? nil : vendor,
                 behavior: behavior,
                 vatRate: store.state.settings.vatEnabled ? vatRate : nil,
                 vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil

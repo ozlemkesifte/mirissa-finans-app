@@ -74,6 +74,16 @@ public enum Persistence {
         let channelIds = Set(s.channels.map(\.id))
 
         for i in s.products.indices {
+            // Eski ürün bazlı "maliyete dahil" listesi satır bazlı bayrağa taşınır.
+            // Stok tüketimi hiçbir şekilde etkilenmez.
+            if !s.products[i].costIncludesMaterials.isEmpty {
+                let dahil = Set(s.products[i].costIncludesMaterials)
+                for j in s.products[i].recipe.indices
+                where dahil.contains(s.products[i].recipe[j].materialId) {
+                    s.products[i].recipe[j].addsCost = false
+                }
+                s.products[i].costIncludesMaterials = []
+            }
             let selfId = s.products[i].id
             s.products[i].recipe.removeAll { !materialIds.contains($0.materialId) }
             s.products[i].components.removeAll { !productIds.contains($0.productId) || $0.productId == selfId }

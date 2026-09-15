@@ -268,6 +268,9 @@ public enum Movements {
             //     set kutusu kullanılır — bu yüzden bileşen reçeteleri uygulanmaz.)
             //    İade edilse bile koli/patpat geri gelmez: brüt adet üzerinden düşer.
             for line in sold.recipe {
+                // Maliyete dahil olup olmaması stok hareketini etkilemez:
+                // yalnızca "stoktan düşmez" işaretli satırlar atlanır.
+                guard line.resolvedConsumesStock else { continue }
                 guard let mat = s.material(line.materialId) else { continue }
                 guard let perUnit = Units.toBaseOrNil(
                     qty: line.qty, unit: line.unit,
