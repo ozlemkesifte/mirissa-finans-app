@@ -151,17 +151,17 @@ struct BundleTests {
 
     @Test func kanalaOzelFiyatEtiketFiyatininOnundeGelir() {
         var set = Fx.set()
-        set.listPrice = tl(1_500)
-        set.channelPrices = [ChannelIds.trendyol: tl(1_699)]
-        #expect(set.price(for: ChannelIds.trendyol) == tl(1_699))
-        #expect(set.price(for: ChannelIds.shopify) == tl(1_500))
-        #expect(set.price() == tl(1_500))
+        set.setPrice(tl(1_500), channelId: nil, from: "2026-09-01")
+        set.setPrice(tl(1_699), channelId: ChannelIds.trendyol, from: "2026-09-01")
+        #expect(set.price(for: ChannelIds.trendyol, on: "2026-09-15") == tl(1_699))
+        #expect(set.price(for: ChannelIds.shopify, on: "2026-09-15") == tl(1_500))
+        #expect(set.price(on: "2026-09-15") == tl(1_500))
     }
 
     @Test func fiyatGirilmemisseNilDoner() {
         let set = Fx.set()
-        #expect(set.price() == nil)
-        #expect(set.price(for: ChannelIds.trendyol) == nil)
+        #expect(set.price(on: "2026-09-15") == nil)
+        #expect(set.price(for: ChannelIds.trendyol, on: "2026-09-15") == nil)
     }
 
     /// Fiyat alanları eski yedeklerde yok — okuma bozulmamalı
@@ -173,6 +173,7 @@ struct BundleTests {
         let p = try JSONDecoder().decode(Product.self, from: Data(json.utf8))
         #expect(p.listPrice == nil)
         #expect(p.channelPrices == nil)
-        #expect(p.price(for: ChannelIds.trendyol) == nil)
+        #expect(p.priceHistory == nil)
+        #expect(p.price(for: ChannelIds.trendyol, on: "2026-09-15") == nil)
     }
 }

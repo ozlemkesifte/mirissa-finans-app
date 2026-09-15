@@ -61,6 +61,9 @@ public enum Persistence {
         return validate(state)
     }
 
+    /// Fiyat geçmişinde "başlangıçtan beri geçerli" anlamına gelir.
+    static let enEskiTarih: DateKey = "1970-01-01"
+
     static func migrate(_ s: AppState, from version: Int) -> AppState {
         // Sürüm 1 ilk sürüm; ileride buraya (1 -> 2) gibi dönüşümler eklenecek.
         s
@@ -84,6 +87,23 @@ public enum Persistence {
                 }
                 s.products[i].costIncludesMaterials = []
             }
+            // Tarihçesiz tek fiyat alanları fiyat geçmişine taşınır.
+            // Eski fiyat "her zaman geçerliydi" sayılır ki geçmiş raporlar bozulmasın.
+            let eskiFiyatlar = s.products[i].listPrice.map {
+                [PricePoint(channelId: nil, amount: $0, from: Persistence.enEskiTarih)]
+            } ?? []
+            let eskiKanal = (s.products[i].channelPrices ?? [:])
+                .sorted { $0.key < $1.key }
+                .map { PricePoint(channelId: $0.key, amount: $0.value,
+                                  from: Persistence.enEskiTarih) }
+            if !eskiFiyatlar.isEmpty || !eskiKanal.isEmpty {
+                var liste = s.products[i].priceHistory ?? []
+                liste += eskiFiyatlar + eskiKanal
+                s.products[i].priceHistory = liste.sorted { $0.from < $1.from }
+                s.products[i].listPrice = nil
+                s.products[i].channelPrices = nil
+            }
+
             let selfId = s.products[i].id
             s.products[i].recipe.removeAll { !materialIds.contains($0.materialId) }
             s.products[i].components.removeAll { !productIds.contains($0.productId) || $0.productId == selfId }

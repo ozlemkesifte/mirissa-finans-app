@@ -24,6 +24,7 @@ struct HomeView: View {
                         BreakevenCard(month: period.month)
                     }
                     islemler
+                    PriceCheckCard(sheet: $sheet)
                     if !alerts.isEmpty { stockAlerts }
                     TrendChart(
                         points: trendPoints,

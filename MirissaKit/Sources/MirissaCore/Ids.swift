@@ -13,6 +13,7 @@ public enum IdPrefix: String {
     case costLine = "cst"
     case recipeLine = "rcp"
     case balance = "bal"
+    case price = "prc"
 }
 
 public enum Ids {

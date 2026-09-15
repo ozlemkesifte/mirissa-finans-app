@@ -94,18 +94,19 @@ public enum Costing {
     public static func intrinsicCost(
         products: [Id: Product],
         productId: Id,
+        asOf: DateKey? = nil,
         visiting: Set<Id> = [],
         depth: Int = 0
     ) -> Kurus {
         guard depth < maxDepth, !visiting.contains(productId),
               let p = products[productId] else { return 0 }
-        var total = p.costLines.reduce(0) { $0 + $1.amount }
+        var total = p.costLines(on: asOf).reduce(0) { $0 + $1.amount }
         if p.isBundle {
             var next = visiting
             next.insert(productId)
             for c in p.components {
                 let sub = intrinsicCost(
-                    products: products, productId: c.productId,
+                    products: products, productId: c.productId, asOf: asOf,
                     visiting: next, depth: depth + 1
                 )
                 total += Money.roundHalfAwayFromZero(Double(sub) * c.qty)
@@ -118,14 +119,16 @@ public enum Costing {
         products: [Id: Product],
         materials: [Id: StockMaterial],
         productId: Id,
+        asOf: DateKey? = nil,
         unitCostOf: (Id) -> Double
     ) -> CostBreakdown {
         guard let p = products[productId] else { return .zero }
-        let own = p.costLines.reduce(0) { $0 + $1.amount }
+        let own = p.costLines(on: asOf).reduce(0) { $0 + $1.amount }
         var comps = 0
         if p.isBundle {
             for c in p.components {
-                let sub = intrinsicCost(products: products, productId: c.productId, visiting: [productId], depth: 1)
+                let sub = intrinsicCost(products: products, productId: c.productId, asOf: asOf,
+                                        visiting: [productId], depth: 1)
                 comps += Money.roundHalfAwayFromZero(Double(sub) * c.qty)
             }
         }

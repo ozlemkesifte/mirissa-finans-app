@@ -31,6 +31,7 @@ public final class Engine {
     private var expenseCache: [MonthKey: [ExpenseInstance]] = [:]
     var consumptionCache: [String: ConsumptionRate] = [:]
     private var vatCache: [MonthKey: VatStatus] = [:]
+    var fiyatGuncelCache: [String: CompanyMonthResult?] = [:]
 
     func vatCacheGet(_ m: MonthKey) -> VatStatus? { vatCache[m] }
     func vatCacheSet(_ m: MonthKey, _ v: VatStatus) { vatCache[m] = v }
@@ -80,7 +81,7 @@ public final class Engine {
         }
         let b = Costing.breakdown(
             products: productsById, materials: materialsById,
-            productId: productId, unitCostOf: lookup
+            productId: productId, asOf: asOf, unitCostOf: lookup
         )
         costCache[key] = b
         return b

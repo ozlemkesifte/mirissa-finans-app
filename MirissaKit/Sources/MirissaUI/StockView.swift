@@ -74,6 +74,7 @@ struct StockView: View {
                 }
                 .buttonStyle(.plain)
             }
+            BigButton("Fiyat Güncelle", icon: "tag") { sheet = .priceUpdate(nil) }
             BigButton("Ürün Ekle", icon: "plus", tone: Palette.gider) { sheet = .addProduct }
         }
     }

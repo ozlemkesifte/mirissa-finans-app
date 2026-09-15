@@ -141,7 +141,8 @@ struct SaleFlow: View {
     private func kayitliFiyat(_ i: Int) -> Kurus? {
         guard satirlar.indices.contains(i),
               let p = store.state.product(satirlar[i].urunId) else { return nil }
-        return p.price(for: kanalId.isEmpty ? nil : kanalId)
+        // Satışın ait olduğu ayda geçerli fiyat kullanılır.
+        return p.price(for: kanalId.isEmpty ? nil : kanalId, on: Dates.monthEnd(ay))
     }
 
     private func urunDetayAdimi(_ i: Int) -> some View {

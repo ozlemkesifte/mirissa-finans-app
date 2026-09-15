@@ -46,6 +46,7 @@ public enum BreakevenIssue: String, Sendable, Hashable, Identifiable {
     case urunMaliyetiYok
     case ayHenuzBitmedi
     case araDurumIsaretli
+    case fiyatGuncel
 
     public var id: String { rawValue }
 
@@ -63,6 +64,8 @@ public enum BreakevenIssue: String, Sendable, Hashable, Identifiable {
             return "Bu ay henüz bitmedi. Rakamlar şu ana kadar girdiğin satışları gösteriyor."
         case .araDurumIsaretli:
             return "Girilen satışlar ayın tamamı değil, ara durum olarak işaretlendi."
+        case .fiyatGuncel:
+            return "Hedef, bu ayda geçerli olan güncel fiyatlarla hesaplandı. Geçmiş ayların raporu değişmedi."
         }
     }
 
@@ -214,6 +217,7 @@ public extension Engine {
         plan.revenuePerOrder = temel.revenuePerOrder
         plan.unitsPerOrder = temel.unitsPerOrder
         if temel.urunMaliyetiEksik { plan.issues.append(.urunMaliyetiYok) }
+        if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
 
         guard temel.contributionPerOrder > 0 else {
             plan.issues.append(.katkiNegatif)
@@ -325,24 +329,71 @@ public extension Engine {
         var revenuePerOrder: Double
         var unitsPerOrder: Double
         var urunMaliyetiEksik: Bool
+        /// Temel ay, hedef ayın fiyatlarıyla yeniden değerlendi mi
+        var fiyatGuncellendi: Bool = false
     }
 
     /// Verilen aydan önceki son tamamlanmış ayın gerçek dağılımı;
     /// yoksa kullanıcının girdiği beklenen profil.
+    ///
+    /// Geçmiş ay, hedef ayda geçerli fiyatlarla yeniden değerlenir:
+    /// fiyat zammı hedefi düşürür, indirim yükseltir. Geçmiş ayın kendi
+    /// raporu bundan etkilenmez — orada hâlâ o günün fiyatı geçerlidir.
     func targetBasis(before month: MonthKey) -> TargetBasisResult? {
         for geri in 1...12 {
             let m = Dates.addMonths(month, -geri)
-            let r = companyMonth(m)
-            guard r.orders > 0, r.gercekCiro > 0 else { continue }
+            let ham = companyMonth(m)
+            guard ham.orders > 0, ham.gercekCiro > 0 else { continue }
+            let guncel = fiyatlarlaYenidenDegerle(basisMonth: m, hedefAy: month)
+            let r = guncel ?? ham
+            guard r.orders > 0 else { continue }
             return TargetBasisResult(
                 basis: .gecmisAy(m),
                 contributionPerOrder: Double(r.toplamKatki) / Double(r.orders),
                 revenuePerOrder: Double(r.gercekCiro) / Double(r.orders),
                 unitsPerOrder: r.units / Double(r.orders),
-                urunMaliyetiEksik: satilanUrunlerinMaliyetiGirilmemis(month: m)
+                urunMaliyetiEksik: satilanUrunlerinMaliyetiGirilmemis(month: m),
+                fiyatGuncellendi: guncel != nil
             )
         }
         return expectedMixBasis()
+    }
+
+    /// Temel alınan ayın satışlarını, hedef ayda geçerli fiyatlarla yeniden hesaplar.
+    /// Fiyatı tanımlı olmayan veya değişmemiş satırlar olduğu gibi kalır.
+    /// Hiçbir fiyat değişmemişse `nil` döner ve hiçbir şey yeniden hesaplanmaz.
+    func fiyatlarlaYenidenDegerle(basisMonth: MonthKey, hedefAy: MonthKey) -> CompanyMonthResult? {
+        let anahtar = "\(basisMonth)|\(hedefAy)"
+        if let onbellek = fiyatGuncelCache[anahtar] { return onbellek }
+
+        let eskiGun = Dates.monthEnd(basisMonth)
+        let yeniGun = Dates.monthEnd(hedefAy)
+        var kopya = state
+        var degisti = false
+        for i in kopya.sales.indices where kopya.sales[i].month == basisMonth {
+            let satir = kopya.sales[i]
+            guard let p = kopya.product(satir.productId),
+                  let eski = p.price(for: satir.channelId, on: eskiGun),
+                  let yeni = p.price(for: satir.channelId, on: yeniGun),
+                  eski > 0, yeni != eski else { continue }
+            let oran = Double(yeni) / Double(eski)
+            func olcekle(_ v: Kurus) -> Kurus {
+                Money.roundHalfAwayFromZero(Double(v) * oran)
+            }
+            kopya.sales[i].grossSales = olcekle(satir.grossSales)
+            kopya.sales[i].discount = olcekle(satir.discount)
+            kopya.sales[i].returnsAmount = olcekle(satir.returnsAmount)
+            degisti = true
+        }
+        guard degisti else {
+            fiyatGuncelCache[anahtar] = CompanyMonthResult?.none
+            return nil
+        }
+        // Elle girilmiş kanal kesintileri eski tutarda kalır; oransal
+        // kesintiler yeni ciro üzerinden kendiliğinden yeniden hesaplanır.
+        let sonuc = Engine(kopya).companyMonth(basisMonth)
+        fiyatGuncelCache[anahtar] = sonuc
+        return sonuc
     }
 
     /// Kullanıcının girdiği beklenen sipariş profilinden katkı hesaplar.

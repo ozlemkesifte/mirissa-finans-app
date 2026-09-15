@@ -382,8 +382,9 @@ public struct SetupWizard: View {
         let t = setTaslak(i)
         return SoruAdimi(
             soru: "\(t.ad) paketlenirken ne kullanılıyor?",
-            aciklama: "Sadece bu pakete özel olanları yaz. İçindeki ürünlerin kendi "
-                + "kutuları bu satışta kullanılmıyorsa sıfır bırak.",
+            aciklama: "Bu paket satıldığında gerçekte ne kullanılıyorsa onu yaz. "
+                + "Hem set kutusu hem ürünlerin kendi kutuları kullanılıyorsa ikisini de "
+                + "yaz; kullanılmayanı sıfır bırak.",
             adim: i + 1, toplam: setler.count,
             geri: geriGit,
             ileri: { ileri(sonrakiSetAmbalajAdimi(i)) }
@@ -840,20 +841,34 @@ public struct SetupWizard: View {
         )
     }
 
+    /// Kurulumda girilen fiyatlar geçmişi silmez: ilk kez giriliyorsa
+    /// baştan geçerli, değiştiriliyorsa bugünden geçerli kaydedilir.
+    private static func fiyatlariUygula(_ p: inout Product, liste: Kurus, kanal: [Id: Kurus]) {
+        let bugun = Dates.today()
+        p.applyCurrentPrice(liste, channelId: nil, today: bugun)
+        for (kanalId, tutar) in kanal.sorted(by: { $0.key < $1.key }) {
+            p.applyCurrentPrice(tutar, channelId: kanalId, today: bugun)
+        }
+    }
+
     // MARK: Veri
 
     private func yukle() {
         guard !yuklendi else { return }
         yuklendi = true
         let s = store.state
+        let bugun = Dates.today()
         urunler = s.products.filter { !$0.isBundle }.map { p in
             UrunTaslak(id: p.id, ad: p.name,
                        stok: p.openingQty ?? 0,
                        maliyet: p.costLines.reduce(0) { $0 + $1.amount },
                        ambalajDahil: p.recipe.isEmpty ? nil
                         : p.recipe.allSatisfy { !$0.resolvedAddsCost },
-                       listeFiyat: p.listPrice ?? 0,
-                       kanalFiyat: p.channelPrices ?? [:])
+                       listeFiyat: p.price(on: bugun) ?? 0,
+                       kanalFiyat: Dictionary(uniqueKeysWithValues:
+                        s.channels.compactMap { c in
+                            p.price(for: c.id, on: bugun).map { (c.id, $0) }
+                        }))
         }
         if urunler.isEmpty { urunler = [UrunTaslak(ad: "")] }
         let receteler = s.products.flatMap(\.recipe)
@@ -876,8 +891,11 @@ public struct SetupWizard: View {
                                        uniquingKeysWith: { a, _ in a }),
                 ambalaj: Dictionary(p.recipe.map { ($0.materialId, $0.qty) },
                                     uniquingKeysWith: { a, _ in a }),
-                listeFiyat: p.listPrice ?? 0,
-                kanalFiyat: p.channelPrices ?? [:]
+                listeFiyat: p.price(on: bugun) ?? 0,
+                kanalFiyat: Dictionary(uniqueKeysWithValues:
+                    s.channels.compactMap { c in
+                        p.price(for: c.id, on: bugun).map { (c.id, $0) }
+                    })
             )
         }
         kanallar = s.channels.map {
@@ -895,27 +913,32 @@ public struct SetupWizard: View {
             for t in urunler where !t.ad.trimmingCharacters(in: .whitespaces).isEmpty {
                 if var p = s.products.first(where: { $0.id == t.id }) {
                     p.name = t.ad
-                    p.listPrice = t.listeFiyat > 0 ? t.listeFiyat : nil
-                    p.channelPrices = t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
+                    Self.fiyatlariUygula(&p, liste: t.listeFiyat, kanal: t.kanalFiyat)
                     p.openingQty = t.stok > 0 ? t.stok : nil
                     p.openingUnitCost = t.maliyet > 0 ? t.maliyet : nil
                     p.openingDate = ay
-                    p.costLines = t.maliyet > 0
-                        ? [CostLine(id: p.costLines.first?.id ?? Ids.make(.costLine),
-                                    label: "Birim maliyet", amount: t.maliyet)]
-                        : p.costLines
+                    // Maliyet değişikliği geçmiş raporları bozmaz:
+                    // eski kalem kapatılır, yenisi bugünden başlar.
+                    if t.maliyet > 0 {
+                        let mevcut = p.costLines(on: nil).first
+                        p.applyCostLines(
+                            [CostLine(id: mevcut?.id ?? Ids.make(.costLine),
+                                      label: "Birim maliyet", amount: t.maliyet)],
+                            today: Dates.today()
+                        )
+                    }
                     yeniUrunler.append(p)
                 } else {
-                    yeniUrunler.append(Product(
+                    var yeni = Product(
                         id: t.id, name: t.ad,
                         costLines: t.maliyet > 0
                             ? [CostLine(label: "Birim maliyet", amount: t.maliyet)] : [],
                         openingQty: t.stok > 0 ? t.stok : nil,
                         openingUnitCost: t.maliyet > 0 ? t.maliyet : nil,
-                        openingDate: ay,
-                        listPrice: t.listeFiyat > 0 ? t.listeFiyat : nil,
-                        channelPrices: t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
-                    ))
+                        openingDate: ay
+                    )
+                    Self.fiyatlariUygula(&yeni, liste: t.listeFiyat, kanal: t.kanalFiyat)
+                    yeniUrunler.append(yeni)
                 }
             }
             // --- Setler / çoklu paketler ---
@@ -946,16 +969,15 @@ public struct SetupWizard: View {
                     p.openingQty = nil        // setin kendi stoğu yok
                     p.openingUnitCost = nil
                     p.archived = false
-                    p.listPrice = t.listeFiyat > 0 ? t.listeFiyat : nil
-                    p.channelPrices = t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
+                    Self.fiyatlariUygula(&p, liste: t.listeFiyat, kanal: t.kanalFiyat)
                     yeniUrunler.append(p)
                 } else {
-                    yeniUrunler.append(Product(
+                    var yeni = Product(
                         id: t.id, name: ad, isBundle: true,
-                        components: bilesenler, costLines: [], recipe: recete,
-                        listPrice: t.listeFiyat > 0 ? t.listeFiyat : nil,
-                        channelPrices: t.kanalFiyat.isEmpty ? nil : t.kanalFiyat
-                    ))
+                        components: bilesenler, costLines: [], recipe: recete
+                    )
+                    Self.fiyatlariUygula(&yeni, liste: t.listeFiyat, kanal: t.kanalFiyat)
+                    yeniUrunler.append(yeni)
                 }
             }
             // Kuruluma girmeyen eski setler olduğu gibi kalır

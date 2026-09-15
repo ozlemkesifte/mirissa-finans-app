@@ -99,11 +99,27 @@ public struct CostLine: Codable, Identifiable, Hashable, Sendable {
     public var id: Id
     public var label: String
     public var amount: Kurus
+    /// Bu maliyetin geçerli olmaya başladığı gün. Boşsa baştan beri geçerli.
+    public var validFrom: DateKey?
+    /// Son geçerli gün. Boşsa hâlâ geçerli. Maliyet değişince eski satır
+    /// silinmez, burası doldurulur — geçmiş raporlar bozulmaz.
+    public var validTo: DateKey?
 
-    public init(id: Id = Ids.make(.costLine), label: String, amount: Kurus) {
+    public init(id: Id = Ids.make(.costLine), label: String, amount: Kurus,
+                validFrom: DateKey? = nil, validTo: DateKey? = nil) {
         self.id = id
         self.label = label
         self.amount = amount
+        self.validFrom = validFrom
+        self.validTo = validTo
+    }
+
+    /// Verilen günde geçerli mi. Tarih verilmezse "hâlâ geçerli" olanlar sayılır.
+    public func isValid(on date: DateKey?) -> Bool {
+        guard let date else { return validTo == nil }
+        if let f = validFrom, date < f { return false }
+        if let t = validTo, date > t { return false }
+        return true
     }
 }
 
@@ -166,6 +182,28 @@ public struct BundleComponent: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// Bir SKU'nun belirli bir kanalda, belirli bir tarihten itibaren geçerli fiyatı.
+/// Fiyat değişince eski kayıt yerinde kalır — geçmiş raporlar bozulmaz.
+public struct PricePoint: Codable, Identifiable, Hashable, Sendable {
+    public var id: Id
+    /// nil = etiket fiyatı (kanal belirtilmemiş)
+    public var channelId: Id?
+    public var amount: Kurus
+    /// Bu fiyatın geçerli olmaya başladığı gün
+    public var from: DateKey
+    /// Varsa son geçerli gün. Boşsa sonraki fiyat başlayana kadar geçerlidir.
+    public var to: DateKey?
+
+    public init(id: Id = Ids.make(.price), channelId: Id? = nil,
+                amount: Kurus, from: DateKey, to: DateKey? = nil) {
+        self.id = id
+        self.channelId = channelId
+        self.amount = amount
+        self.from = from
+        self.to = to
+    }
+}
+
 public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var id: Id
     public var name: String
@@ -185,21 +223,118 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var openingUnitCost: Kurus?
     public var openingDate: DateKey?
     public var archived: Bool
-    /// Etiket fiyatı — kanal belirtilmemişse geçerli olan satış fiyatı (KDV dahil).
-    /// Kâr hesabı gerçek satış tutarından yapılır; bu yalnızca giriş kolaylığı
-    /// ve birim kâr göstergesi içindir.
+    /// Fiyat geçmişi. Fiyat değiştiğinde eski kayıt SİLİNMEZ, yeni bir
+    /// kayıt eklenir; geçmiş aylar kendi tarihindeki fiyatla kalır.
+    public var priceHistory: [PricePoint]?
+    /// Eski sürümlerden gelen tek fiyat alanları. Yükleme sırasında
+    /// `priceHistory` içine taşınır; yeni kayıtlarda kullanılmaz.
     public var listPrice: Kurus?
-    /// Kanala özel satış fiyatları (kanal id → fiyat)
     public var channelPrices: [Id: Kurus]?
 
-    /// Bu kanalda geçerli satış fiyatı; kanala özel yoksa etiket fiyatı.
-    public func price(for channelId: Id? = nil) -> Kurus? {
+    /// Verilen tarihte bu kanalda geçerli satış fiyatı.
+    /// Kanala özel fiyat yoksa etiket fiyatına düşer.
+    public func price(for channelId: Id? = nil, on date: DateKey) -> Kurus? {
+        if let channelId, let p = gecerliFiyat(channelId, date) { return p }
+        if let p = gecerliFiyat(nil, date) { return p }
+        // Eski veri: tarihçesiz tek fiyat
         if let channelId, let p = channelPrices?[channelId], p > 0 { return p }
         return (listPrice ?? 0) > 0 ? listPrice : nil
     }
 
+    /// Bir kanalın fiyat geçmişi, eskiden yeniye.
+    public func priceTimeline(for channelId: Id?) -> [PricePoint] {
+        (priceHistory ?? [])
+            .filter { $0.channelId == channelId }
+            .sorted { $0.from < $1.from }
+    }
+
+    /// Fiyatı değiştirmek eskisini silmez: yeni bir geçerlilik kaydı ekler.
+    /// Aynı gün için ikinci bir kayıt girilirse o günün kaydı güncellenir.
+    public mutating func setPrice(_ amount: Kurus, channelId: Id?, from: DateKey) {
+        var liste = priceHistory ?? []
+        if let i = liste.firstIndex(where: { $0.channelId == channelId && $0.from == from }) {
+            liste[i].amount = amount
+        } else {
+            liste.append(PricePoint(channelId: channelId, amount: amount, from: from))
+        }
+        priceHistory = liste.sorted {
+            $0.from == $1.from ? ($0.channelId ?? "") < ($1.channelId ?? "") : $0.from < $1.from
+        }
+    }
+
+    /// Formlardan gelen "şu anki fiyat" girişini geçmişi bozmadan yazar.
+    /// Hiç fiyat yoksa baştan beri geçerli sayılır; varsa ve değiştiyse
+    /// bugünden başlayan yeni bir kayıt eklenir.
+    public mutating func applyCurrentPrice(_ amount: Kurus, channelId: Id?, today: DateKey) {
+        let mevcut = price(for: channelId, on: today)
+        let kanalKaydiVar = (priceHistory ?? []).contains { $0.channelId == channelId }
+        guard amount > 0 else {
+            // Sıfır girildi: yalnızca hiç kayıt yoksa bir şey yapma.
+            return
+        }
+        if mevcut == amount { return }
+        if !kanalKaydiVar && mevcut == nil {
+            setPrice(amount, channelId: channelId, from: "1970-01-01")
+        } else {
+            setPrice(amount, channelId: channelId, from: today)
+        }
+    }
+
+    private func gecerliFiyat(_ channelId: Id?, _ date: DateKey) -> Kurus? {
+        let uygun = (priceHistory ?? []).filter {
+            $0.channelId == channelId && $0.from <= date
+                && ($0.to.map { date <= $0 } ?? true)
+        }
+        guard let son = uygun.max(by: { $0.from < $1.from }), son.amount > 0 else { return nil }
+        return son.amount
+    }
+
     /// Setler kendi stoklarını tutmaz; satıldığında bileşenleri düşer.
     public var tracksOwnStock: Bool { !isBundle }
+
+    /// Verilen günde geçerli maliyet kalemleri
+    public func costLines(on date: DateKey?) -> [CostLine] {
+        costLines.filter { $0.isValid(on: date) }
+    }
+
+    /// Form veya kurulumdan gelen güncel maliyet kalemlerini geçmişi
+    /// bozmadan uygular: değişen kalem kapatılır, yerine yenisi açılır.
+    public mutating func applyCostLines(_ yeni: [CostLine], today: DateKey) {
+        let aktif = costLines.filter { $0.validTo == nil }
+        let ilkKez = aktif.isEmpty
+        var sonuc = costLines.filter { $0.validTo != nil }   // geçmiş olduğu gibi kalır
+        let dun = Dates.addDays(today, -1)
+
+        for eski in aktif {
+            guard let g = yeni.first(where: { $0.id == eski.id }) else {
+                // Kaldırılan kalem silinmez, bugünden itibaren geçersiz olur
+                var kapali = eski
+                kapali.validTo = dun
+                sonuc.append(kapali)
+                continue
+            }
+            if g.amount == eski.amount && g.label == eski.label {
+                sonuc.append(eski)
+            } else if eski.validFrom == today {
+                // Bugün girilen kalem: yeni sürüm açmaya gerek yok
+                var guncel = eski
+                guncel.amount = g.amount
+                guncel.label = g.label
+                sonuc.append(guncel)
+            } else {
+                var kapali = eski
+                kapali.validTo = dun
+                sonuc.append(kapali)
+                sonuc.append(CostLine(label: g.label, amount: g.amount, validFrom: today))
+            }
+        }
+        for g in yeni where !aktif.contains(where: { $0.id == g.id }) {
+            // İlk kez maliyet giriliyorsa geçmişe de uygulanır
+            sonuc.append(CostLine(id: g.id, label: g.label, amount: g.amount,
+                                  validFrom: ilkKez ? nil : today))
+        }
+        costLines = sonuc
+    }
 
     /// Bu malzemenin maliyeti üretim maliyetine dahil mi
     public func costAlreadyIncludes(_ materialId: Id) -> Bool {
@@ -221,6 +356,7 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         openingUnitCost: Kurus? = nil,
         openingDate: DateKey? = nil,
         archived: Bool = false,
+        priceHistory: [PricePoint]? = nil,
         listPrice: Kurus? = nil,
         channelPrices: [Id: Kurus]? = nil
     ) {
@@ -238,6 +374,7 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         self.openingUnitCost = openingUnitCost
         self.openingDate = openingDate
         self.archived = archived
+        self.priceHistory = priceHistory
         self.listPrice = listPrice
         self.channelPrices = channelPrices
     }

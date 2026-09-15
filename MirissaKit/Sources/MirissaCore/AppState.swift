@@ -38,6 +38,17 @@ public struct AppSettings: Hashable, Sendable {
     public var vatEnabled: Bool
     /// İlk kurulum sihirbazı tamamlandı mı
     public var setupCompleted: Bool
+    /// Fiyat kontrol hatırlatıcısının sıklığı
+    public var priceCheckInterval: PriceCheckInterval
+    /// Fiyatların en son ne zaman gözden geçirildiği
+    public var lastPriceCheck: DateKey?
+
+    /// Hatırlatma zamanı geldi mi. Hiç kontrol edilmediyse ilk gün sayılır.
+    public func priceCheckDue(on today: DateKey, since firstUse: DateKey? = nil) -> Bool {
+        guard let gun = priceCheckInterval.days else { return false }
+        guard let son = lastPriceCheck ?? firstUse else { return true }
+        return Dates.daysBetween(son, today) >= gun
+    }
 
     public func profitGoal(for month: MonthKey) -> Kurus? {
         profitGoals[month].flatMap { $0 > 0 ? $0 : nil }
@@ -53,7 +64,9 @@ public struct AppSettings: Hashable, Sendable {
         defaultVatRate: VatRate = .yirmi,
         defaultVatIncluded: Bool = true,
         vatEnabled: Bool = true,
-        setupCompleted: Bool = false
+        setupCompleted: Bool = false,
+        priceCheckInterval: PriceCheckInterval = .aylik,
+        lastPriceCheck: DateKey? = nil
     ) {
         self.consumptionWindowMonths = consumptionWindowMonths
         self.capitalizePurchases = capitalizePurchases
@@ -65,6 +78,8 @@ public struct AppSettings: Hashable, Sendable {
         self.defaultVatIncluded = defaultVatIncluded
         self.vatEnabled = vatEnabled
         self.setupCompleted = setupCompleted
+        self.priceCheckInterval = priceCheckInterval
+        self.lastPriceCheck = lastPriceCheck
     }
 }
 
@@ -75,6 +90,7 @@ extension AppSettings: Codable {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
         case progressAsOf, expectedMix
         case defaultVatRate, defaultVatIncluded, vatEnabled, setupCompleted
+        case priceCheckInterval, lastPriceCheck
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +109,34 @@ extension AppSettings: Codable {
         vatEnabled = try c.decodeIfPresent(Bool.self, forKey: .vatEnabled) ?? true
         // Kayıtlı dosyası olan kullanıcı sihirbazı görmez; yalnızca ilk kurulumda çıkar.
         setupCompleted = try c.decodeIfPresent(Bool.self, forKey: .setupCompleted) ?? true
+        priceCheckInterval = try c.decodeIfPresent(PriceCheckInterval.self,
+                                                   forKey: .priceCheckInterval) ?? .aylik
+        lastPriceCheck = try c.decodeIfPresent(DateKey.self, forKey: .lastPriceCheck)
+    }
+}
+
+/// Fiyatları ne sıklıkla gözden geçirmek istediğin.
+public enum PriceCheckInterval: String, Codable, CaseIterable, Sendable, Hashable, Identifiable {
+    case haftalik, ikiHaftalik, aylik, kapali
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .haftalik: return "Her hafta"
+        case .ikiHaftalik: return "2 haftada bir"
+        case .aylik: return "Ayda bir"
+        case .kapali: return "Hatırlatma"
+        }
+    }
+
+    public var days: Int? {
+        switch self {
+        case .haftalik: return 7
+        case .ikiHaftalik: return 14
+        case .aylik: return 30
+        case .kapali: return nil
+        }
     }
 }
 

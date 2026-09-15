@@ -322,6 +322,15 @@ public final class AppStore {
     /// Sihirbazı yeniden çalıştırmak için (Ayarlar'dan)
     public func restartSetup() { mutate { $0.settings.setupCompleted = false } }
 
+    /// "Değişiklik yok" — fiyatlara dokunmaz, yalnızca son kontrol gününü işaretler.
+    public func markPriceCheck(_ day: DateKey = Dates.today()) {
+        mutate { $0.settings.lastPriceCheck = day }
+    }
+
+    public func setPriceCheckInterval(_ i: PriceCheckInterval) {
+        mutate { $0.settings.priceCheckInterval = i }
+    }
+
     public func setVatDefaults(rate: VatRate, included: Bool) {
         mutate { s in
             s.settings.defaultVatRate = rate

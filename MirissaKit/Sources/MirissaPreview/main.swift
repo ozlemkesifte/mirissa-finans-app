@@ -12,6 +12,18 @@ func demoState() -> AppState {
     s.products[0].costLines = [CostLine(id: "c1", label: "Üretim", amount: Money.fromTL(132))]
     s.products[1].costLines = [CostLine(id: "c2", label: "Üretim", amount: Money.fromTL(139))]
 
+    // Fiyat geçmişi: eylülde 699, 20 eylülde 749
+    if let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }) {
+        s.products[i].setPrice(Money.fromTL(650), channelId: nil, from: "2026-09-01")
+        s.products[i].setPrice(Money.fromTL(699), channelId: ChannelIds.trendyol,
+                               from: "2026-09-01")
+        s.products[i].setPrice(Money.fromTL(749), channelId: ChannelIds.trendyol,
+                               from: "2026-09-20")
+    }
+    if let i = s.products.firstIndex(where: { $0.id == SeedData.P.serum }) {
+        s.products[i].setPrice(Money.fromTL(890), channelId: nil, from: "2026-09-01")
+    }
+
     func esik(_ id: Id, _ min: Double, _ kritik: Double) {
         if let i = s.materials.firstIndex(where: { $0.id == id }) {
             s.materials[i].minQty = min

@@ -96,6 +96,46 @@ public enum Dates {
     ]
 
     /// "Eylül 2026"
+    /// İki gün arasındaki fark (b - a). Geçersiz tarihte 0.
+    public static func daysBetween(_ a: DateKey, _ b: DateKey) -> Int {
+        guard let ga = gunSayisi(a), let gb = gunSayisi(b) else { return 0 }
+        return gb - ga
+    }
+
+    /// Bir güne n gün ekler.
+    public static func addDays(_ d: DateKey, _ n: Int) -> DateKey {
+        guard let toplam = gunSayisi(d) else { return d }
+        return tarihten(gun: toplam + n)
+    }
+
+    /// 1970-01-01'den bu yana geçen gün — takvim hesabı için
+    private static func gunSayisi(_ d: DateKey) -> Int? {
+        let p = d.split(separator: "-")
+        guard p.count == 3, let y = Int(p[0]), let m = Int(p[1]), let g = Int(p[2]),
+              (1...12).contains(m) else { return nil }
+        var toplam = 0
+        if y >= 1970 {
+            for yil in 1970..<y { toplam += isLeap(yil) ? 366 : 365 }
+        } else {
+            for yil in y..<1970 { toplam -= isLeap(yil) ? 366 : 365 }
+        }
+        for ay in 1..<m { toplam += daysInMonth(year: y, month: ay) }
+        return toplam + g - 1
+    }
+
+    private static func tarihten(gun: Int) -> DateKey {
+        var kalan = gun
+        var y = 1970
+        while kalan < 0 { y -= 1; kalan += isLeap(y) ? 366 : 365 }
+        while kalan >= (isLeap(y) ? 366 : 365) { kalan -= isLeap(y) ? 366 : 365; y += 1 }
+        var m = 1
+        while kalan >= daysInMonth(year: y, month: m) {
+            kalan -= daysInMonth(year: y, month: m)
+            m += 1
+        }
+        return key(y, m, kalan + 1)
+    }
+
     public static func displayMonth(_ m: MonthKey) -> String {
         let i = monthNumber(of: m) - 1
         guard i >= 0 && i < 12 else { return m }

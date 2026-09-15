@@ -99,6 +99,26 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Fiyat kontrolü", selection: Binding(
+                        get: { store.state.settings.priceCheckInterval },
+                        set: { store.setPriceCheckInterval($0) }
+                    )) {
+                        ForEach(PriceCheckInterval.allCases) { i in
+                            Text(i.displayName).tag(i)
+                        }
+                    }
+                    if let son = store.state.settings.lastPriceCheck {
+                        LabeledRow("Son kontrol", Dates.displayDate(son))
+                    }
+                } header: {
+                    Text("Fiyatları ne sıklıkla kontrol etmek istersin?")
+                } footer: {
+                    Text(store.state.settings.priceCheckInterval == .kapali
+                         ? "Hatırlatma çıkmaz. Fiyatları istediğin zaman Ürün & Stok ekranından güncelleyebilirsin."
+                         : "Süre gelince ana sayfada küçük bir kontrol kartı çıkar. Fiyatı değiştirmek eski fiyatı silmez.")
+                }
+
+                Section {
                     Button {
                         csvURLs = ExportService.write(
                             CSVExport.all(store.engine, from: bounds.first, to: bounds.last)

@@ -24,6 +24,7 @@ struct ProductDetail: View {
                     }
 
                     summary(p)
+                    fiyatKarti(p)
                     costCard(p)
 
                     if p.isBundle { componentsCard(p) }
@@ -94,6 +95,45 @@ struct ProductDetail: View {
                 }
             }
         }
+    }
+
+    private func fiyatKarti(_ p: Product) -> some View {
+        let bugun = Dates.today()
+        let etiket = p.price(on: bugun)
+        return VStack(spacing: Metrics.gap) {
+            SectionTitle("Satış Fiyatı")
+            Card {
+                VStack(spacing: 9) {
+                    if let etiket {
+                        LabeledRow("Etiket", Money.format(etiket), strong: true)
+                        ForEach(store.state.activeChannels) { c in
+                            if let f = p.price(for: c.id, on: bugun), f != etiket {
+                                LabeledRow(c.name, Money.format(f))
+                            }
+                        }
+                        if let sonra = sonrakiFiyat(p, bugun) {
+                            Divider().overlay(Palette.separator)
+                            LabeledRow("\(Dates.displayDate(sonra.from)) tarihinden itibaren",
+                                       Money.format(sonra.amount), tone: Palette.accent)
+                        }
+                    } else {
+                        Text("Fiyat girilmemiş.")
+                            .font(.footnote).foregroundStyle(Palette.inkFaint)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    BigButton("Fiyatı Güncelle", icon: "tag", tone: Palette.gider) {
+                        sheet = .priceUpdate(p.id)
+                    }
+                }
+            }
+        }
+    }
+
+    /// İleri tarihli bir fiyat tanımlıysa onu gösterir
+    private func sonrakiFiyat(_ p: Product, _ bugun: DateKey) -> PricePoint? {
+        (p.priceHistory ?? [])
+            .filter { $0.from > bugun }
+            .min { $0.from < $1.from }
     }
 
     private func componentsCard(_ p: Product) -> some View {

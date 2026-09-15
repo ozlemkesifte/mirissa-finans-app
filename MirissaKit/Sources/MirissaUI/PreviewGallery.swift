@@ -78,6 +78,7 @@ public enum PreviewGallery {
             Screen(name: "f4-gider", title: "Gider akışı", view: wrap(ExpenseFlow())),
             Screen(name: "f5-sayim", title: "Sayım akışı", view: wrap(CountFlow())),
             Screen(name: "f6-kurulum", title: "Kurulum", view: wrap(SetupWizard())),
+            Screen(name: "f7-fiyat", title: "Fiyat güncelle", view: wrap(PriceUpdateFlow())),
         ]
     }
 

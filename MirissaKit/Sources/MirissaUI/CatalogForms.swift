@@ -280,8 +280,12 @@ struct ProductForm: View {
         loaded = true
         guard let id = editingId, let p = store.state.product(id) else { return }
         name = p.name; isBundle = p.isBundle; components = p.components
-        listeFiyat = p.listPrice ?? 0; kanalFiyat = p.channelPrices ?? [:]
-        costLines = p.costLines; recipe = p.recipe
+        let bugun = Dates.today()
+        listeFiyat = p.price(on: bugun) ?? 0
+        kanalFiyat = Dictionary(uniqueKeysWithValues: store.state.activeChannels.compactMap { c in
+            p.price(for: c.id, on: bugun).map { (c.id, $0) }
+        })
+        costLines = p.costLines(on: nil); recipe = p.recipe
         minQty = p.minQty; criticalQty = p.criticalQty
     }
 
@@ -294,6 +298,18 @@ struct ProductForm: View {
         )
     }
 
+    /// Yeni üründe girilen fiyatlar "baştan beri geçerli" sayılır.
+    private func yeniFiyatGecmisi() -> [PricePoint]? {
+        var out: [PricePoint] = []
+        if listeFiyat > 0 {
+            out.append(PricePoint(amount: listeFiyat, from: "1970-01-01"))
+        }
+        for (kanal, tutar) in kanalFiyat.sorted(by: { $0.key < $1.key }) where tutar > 0 {
+            out.append(PricePoint(channelId: kanal, amount: tutar, from: "1970-01-01"))
+        }
+        return out.isEmpty ? nil : out
+    }
+
     private func receteyeEkle(_ m: StockMaterial) {
         recipe.append(RecipeLine(materialId: m.id, qty: 1, unit: m.baseUnit))
     }
@@ -303,10 +319,14 @@ struct ProductForm: View {
         if let id = editingId, var p = store.state.product(id) {
             p.name = name; p.isBundle = isBundle
             p.components = isBundle ? components : []
-            p.costLines = cleanCost; p.recipe = recipe
+            p.applyCostLines(cleanCost, today: Dates.today())
+            p.recipe = recipe
             p.minQty = minQty; p.criticalQty = criticalQty
-            p.listPrice = listeFiyat > 0 ? listeFiyat : nil
-            p.channelPrices = kanalFiyat.isEmpty ? nil : kanalFiyat
+            let bugun = Dates.today()
+            p.applyCurrentPrice(listeFiyat, channelId: nil, today: bugun)
+            for (kanal, tutar) in kanalFiyat.sorted(by: { $0.key < $1.key }) {
+                p.applyCurrentPrice(tutar, channelId: kanal, today: bugun)
+            }
             store.updateProduct(p)
         } else {
             store.addProduct(Product(
@@ -314,8 +334,7 @@ struct ProductForm: View {
                 components: isBundle ? components : [],
                 costLines: cleanCost, recipe: recipe,
                 minQty: minQty, criticalQty: criticalQty,
-                listPrice: listeFiyat > 0 ? listeFiyat : nil,
-                channelPrices: kanalFiyat.isEmpty ? nil : kanalFiyat
+                priceHistory: yeniFiyatGecmisi()
             ))
         }
     }
