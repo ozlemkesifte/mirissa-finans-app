@@ -544,3 +544,103 @@ struct GuardTests {
         #expect(once.gercekCiro != sonra.gercekCiro)
     }
 }
+
+@Suite("Reçete soruları")
+struct RecipeQuestionTests {
+
+    /// "Üretim fiyatında zaten var mı?" sorusu maliyet bayrağının TERSİDİR
+    @Test func soruBayraginTersi() {
+        var line = RecipeLine(materialId: "m", qty: 1, unit: .adet)
+
+        // Varsayılan: fiyatta yok -> maliyete eklenir
+        #expect(line.costAlreadyInProductionPrice == false)
+        #expect(line.resolvedAddsCost == true)
+
+        // "Evet, fiyatta zaten var" -> maliyete eklenmez
+        line.addsCost = false
+        #expect(line.costAlreadyInProductionPrice == true)
+
+        // "Hayır, fiyatta yok" -> maliyete eklenir
+        line.addsCost = true
+        #expect(line.costAlreadyInProductionPrice == false)
+    }
+
+    /// Üretici dolu şişe teslim ediyor, ayrı şişe stoğu tutulmuyor
+    @Test func senaryoUreticiDoluTeslimEdiyor() {
+        var s = SeedData.initialState()
+        s.settings.setupCompleted = true
+        s.purchases.append(StockPurchase(id: "p1", date: "2026-08-01",
+                                         item: .material(SeedData.M.sampuanKutu),
+                                         qty: 100, unit: .adet, totalPaid: tl(800), vatRate: .yok))
+        guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }),
+              let j = s.products[i].recipe.firstIndex(where: {
+                  $0.materialId == SeedData.M.sampuanKutu
+              })
+        else { return }
+        s.products[i].costLines = [CostLine(label: "Üretim", amount: tl(132))]
+        // Stoktan düşsün mü? Hayır · Fiyatta zaten var mı? Evet
+        s.products[i].recipe[j].consumesStock = false
+        s.products[i].recipe[j].addsCost = false
+        #expect(s.products[i].recipe[j].costAlreadyInProductionPrice == true)
+        #expect(s.products[i].recipe[j].noteLabel == "üretici sağlıyor")
+
+        s.addSale("sal", "2026-09", channel: ChannelIds.trendyol,
+                  product: SeedData.P.sampuan, qty: 10, gross: tl(7000))
+        let e = Engine(s)
+        #expect(e.qty(.material(SeedData.M.sampuanKutu)) == 100)   // hiç düşmedi
+        #expect(e.cost(of: SeedData.P.sampuan).ownLines == tl(132))
+    }
+
+    /// Şişeleri biz alıp üreticiye gönderiyoruz
+    @Test func senaryoSiseleriBizAliyoruz() {
+        var s = SeedData.initialState()
+        s.settings.setupCompleted = true
+        s.purchases.append(StockPurchase(id: "p1", date: "2026-08-01",
+                                         item: .material(SeedData.M.sampuanKutu),
+                                         qty: 100, unit: .adet, totalPaid: tl(800), vatRate: .yok))
+        guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }),
+              let j = s.products[i].recipe.firstIndex(where: {
+                  $0.materialId == SeedData.M.sampuanKutu
+              })
+        else { return }
+        // Stoktan düşsün mü? Evet · Fiyatta zaten var mı? Hayır
+        s.products[i].recipe[j].consumesStock = true
+        s.products[i].recipe[j].addsCost = true
+        #expect(s.products[i].recipe[j].noteLabel == nil)   // varsayılan, rozet yok
+
+        s.addSale("sal", "2026-09", channel: ChannelIds.trendyol,
+                  product: SeedData.P.sampuan, qty: 10, gross: tl(7000))
+        let e = Engine(s)
+        #expect(e.qty(.material(SeedData.M.sampuanKutu)) == 90)    // düştü
+        #expect(e.cost(of: SeedData.P.sampuan).packaging >= tl(8)) // maliyete girdi
+    }
+
+    /// Şişeyi biz alıyoruz ama parası üretim fiyatına dahil
+    @Test func senaryoStokBizdeFiyatDahil() {
+        var s = SeedData.initialState()
+        s.settings.setupCompleted = true
+        s.purchases.append(StockPurchase(id: "p1", date: "2026-08-01",
+                                         item: .material(SeedData.M.sampuanKutu),
+                                         qty: 100, unit: .adet, totalPaid: tl(800), vatRate: .yok))
+        guard let i = s.products.firstIndex(where: { $0.id == SeedData.P.sampuan }),
+              let j = s.products[i].recipe.firstIndex(where: {
+                  $0.materialId == SeedData.M.sampuanKutu
+              })
+        else { return }
+        s.products[i].recipe[j].consumesStock = true
+        s.products[i].recipe[j].addsCost = false
+        #expect(s.products[i].recipe[j].noteLabel == "fiyata dahil")
+
+        let oncekiMaliyet = Engine(s).cost(of: SeedData.P.sampuan).packaging
+        s.addSale("sal", "2026-09", channel: ChannelIds.trendyol,
+                  product: SeedData.P.sampuan, qty: 10, gross: tl(7000))
+        let e = Engine(s)
+        #expect(e.qty(.material(SeedData.M.sampuanKutu)) == 90)    // stok düştü
+        #expect(oncekiMaliyet == e.cost(of: SeedData.P.sampuan).packaging)
+        // Kutunun 8 TL'si maliyete girmedi
+        var karsilastirma = s
+        karsilastirma.products[i].recipe[j].addsCost = true
+        #expect(Engine(karsilastirma).cost(of: SeedData.P.sampuan).packaging
+                - e.cost(of: SeedData.P.sampuan).packaging == tl(8))
+    }
+}

@@ -231,7 +231,7 @@ struct ProductForm: View {
             } header: {
                 Text("Paketleme reçetesi")
             } footer: {
-                Text("1 adet satıldığında kullanılan malzemeler. Satış girdiğinde bunlar otomatik olarak stoktan düşülür.")
+                Text("1 adet satıldığında kullanılan malzemeler. Her malzemeye dokunup iki soruyu cevapla: stoktan düşsün mü, maliyeti üretim fiyatında zaten var mı?")
             }
 
             Section("Uyarı seviyeleri") {
@@ -305,6 +305,30 @@ private struct RecipeLineRow: View {
     private var material: StockMaterial? { store.state.material(line.materialId) }
     private var ad: String { material?.name ?? "Silinmiş malzeme" }
 
+    /// Bu satırın bir satışta ne yapacağını düz Türkçe anlatır
+    private var sonuc: String {
+        var parcalar: [String] = []
+        if line.resolvedConsumesStock, let m = material {
+            let base = Units.toBaseOrNil(qty: line.qty, unit: line.unit,
+                                         baseUnit: m.baseUnit, packSizes: m.packSizes) ?? 0
+            parcalar.append("\(Units.formatQty(base, baseUnit: m.baseUnit)) stoktan düşer")
+        } else {
+            parcalar.append("stoktan düşmez")
+        }
+        if line.resolvedAddsCost, let m = material {
+            let base = Units.toBaseOrNil(qty: line.qty, unit: line.unit,
+                                         baseUnit: m.baseUnit, packSizes: m.packSizes) ?? 0
+            let tutar = Money.roundHalfAwayFromZero(
+                base * store.engine.unitCost(.material(m.id)))
+            parcalar.append(tutar > 0
+                            ? "ürün maliyetine \(Money.format(tutar)) ekler"
+                            : "ürün maliyetine mevcut birim maliyetiyle eklenir")
+        } else {
+            parcalar.append("ürün maliyetine eklenmez")
+        }
+        return "Her satışta: " + parcalar.joined(separator: " · ")
+    }
+
     var body: some View {
         DisclosureGroup {
             HStack {
@@ -321,19 +345,46 @@ private struct RecipeLineRow: View {
                     .frame(maxWidth: 96)
                 }
             }
-            Toggle("Fiziksel stok tüketimi", isOn: Binding(
+            Text("Bu malzeme stoktan düşsün mü?")
+                .font(.subheadline)
+                .foregroundStyle(Palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("", selection: Binding(
                 get: { line.resolvedConsumesStock },
                 set: { line.consumesStock = $0 }
-            ))
-            Toggle("Maliyete dahil et", isOn: Binding(
-                get: { line.resolvedAddsCost },
-                set: { line.addsCost = $0 }
-            ))
-            Text(line.resolvedAddsCost
-                 ? "Bu malzemenin maliyeti ürün maliyetine eklenir."
-                 : "Maliyeti üretim fiyatına zaten dahil. Stoktan yine düşer, maliyeti ikinci kez sayılmaz.")
+            )) {
+                Text("Evet").tag(true)
+                Text("Hayır").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("Bu malzemeyi ayrı stok olarak takip ediyorsan ve her satışta kullanılıyorsa Evet seç.")
                 .font(.caption2)
                 .foregroundStyle(Palette.inkFaint)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Maliyeti ürünün üretim fiyatında zaten var mı?")
+                .font(.subheadline)
+                .foregroundStyle(Palette.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Picker("", selection: Binding(
+                get: { line.costAlreadyInProductionPrice },
+                set: { line.addsCost = !$0 }
+            )) {
+                Text("Evet").tag(true)
+                Text("Hayır").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("\(ad) parasını üreticiye ödediğin ürün fiyatının içinde zaten ödüyorsan Evet seç. Böylece ikinci kez maliyete eklenmez.")
+                .font(.caption2)
+                .foregroundStyle(Palette.inkFaint)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider().overlay(Palette.separator)
+            Text(sonuc)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Palette.accent)
                 .fixedSize(horizontal: false, vertical: true)
         } label: {
             HStack(spacing: 6) {

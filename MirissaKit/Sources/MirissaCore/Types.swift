@@ -140,13 +140,17 @@ public struct RecipeLine: Codable, Identifiable, Hashable, Sendable {
 
     public var isDefault: Bool { resolvedConsumesStock && resolvedAddsCost }
 
-    /// Satırın özel durumunu anlatan kısa etiket
+    /// Maliyeti ürünün üretim fiyatında zaten var mı.
+    /// Kullanıcıya sorulan soru bu; `addsCost` bunun tersidir.
+    public var costAlreadyInProductionPrice: Bool { !resolvedAddsCost }
+
+    /// Satırın özel durumunu anlatan kısa etiket (kullanıcı dilinde)
     public var noteLabel: String? {
         switch (resolvedConsumesStock, resolvedAddsCost) {
         case (true, true): return nil
-        case (true, false): return "maliyete dahil değil"
-        case (false, true): return "stoktan düşmez"
-        case (false, false): return "stok ve maliyet dışı"
+        case (true, false): return "fiyata dahil"
+        case (false, true): return "stok tutulmuyor"
+        case (false, false): return "üretici sağlıyor"
         }
     }
 }

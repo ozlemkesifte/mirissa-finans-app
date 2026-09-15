@@ -209,6 +209,10 @@ func run() {
         ok += 1; print("✓ İlk kurulum → \(sihirbaz.lastPathComponent)")
     }
 
+    let urunForm = outDir.appendingPathComponent("11-recete-sorulari.png")
+    if render(PreviewGallery.productForm(store: hedefStore, productId: SeedData.P.sampuan),
+              to: urunForm, size: size) { ok += 1; print("✓ Reçete soruları → \(urunForm.lastPathComponent)") }
+
     let kdvKart = outDir.appendingPathComponent("8-kdv-alacak.png")
     if render(PreviewGallery.vatAndBalance(store: hedefStore, month: "2026-09"),
               to: kdvKart, size: size) { ok += 1; print("✓ KDV + Alacak → \(kdvKart.lastPathComponent)") }

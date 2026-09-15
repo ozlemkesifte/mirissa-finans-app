@@ -71,6 +71,12 @@ public enum PreviewGallery {
         AnyView(SetupWizard().environment(store).environment(Period()))
     }
 
+    /// Ürün formu — reçete soruları açık
+    @MainActor
+    public static func productForm(store: AppStore, productId: Id) -> AnyView {
+        AnyView(ProductForm(editing: productId).environment(store).environment(Period()))
+    }
+
     @MainActor
     public static func detail(store: AppStore, period: Period, materialId: Id) -> AnyView {
         AnyView(
