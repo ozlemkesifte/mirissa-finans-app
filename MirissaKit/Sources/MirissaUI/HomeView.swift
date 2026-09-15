@@ -14,7 +14,11 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: Metrics.gap) {
                     PeriodPicker(period: period)
-                    headline
+                    // Satış girilmemiş bir ayda büyük kâr/zarar kartı gösterilmez:
+                    // sadece gider girilmiş olması o ay zarar edildiği anlamına gelmez.
+                    if !(period.scope == .month && satisGirilmedi) {
+                        headline
+                    }
                     if period.scope == .month {
                         BreakevenCard(month: period.month)
                     }
@@ -55,16 +59,16 @@ struct HomeView: View {
             BigStat(title: "Gerçek Ciro", value: result.gercekCiro.tlCompact, tone: Palette.ink)
             BigStat(title: "Toplam Gider", value: result.toplamGider.tlCompact, tone: Palette.gider)
             BigStat(
-                title: loss ? "Gerçek Zarar" : "Gerçek Kâr",
-                value: kar.tlCompact,
-                tone: loss ? Palette.zarar : Palette.kar,
+                title: satisGirilmedi ? "Gerçek Kâr" : (loss ? "Gerçek Zarar" : "Gerçek Kâr"),
+                value: satisGirilmedi ? "—" : kar.tlCompact,
+                tone: satisGirilmedi ? Palette.inkFaint : (loss ? Palette.zarar : Palette.kar),
                 caption: satisGirilmedi ? "satış girilmedi" : nil
             )
             BigStat(
                 title: "Kâr Marjı",
-                value: Money.formatPercent(result.karMarjiPct),
-                tone: loss ? Palette.zarar : Palette.kar,
-                caption: result.nakitCikisi != result.toplamGider
+                value: satisGirilmedi ? "—" : Money.formatPercent(result.karMarjiPct),
+                tone: satisGirilmedi ? Palette.inkFaint : (loss ? Palette.zarar : Palette.kar),
+                caption: !satisGirilmedi && result.nakitCikisi != result.toplamGider
                     ? "Kasa çıkışı \(result.nakitCikisi.tlCompact)" : nil
             )
         }

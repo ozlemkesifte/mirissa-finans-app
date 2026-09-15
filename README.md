@@ -130,25 +130,33 @@ GERÇEK KÂR = Σ(kanalda kalan) − ortak şirket giderleri
 Uygulama senden günlük satış girişi beklemez. Satışları ay sonunda tek
 seferde girersin.
 
-**Ay başında** ana sayfadaki kart aylık hedefi gösterir — o ay satış olup
-olmamasından bağımsız:
+**Ay başında** ana sayfadaki **AYLIK SONUÇ** kartı hedefi gösterir. Satış
+girilmediği sürece kâr/zarar rakamı gösterilmez — sadece gider girilmiş
+olması o ay zarar edildiği anlamına gelmez:
 
 ```
-BAŞA BAŞ HEDEFİ      310 sipariş    günde ~11
-25.000 TL kâr        350 sipariş    günlük ortalama 12
-50.000 TL kâr        390 sipariş    günlük ortalama 13
-100.000 TL kâr       470 sipariş    günlük ortalama 16
+AYLIK SONUÇ
+Satış verisi henüz girilmedi
+Kaydedilmiş gider        27.000 TL
+Başa baş hedefi          yaklaşık 77 sipariş
+Günlük ortalama hedef    3 sipariş
+
+25.000 TL kâr hedefi    145 sipariş · günlük ortalama 5
+50.000 TL kâr hedefi    212 sipariş · günlük ortalama 7
+100.000 TL kâr hedefi   347 sipariş · günlük ortalama 12
 ```
 
 Günlük rakam o ayın gerçek gün sayısına bölünür (30 gün, 31 gün, şubat 28).
 
-**Ay sonunda** satışları girdiğinde kart sonuca döner: hedef sipariş,
-gerçekleşen sipariş, gerçek ciro, gerçek gider, gerçek kâr/zarar, kâr marjı
-ve başa baş hedefinin ne kadar üzerinde/altında kalındığı.
+**Ay sonunda** satışları girdiğinde aynı kart gerçek sonuca döner: başa baş
+hedefi, gerçekleşen sipariş, gerçek ciro, gerçek gider, gerçek kâr/zarar,
+kâr marjı ve başa baş hedefinin ne kadar üzerinde/altında kalındığı.
 
-**Ara toplam isteğe bağlı.** Ay içinde satış girip "ara toplam olarak
-işaretle" dersen sistem kalan günü ve kalan sipariş hedefini hesaplar.
-İşaretlemezsen hiçbir tempo tahmini yapılmaz.
+**Ara toplam isteğe bağlı ve gizli.** Normal kullanım ay sonunda tek seferde
+satış girmektir. Ay bitmeden ara toplam girdiysen kartın altındaki
+"Gelişmiş · Ara dönem verisi" bölümünden işaretlersin; sistem o zaman kalan
+günü ve kalan sipariş hedefini hesaplar. İşaretlemezsen hiçbir tempo
+tahmini yapılmaz.
 
 ### Hedef nereden çıkıyor
 

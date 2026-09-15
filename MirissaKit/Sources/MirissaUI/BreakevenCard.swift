@@ -18,6 +18,7 @@ struct BreakevenCard: View {
                 header(p)
                 if p.mode == .gerceklesen {
                     sonuc(p)
+                    if p.issues.contains(.ayHenuzBitmedi) { gelismis(p) }
                 } else if let engel = p.blocking {
                     Text(engel.message)
                         .font(.footnote)
@@ -26,8 +27,9 @@ struct BreakevenCard: View {
                     if engel == .referansYok { BeklenenProfilForm() }
                 } else {
                     hedefler(p)
-                    araDurum(p)
+                    araDurumOzeti(p)
                     dayanak(p)
+                    gelismis(p)
                 }
                 notlar(p)
             }
@@ -38,9 +40,7 @@ struct BreakevenCard: View {
 
     private func header(_ p: BreakevenPlan) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text((p.mode == .gerceklesen
-                  ? "\(Dates.displayMonth(month)) sonucu"
-                  : "Bu ayın hedefi").trUpper)
+            Text("Aylık sonuç".trUpper)
                 .font(.caption2.weight(.semibold))
                 .tracking(0.6)
                 .foregroundStyle(Palette.inkFaint)
@@ -51,11 +51,30 @@ struct BreakevenCard: View {
         }
     }
 
+    /// Bu ay için kaydedilmiş gider (henüz satış girilmediğinde gösterilir)
+    private var kaydedilmisGider: Kurus {
+        store.engine.companyMonth(month).toplamGider
+    }
+
     // MARK: Hedef modu
 
     @ViewBuilder
     private func hedefler(_ p: BreakevenPlan) -> some View {
-        if let basaBas = p.targets.first(where: { $0.isBreakeven }) {
+        // Sadece gider girilmiş olması "zarar" değildir: satış ay sonunda girilir.
+        if !p.hasProgress {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("Satış verisi henüz girilmedi")
+                    .font(.headline)
+                    .foregroundStyle(Palette.ink)
+                LabeledRow("Kaydedilmiş gider", kaydedilmisGider.tl, tone: Palette.gider)
+                if let basaBas = p.targets.first(where: { $0.isBreakeven }) {
+                    LabeledRow("Başa baş hedefi", "yaklaşık \(basaBas.orders) sipariş")
+                    LabeledRow("Günlük ortalama hedef", "\(basaBas.dailyOrders) sipariş",
+                               tone: Palette.uyari, strong: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let basaBas = p.targets.first(where: { $0.isBreakeven }) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("BAŞA BAŞ HEDEFİ")
                     .font(.caption2.weight(.semibold))
@@ -80,20 +99,23 @@ struct BreakevenCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
 
-        VStack(spacing: 10) {
-            ForEach(p.targets.filter { !$0.isBreakeven }) { t in
-                TargetRow(target: t)
+        if !p.targets.filter({ !$0.isBreakeven }).isEmpty {
+            Divider().overlay(Palette.separator)
+            VStack(spacing: 10) {
+                ForEach(p.targets.filter { !$0.isBreakeven }) { t in
+                    TargetRow(target: t)
+                }
             }
         }
     }
 
-    // MARK: Ara durum
+    // MARK: Ara dönem özeti (yalnızca işaretliyken görünür)
 
     @ViewBuilder
-    private func araDurum(_ p: BreakevenPlan) -> some View {
-        Divider().overlay(Palette.separator)
+    private func araDurumOzeti(_ p: BreakevenPlan) -> some View {
         if p.hasProgress, let tarih = p.progressAsOf, let girilen = p.progressOrders,
            let kalanGun = p.remainingDays {
+            Divider().overlay(Palette.separator)
             VStack(alignment: .leading, spacing: 6) {
                 Text("\(Dates.displayDateShort(tarih))'e kadar \(girilen) sipariş girildi · \(kalanGun) gün kaldı")
                     .font(.caption)
@@ -112,18 +134,45 @@ struct BreakevenCard: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                Button("Ara durum işaretini kaldır") {
-                    store.setProgressAsOf(nil, for: month)
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Palette.accent)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            Text("Satışları ay sonunda tek seferde girebilirsin. İstersen ay içinde ara toplam da girebilirsin — zorunlu değil.")
-                .font(.caption2)
-                .foregroundStyle(Palette.inkFaint)
-                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Gelişmiş (açılır) — ara dönem verisi
+
+    private func gelismis(_ p: BreakevenPlan) -> some View {
+        VStack(spacing: 0) {
+            Divider().overlay(Palette.separator).padding(.bottom, 12)
+            Disclosure {
+                HStack {
+                    Text("Gelişmiş · Ara dönem verisi")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.inkFaint)
+                    Spacer(minLength: 8)
+                }
+            } content: {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Satışları ay sonunda tek seferde girmen yeterli — normal kullanım budur. Ay bitmeden ara toplam girdiysen bunu işaretleyebilirsin; sistem o zaman kalan günü ve kalan sipariş hedefini hesaplar.")
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if p.hasProgress {
+                        Button("Ara dönem işaretini kaldır") {
+                            store.setProgressAsOf(nil, for: month)
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Palette.zarar)
+                    } else {
+                        Button("Girilenleri ara toplam say") {
+                            store.setProgressAsOf(Dates.today(), for: month)
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -192,14 +241,6 @@ struct BreakevenCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
-            }
-            if p.issues.contains(.ayHenuzBitmedi) {
-                Button("Ara toplam olarak işaretle") {
-                    store.setProgressAsOf(Dates.today(), for: month)
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Palette.accent)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
