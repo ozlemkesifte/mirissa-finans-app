@@ -65,6 +65,22 @@ public enum PreviewGallery {
         )
     }
 
+    /// Rehberli akışlar — soru ekranları
+    @MainActor
+    public static func guidedFlows(store: AppStore) -> [Screen] {
+        func wrap<V: View>(_ v: V) -> AnyView {
+            AnyView(v.environment(store).environment(Period()))
+        }
+        return [
+            Screen(name: "f1-yeni-islem", title: "Yeni İşlem", view: wrap(YeniIslemAkisi())),
+            Screen(name: "f2-satis", title: "Satış akışı", view: wrap(SaleFlow())),
+            Screen(name: "f3-alim", title: "Alım akışı", view: wrap(PurchaseFlow())),
+            Screen(name: "f4-gider", title: "Gider akışı", view: wrap(ExpenseFlow())),
+            Screen(name: "f5-sayim", title: "Sayım akışı", view: wrap(CountFlow())),
+            Screen(name: "f6-kurulum", title: "Kurulum", view: wrap(SetupWizard())),
+        ]
+    }
+
     /// İlk kurulum sihirbazı
     @MainActor
     public static func setupWizard(store: AppStore) -> AnyView {

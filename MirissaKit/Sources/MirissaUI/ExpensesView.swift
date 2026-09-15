@@ -55,7 +55,7 @@ struct ExpensesView: View {
                         }
                     }
 
-                    BigButton("Gider Ekle", icon: "plus") { sheet = .addExpense(period.month) }
+                    BigButton("Gider Ekle", icon: "plus") { sheet = .expenseFlow }
 
                     if byCategory.isEmpty {
                         Card {

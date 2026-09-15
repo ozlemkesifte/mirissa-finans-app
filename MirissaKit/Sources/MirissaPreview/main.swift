@@ -202,6 +202,13 @@ func run() {
         ok += 1; print("✓ Koyu mod (Giderler) → \(koyuEkran.lastPathComponent)")
     }
 
+    // Rehberli akışlar — ilk soru ekranları
+    for f in PreviewGallery.guidedFlows(store: AppStore.inMemory(demoState())) {
+        let u = outDir.appendingPathComponent("\(f.name).png")
+        if render(f.view, to: u, size: size) { ok += 1; print("✓ \(f.title) → \(u.lastPathComponent)") }
+        else { print("✗ \(f.title)") }
+    }
+
     // İlk kurulum sihirbazı — birkaç adım
     let bosStore = AppStore.inMemory(SeedData.initialState())
     let sihirbaz = outDir.appendingPathComponent("10-ilk-kurulum.png")

@@ -2,6 +2,11 @@ import SwiftUI
 import MirissaCore
 
 public enum AppSheet: Identifiable, Hashable {
+    case yeniIslem
+    case saleFlow
+    case purchaseFlow
+    case expenseFlow
+    case countFlow
     case addSale(MonthKey)
     case editSale(Id)
     case addExpense(MonthKey)
@@ -23,6 +28,11 @@ public enum AppSheet: Identifiable, Hashable {
 
     public var id: String {
         switch self {
+        case .yeniIslem: return "yeniIslem"
+        case .saleFlow: return "saleFlow"
+        case .purchaseFlow: return "purchaseFlow"
+        case .expenseFlow: return "expenseFlow"
+        case .countFlow: return "countFlow"
         case let .addSale(m): return "addSale-\(m)"
         case let .editSale(i): return "editSale-\(i)"
         case let .addExpense(m): return "addExpense-\(m)"
@@ -49,6 +59,11 @@ public extension View {
     func appSheets(_ sheet: Binding<AppSheet?>) -> some View {
         self.sheet(item: sheet) { s in
             switch s {
+            case .yeniIslem: YeniIslemAkisi()
+            case .saleFlow: SaleFlow()
+            case .purchaseFlow: PurchaseFlow()
+            case .expenseFlow: ExpenseFlow()
+            case .countFlow: CountFlow()
             case let .addSale(m): SaleForm(month: m)
             case let .editSale(i): SaleForm(editing: i)
             case let .addExpense(m): ExpenseForm(month: m)

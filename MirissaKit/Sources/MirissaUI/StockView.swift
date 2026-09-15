@@ -44,7 +44,7 @@ struct StockView: View {
             .largeTitleMode()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { sheet = .addPurchase(nil) } label: {
+                    Button { sheet = .purchaseFlow } label: {
                         Image(systemName: "shippingbox")
                     }
                     .foregroundStyle(Palette.accent)
@@ -119,7 +119,7 @@ struct StockView: View {
                         .foregroundStyle(Palette.inkSoft)
                 }
             }
-            BigButton("Stok Sayımı Yap", icon: "checklist") { sheet = .countStock(nil) }
+            BigButton("Stok Sayımı Yap", icon: "checklist") { sheet = .countFlow }
 
             SectionTitle("Sisteme göre mevcut")
             Card(padding: 0) {

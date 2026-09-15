@@ -23,7 +23,7 @@ struct SalesView: View {
                     PeriodPicker(period: period)
 
                     BigButton("Aylık Satış Ekle", icon: "plus") {
-                        sheet = .addSale(period.month)
+                        sheet = .saleFlow
                     }
 
                     SectionTitle("Kanallar")

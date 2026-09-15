@@ -119,49 +119,24 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Üç büyük işlem
+    // MARK: Tek büyük giriş
 
     private var islemler: some View {
-        Card(padding: 0) {
-            VStack(spacing: 0) {
-                islemSatiri("Satış Gir", "cart.fill", Palette.accent) {
-                    sheet = .addSale(period.month)
-                }
-                Divider().overlay(Palette.separator).padding(.leading, 66)
-                islemSatiri("Gider / Fatura Gir", "creditcard.fill", Palette.gider) {
-                    sheet = .addExpense(period.month)
-                }
-                Divider().overlay(Palette.separator).padding(.leading, 66)
-                islemSatiri("Stok Alımı Gir", "shippingbox.fill", Palette.uyari) {
-                    sheet = .addPurchase(nil)
-                }
+        Button { sheet = .yeniIslem } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title2)
+                Text("Yeni İşlem")
+                    .font(.title3.weight(.semibold))
             }
-        }
-    }
-
-    private func islemSatiri(_ baslik: String, _ icon: String, _ renk: Color,
-                             _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.headline)
-                    .foregroundStyle(renk)
-                    .frame(width: 38, height: 38)
-                    .background(renk.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                Text(baslik)
-                    .font(.headline)
-                    .foregroundStyle(Palette.ink)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Palette.inkFaint)
-            }
-            .padding(.horizontal, Metrics.pad)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            .foregroundStyle(Palette.onFilled)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 18)
+            .background(Palette.accent)
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Yeni işlem ekle")
     }
 
     // MARK: Ürünler ve stoklar
