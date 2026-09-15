@@ -18,6 +18,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: En yeni Xcode'u seç
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+
       - name: Hesaplama motorunun testleri
         working-directory: MirissaKit
         run: swift test

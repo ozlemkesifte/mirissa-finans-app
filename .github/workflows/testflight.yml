@@ -45,8 +45,16 @@ jobs:
           fi
           echo "Bütün anahtarlar tanımlı."
 
-      - name: Xcode sürümü
-        run: xcodebuild -version
+      - name: En yeni Xcode'u seç
+        run: |
+          echo "Kurulu Xcode sürümleri:"
+          ls -d /Applications/Xcode*.app
+          EN_YENI=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Seçilen: $EN_YENI"
+          sudo xcode-select -s "$EN_YENI"
+          xcodebuild -version
+          echo "iOS SDK:"
+          xcodebuild -showsdks | grep -i iphoneos
 
       - name: Hesaplama motorunun testleri
         working-directory: MirissaKit
