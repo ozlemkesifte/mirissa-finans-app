@@ -17,7 +17,7 @@ public enum PreviewGallery {
             AnyView(v.environment(store).environment(period))
         }
         return [
-            Screen(name: "1-ana-sayfa", title: "Ana Sayfa", view: wrap(HomeView())),
+            Screen(name: "1-ana-sayfa", title: "Ana Sayfa", view: wrap(HomeView(tab: .constant(0)))),
             Screen(name: "2-satislar", title: "Satışlar", view: wrap(SalesView())),
             Screen(name: "3-giderler", title: "Giderler", view: wrap(ExpensesView())),
             Screen(name: "4-urun-stok", title: "Ürün & Stok", view: wrap(StockView())),
@@ -63,6 +63,12 @@ public enum PreviewGallery {
             .environment(store)
             .environment(Period(month: month))
         )
+    }
+
+    /// İlk kurulum sihirbazı
+    @MainActor
+    public static func setupWizard(store: AppStore) -> AnyView {
+        AnyView(SetupWizard().environment(store).environment(Period()))
     }
 
     @MainActor

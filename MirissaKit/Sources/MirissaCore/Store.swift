@@ -317,6 +317,11 @@ public final class AppStore {
 
     public func setVatEnabled(_ on: Bool) { mutate { $0.settings.vatEnabled = on } }
 
+    public func completeSetup() { mutate { $0.settings.setupCompleted = true } }
+
+    /// Sihirbazı yeniden çalıştırmak için (Ayarlar'dan)
+    public func restartSetup() { mutate { $0.settings.setupCompleted = false } }
+
     public func setVatDefaults(rate: VatRate, included: Bool) {
         mutate { s in
             s.settings.defaultVatRate = rate

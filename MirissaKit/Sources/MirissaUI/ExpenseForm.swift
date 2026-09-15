@@ -53,41 +53,15 @@ struct ExpenseForm: View {
                 MoneyField("Tutar", value: $amount)
             }
 
-            Section("Kategori") {
+            Section {
                 Picker("Kategori", selection: $category) {
                     ForEach(ExpenseCategory.userSelectable) { c in
                         Label(c.displayName, systemImage: c.symbolName).tag(c)
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.inline)
                 .onChange(of: category) { _, yeni in
                     if !behaviorTouched { behavior = yeni.defaultBehavior }
                 }
-            }
-
-            Section {
-                Picker("Hangi bölüme ait?", selection: $scopeId) {
-                    Text("Ortak şirket gideri").tag("ortak")
-                    ForEach(store.state.activeChannels) { c in Text(c.name).tag(c.id) }
-                }
-            } footer: {
-                Text(scopeId == "ortak"
-                     ? "Ortak giderler şirket kârından düşülür."
-                     : "Bu gider sadece seçtiğin kanalın kârlılığından düşülür, iki kez sayılmaz.")
-            }
-
-            Section {
-                Picker("", selection: $behavior) {
-                    ForEach(CostBehavior.allCases) { b in Text(b.displayName).tag(b) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .onChange(of: behavior) { _, _ in behaviorTouched = true }
-            } header: {
-                Text("Satış arttıkça artar mı?")
-            } footer: {
-                Text(behavior.explanation)
             }
 
             Section {
@@ -120,7 +94,22 @@ struct ExpenseForm: View {
                 }
             }
 
-            VatSection(rate: $vatRate, included: $vatIncluded, amount: amount)
+            Section {
+                DisclosureGroup("Gelişmiş") {
+                    Picker("Hangi bölüme ait?", selection: $scopeId) {
+                        Text("Ortak şirket gideri").tag("ortak")
+                        ForEach(store.state.activeChannels) { c in Text(c.name).tag(c.id) }
+                    }
+                    Picker("Satış arttıkça artar mı?", selection: $behavior) {
+                        ForEach(CostBehavior.allCases) { b in Text(b.displayName).tag(b) }
+                    }
+                    .onChange(of: behavior) { _, _ in behaviorTouched = true }
+                    VatSection(rate: $vatRate, included: $vatIncluded, amount: amount,
+                               asSection: false)
+                }
+            } footer: {
+                Text("Varsayılanlar çoğu gider için doğrudur; gerekmedikçe açman gerekmez.")
+            }
 
             InvoiceSection(current: mevcutFatura, picked: $picked, removed: $invoiceRemoved)
 

@@ -36,6 +36,8 @@ public struct AppSettings: Hashable, Sendable {
     public var defaultVatIncluded: Bool
     /// KDV takibi açık mı — kapalıyken hiçbir ekranda KDV görünmez
     public var vatEnabled: Bool
+    /// İlk kurulum sihirbazı tamamlandı mı
+    public var setupCompleted: Bool
 
     public func profitGoal(for month: MonthKey) -> Kurus? {
         profitGoals[month].flatMap { $0 > 0 ? $0 : nil }
@@ -50,7 +52,8 @@ public struct AppSettings: Hashable, Sendable {
         expectedMix: ExpectedMix? = nil,
         defaultVatRate: VatRate = .yirmi,
         defaultVatIncluded: Bool = true,
-        vatEnabled: Bool = true
+        vatEnabled: Bool = true,
+        setupCompleted: Bool = false
     ) {
         self.consumptionWindowMonths = consumptionWindowMonths
         self.capitalizePurchases = capitalizePurchases
@@ -61,6 +64,7 @@ public struct AppSettings: Hashable, Sendable {
         self.defaultVatRate = defaultVatRate
         self.defaultVatIncluded = defaultVatIncluded
         self.vatEnabled = vatEnabled
+        self.setupCompleted = setupCompleted
     }
 }
 
@@ -70,7 +74,7 @@ extension AppSettings: Codable {
     enum CodingKeys: String, CodingKey {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
         case progressAsOf, expectedMix
-        case defaultVatRate, defaultVatIncluded, vatEnabled
+        case defaultVatRate, defaultVatIncluded, vatEnabled, setupCompleted
     }
 
     public init(from decoder: Decoder) throws {
@@ -87,10 +91,12 @@ extension AppSettings: Codable {
         defaultVatRate = try c.decodeIfPresent(VatRate.self, forKey: .defaultVatRate) ?? .yirmi
         defaultVatIncluded = try c.decodeIfPresent(Bool.self, forKey: .defaultVatIncluded) ?? true
         vatEnabled = try c.decodeIfPresent(Bool.self, forKey: .vatEnabled) ?? true
+        // Kayıtlı dosyası olan kullanıcı sihirbazı görmez; yalnızca ilk kurulumda çıkar.
+        setupCompleted = try c.decodeIfPresent(Bool.self, forKey: .setupCompleted) ?? true
     }
 }
 
-public struct AppState: Codable, Hashable, Sendable {
+public struct AppState: Hashable, Sendable {
     public var materials: [StockMaterial]
     public var products: [Product]
     public var channels: [Channel]
@@ -130,6 +136,32 @@ public struct AppState: Codable, Hashable, Sendable {
     }
 
     public static let empty = AppState()
+}
+
+// Eksik alanlar boş kabul edilir. Yeni bir liste eklemek, eski yedekleri
+// okunamaz hale getirmesin — aksi halde güncelleme veri kaybına yol açar.
+extension AppState: Codable {
+    enum CodingKeys: String, CodingKey {
+        case materials, products, channels, channelMonths, sales
+        case expenses, purchases, adjustments, counts, balances, settings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        materials = try c.decodeIfPresent([StockMaterial].self, forKey: .materials) ?? []
+        products = try c.decodeIfPresent([Product].self, forKey: .products) ?? []
+        channels = try c.decodeIfPresent([Channel].self, forKey: .channels) ?? []
+        channelMonths = try c.decodeIfPresent([ChannelMonth].self, forKey: .channelMonths) ?? []
+        sales = try c.decodeIfPresent([SalesEntry].self, forKey: .sales) ?? []
+        expenses = try c.decodeIfPresent([Expense].self, forKey: .expenses) ?? []
+        purchases = try c.decodeIfPresent([StockPurchase].self, forKey: .purchases) ?? []
+        adjustments = try c.decodeIfPresent([StockAdjustment].self, forKey: .adjustments) ?? []
+        counts = try c.decodeIfPresent([StockCount].self, forKey: .counts) ?? []
+        balances = try c.decodeIfPresent([BalanceItem].self, forKey: .balances) ?? []
+        // Kayıtlı dosyası olan kullanıcı kurulumu zaten yapmıştır
+        settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings)
+            ?? AppSettings(setupCompleted: true)
+    }
 }
 
 // MARK: - Arama yardımcıları

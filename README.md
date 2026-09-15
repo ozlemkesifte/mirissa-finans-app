@@ -6,6 +6,28 @@ Mirissa Lab için finans, kârlılık ve otomatik stok takibi yapan native iOS u
 
 ---
 
+## İlk kurulum
+
+Uygulama ilk açıldığında yedi adımlık zorunlu bir sihirbaz çıkar: ürünler,
+elindeki stok, birim maliyetler, ambalaj malzemeleri, malzeme stokları,
+sabit giderler, satış kanalları. Tek ekranda tek soru.
+
+**Başlangıç stoğu.** Şirket aylar önce faaliyete başladıysa eldeki stokların
+çoğu geçmişte alınmıştır. "Şu anda 740 şampuanım var" dediğinde bu:
+
+- mevcut stoğa eklenir
+- maliyet hesabında kullanılır
+- **bu ayın gideri veya nakit çıkışı olarak yazılmaz**
+- **KDV kaydı oluşturmaz**
+
+Eski faturaları veya geçmiş satın almaları tek tek girmen gerekmez.
+
+Kurulumdan sonra günlük kullanım üç işlemden ibaret — ana sayfada yan yana:
+**Satış Gir**, **Gider / Fatura Gir**, **Stok Alımı Gir**. Ana sayfadaki
+**Ürünler ve Stoklar** alanından mevcut stoklara dokunup düzenleyebilirsin.
+
+Sihirbazı Ayarlar'dan tekrar çalıştırabilirsin; kayıtların silinmez.
+
 ## Ne yapıyor
 
 - Aylık satışları kanal bazında toplar (Trendyol / Shopify / Diğer)

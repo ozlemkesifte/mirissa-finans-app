@@ -85,7 +85,7 @@ public enum Movements {
                 source: .opening,
                 sourceId: m.id,
                 reason: nil,
-                label: "Açılış stoğu"
+                label: "Başlangıç stoğu"
             ))
         }
         for p in s.products {
@@ -102,7 +102,7 @@ public enum Movements {
                 source: .opening,
                 sourceId: p.id,
                 reason: nil,
-                label: "Açılış stoğu"
+                label: "Başlangıç stoğu"
             ))
         }
         return out

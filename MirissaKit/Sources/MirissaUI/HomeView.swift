@@ -4,6 +4,7 @@ import MirissaCore
 struct HomeView: View {
     @Environment(AppStore.self) private var store
     @Environment(Period.self) private var period
+    @Binding var tab: Int
     @State private var sheet: AppSheet?
 
     private var result: CompanyMonthResult { period.result(store.engine) }
@@ -22,13 +23,15 @@ struct HomeView: View {
                     if period.scope == .month {
                         BreakevenCard(month: period.month)
                     }
+                    islemler
+                    if !alerts.isEmpty { stockAlerts }
                     TrendChart(
                         points: trendPoints,
                         title: period.scope == .month ? "Son 6 Ay" : "\(period.year) Ayları"
                     )
                     channels
-                    if !alerts.isEmpty { stockAlerts }
-                    Color.clear.frame(height: 70)
+                    urunlerVeStoklar
+                    Color.clear.frame(height: 24)
                 }
                 .padding(.horizontal, Metrics.pad)
                 .padding(.top, 4)
@@ -42,7 +45,6 @@ struct HomeView: View {
                         .foregroundStyle(Palette.inkSoft)
                 }
             }
-            .overlay(alignment: .bottomTrailing) { quickAdd }
             .appSheets($sheet)
         }
     }
@@ -117,26 +119,130 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Hızlı ekle
+    // MARK: Üç büyük işlem
 
-    private var quickAdd: some View {
-        Menu {
-            Button { sheet = .addSale(period.month) } label: { Label("Satış Ekle", systemImage: "cart") }
-            Button { sheet = .addExpense(period.month) } label: { Label("Gider Ekle", systemImage: "creditcard") }
-            Button { sheet = .addPurchase(nil) } label: { Label("Stok Satın Al", systemImage: "shippingbox") }
-            Button { sheet = .adjustStock(nil) } label: { Label("Stok Düzelt", systemImage: "slider.horizontal.3") }
-        } label: {
-            Image(systemName: "plus")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Palette.onFilled)
-                .frame(width: 54, height: 54)
-                .background(Palette.accent)
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+    private var islemler: some View {
+        Card(padding: 0) {
+            VStack(spacing: 0) {
+                islemSatiri("Satış Gir", "cart.fill", Palette.accent) {
+                    sheet = .addSale(period.month)
+                }
+                Divider().overlay(Palette.separator).padding(.leading, 66)
+                islemSatiri("Gider / Fatura Gir", "creditcard.fill", Palette.gider) {
+                    sheet = .addExpense(period.month)
+                }
+                Divider().overlay(Palette.separator).padding(.leading, 66)
+                islemSatiri("Stok Alımı Gir", "shippingbox.fill", Palette.uyari) {
+                    sheet = .addPurchase(nil)
+                }
+            }
         }
-        .menuIndicator(.hidden)
-        .padding(.trailing, Metrics.pad)
-        .padding(.bottom, 14)
+    }
+
+    private func islemSatiri(_ baslik: String, _ icon: String, _ renk: Color,
+                             _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.headline)
+                    .foregroundStyle(renk)
+                    .frame(width: 38, height: 38)
+                    .background(renk.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                Text(baslik)
+                    .font(.headline)
+                    .foregroundStyle(Palette.ink)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Palette.inkFaint)
+            }
+            .padding(.horizontal, Metrics.pad)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Ürünler ve stoklar
+
+    private struct StokSatiri: Identifiable {
+        var ref: ItemRef
+        var ad: String
+        var miktar: String
+        var durum: StockStatus
+        var id: String { ref.id }
+    }
+
+    private var stokSatirlari: [StokSatiri] {
+        var out: [StokSatiri] = []
+        for p in store.state.activeProducts where p.tracksOwnStock {
+            let r = ItemRef.product(p.id)
+            out.append(StokSatiri(ref: r, ad: p.name,
+                                  miktar: Units.formatQty(store.engine.qty(r), baseUnit: .adet),
+                                  durum: store.engine.status(r)))
+        }
+        for m in store.state.activeMaterials {
+            let r = ItemRef.material(m.id)
+            out.append(StokSatiri(ref: r, ad: m.name,
+                                  miktar: Units.formatQty(store.engine.qty(r), baseUnit: m.baseUnit),
+                                  durum: store.engine.status(r)))
+        }
+        return out
+    }
+
+    private var urunlerVeStoklar: some View {
+        let hepsi = stokSatirlari
+        let gosterilen = Array(hepsi.prefix(6))
+        return VStack(spacing: Metrics.gap) {
+            SectionTitle("Ürünler ve Stoklar", actionLabel: hepsi.count > 6 ? "Tümü" : nil) {
+                tab = 3
+            }
+            Card(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(gosterilen.enumerated()), id: \.element.id) { i, r in
+                        NavigationLink {
+                            if r.ref.kind == .product {
+                                ProductDetail(productId: r.ref.id)
+                            } else {
+                                MaterialDetail(materialId: r.ref.id)
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(r.ad).font(.subheadline).foregroundStyle(Palette.ink)
+                                Spacer(minLength: 8)
+                                Text(r.miktar)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(r.durum == .normal ? Palette.ink
+                                                     : (r.durum == .azaliyor ? Palette.uyari : Palette.zarar))
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Palette.inkFaint)
+                            }
+                            .padding(.horizontal, Metrics.pad)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if i < gosterilen.count - 1 {
+                            Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
+                        }
+                    }
+                    if hepsi.count > 6 {
+                        Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
+                        Button { tab = 3 } label: {
+                            Text("+ \(hepsi.count - 6) kalem daha")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Palette.accent)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
     }
 }
 

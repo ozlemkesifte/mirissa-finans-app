@@ -159,6 +159,17 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button {
+                        store.restartSetup()
+                        dismiss()
+                    } label: {
+                        Label("İlk kurulumu tekrar çalıştır", systemImage: "wand.and.stars")
+                    }
+                } footer: {
+                    Text("Ürünler, stoklar, sabit giderler ve kanal ayarlarını adım adım tekrar gözden geçirirsin. Satış ve gider kayıtların silinmez.")
+                }
+
+                Section {
                     Button(role: .destructive) { showEraseConfirm = true } label: {
                         Label("Satış, gider ve stok kayıtlarını sil", systemImage: "eraser")
                     }

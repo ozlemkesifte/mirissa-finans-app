@@ -12,8 +12,24 @@ public struct RootView: View {
     }
 
     public var body: some View {
+        Group {
+            if store.state.settings.setupCompleted {
+                sekmeler
+            } else {
+                SetupWizard()
+            }
+        }
+        .tint(Palette.accent)
+        .environment(store)
+        .environment(period)
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { store.flush() }
+        }
+    }
+
+    private var sekmeler: some View {
         TabView(selection: $tab) {
-            HomeView()
+            HomeView(tab: $tab)
                 .tabItem { Label("Ana Sayfa", systemImage: "house.fill") }
                 .tag(0)
             SalesView()
@@ -28,12 +44,6 @@ public struct RootView: View {
             ReportsView()
                 .tabItem { Label("Raporlar", systemImage: "chart.bar.fill") }
                 .tag(4)
-        }
-        .tint(Palette.accent)
-        .environment(store)
-        .environment(period)
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active { store.flush() }
         }
     }
 }

@@ -58,25 +58,25 @@ struct SaleForm: View {
             Section {
                 QtyField("Satılan adet", suffix: "adet", value: $qty)
                 MoneyField("Toplam satış", value: $gross)
-                MoneyField("İndirim", value: $discount)
             } footer: {
                 Text("Ay sonunda kanalın toplam rakamını gir — her siparişi tek tek girmene gerek yok.")
             }
 
             Section {
-                Toggle("İade var", isOn: $showReturns.animation())
-                if showReturns {
-                    MoneyField("İade tutarı", value: $returnsAmount)
-                    QtyField("İade adedi", suffix: "adet", value: $returnsQty)
-                    Toggle("İade edilen ürün stoğa geri girsin", isOn: $restock)
+                DisclosureGroup("İndirim, iade ve KDV") {
+                    MoneyField("İndirim", value: $discount)
+                    Toggle("İade var", isOn: $showReturns.animation())
+                    if showReturns {
+                        MoneyField("İade tutarı", value: $returnsAmount)
+                        QtyField("İade adedi", suffix: "adet", value: $returnsQty)
+                        Toggle("İade edilen ürün stoğa geri girsin", isOn: $restock)
+                    }
+                    VatSection(rate: $vatRate, included: $vatIncluded, amount: net,
+                               label: "Satış tutarı", asSection: false)
                 }
             } footer: {
-                if showReturns {
-                    Text("Koli, patpat gibi paketleme malzemeleri iadede geri gelmez; onlar harcanmış sayılır.")
-                }
+                Text("Çoğu zaman bunlara dokunmana gerek yok.")
             }
-
-            VatSection(rate: $vatRate, included: $vatIncluded, amount: net, label: "Satış tutarı")
 
             Section {
                 LabeledRow("Gerçek satış", netExVat.tl, tone: Palette.accent, strong: true)

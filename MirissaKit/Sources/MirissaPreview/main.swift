@@ -202,6 +202,13 @@ func run() {
         ok += 1; print("✓ Koyu mod (Giderler) → \(koyuEkran.lastPathComponent)")
     }
 
+    // İlk kurulum sihirbazı — birkaç adım
+    let bosStore = AppStore.inMemory(SeedData.initialState())
+    let sihirbaz = outDir.appendingPathComponent("10-ilk-kurulum.png")
+    if render(PreviewGallery.setupWizard(store: bosStore), to: sihirbaz, size: size) {
+        ok += 1; print("✓ İlk kurulum → \(sihirbaz.lastPathComponent)")
+    }
+
     let kdvKart = outDir.appendingPathComponent("8-kdv-alacak.png")
     if render(PreviewGallery.vatAndBalance(store: hedefStore, month: "2026-09"),
               to: kdvKart, size: size) { ok += 1; print("✓ KDV + Alacak → \(kdvKart.lastPathComponent)") }
