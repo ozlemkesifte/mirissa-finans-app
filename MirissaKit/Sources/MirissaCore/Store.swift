@@ -124,10 +124,44 @@ public final class AppStore {
 
     public func addChannel(_ c: Channel) { mutate { $0.channels.append(c) } }
 
+    /// Kanal düzenlemesi. Kesinti oranlarının tek bir gerçek kaynağı vardır:
+    /// tarihçe. Düz alanlar üzerinden bir oran değiştirilirse bu, bugünden
+    /// geçerli yeni bir tarihçe kaydına çevrilir — aksi halde ekranda yeni
+    /// oran görünürken motor eskisini kullanmaya devam ederdi.
     public func updateChannel(_ c: Channel) {
         mutate { s in
-            if let i = s.channels.firstIndex(where: { $0.id == c.id }) { s.channels[i] = c }
+            guard let i = s.channels.firstIndex(where: { $0.id == c.id }) else { return }
+            let eski = s.channels[i]
+            var yeni = c
+            if !(eski.rateHistory ?? []).isEmpty, Self.oranlarDegisti(eski, c) {
+                // Tarihçeyi koru, değişikliği bugünden başlat
+                yeni.rateHistory = eski.rateHistory
+                let bugunku = eski.currentRates
+                yeni.setRates(ChannelRates(
+                    from: Dates.today(),
+                    commissionPct: c.commissionPct,
+                    paymentPct: c.paymentPct,
+                    shippingPerOrder: c.shippingPerOrder,
+                    serviceFeePerOrder: c.serviceFeePerOrder,
+                    platformFeeMonthly: c.platformFeeMonthly,
+                    otherDeductionPct: c.otherDeductionPct,
+                    otherDeductionMonthly: c.otherDeductionMonthly,
+                    extras: bugunku.extras,
+                    unknownFields: bugunku.unknownFields
+                ))
+            }
+            s.channels[i] = yeni
         }
+    }
+
+    private static func oranlarDegisti(_ a: Channel, _ b: Channel) -> Bool {
+        a.commissionPct != b.commissionPct
+            || a.paymentPct != b.paymentPct
+            || a.shippingPerOrder != b.shippingPerOrder
+            || a.serviceFeePerOrder != b.serviceFeePerOrder
+            || a.platformFeeMonthly != b.platformFeeMonthly
+            || a.otherDeductionPct != b.otherDeductionPct
+            || a.otherDeductionMonthly != b.otherDeductionMonthly
     }
 
     public func deleteChannel(_ id: Id) {

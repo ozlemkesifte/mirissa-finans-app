@@ -114,11 +114,13 @@ public struct CostLine: Codable, Identifiable, Hashable, Sendable {
         self.validTo = validTo
     }
 
-    /// Verilen günde geçerli mi. Tarih verilmezse "hâlâ geçerli" olanlar sayılır.
+    /// Verilen günde geçerli mi. Tarih verilmezse BUGÜN geçerli olanlar sayılır.
+    /// İleri tarihli bir kalem bugünün maliyeti değildir — aksi halde ekranda
+    /// görünen maliyet ile motorun kullandığı maliyet ayrışırdı.
     public func isValid(on date: DateKey?) -> Bool {
-        guard let date else { return validTo == nil }
-        if let f = validFrom, date < f { return false }
-        if let t = validTo, date > t { return false }
+        let gun = date ?? Dates.today()
+        if let f = validFrom, gun < f { return false }
+        if let t = validTo, gun > t { return false }
         return true
     }
 }

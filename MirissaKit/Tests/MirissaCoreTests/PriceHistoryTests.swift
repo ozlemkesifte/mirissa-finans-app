@@ -219,7 +219,9 @@ struct CostHistoryTests {
         #expect(p.costLines.count == 2)
         #expect(p.costLines(on: "2026-09-15").reduce(0) { $0 + $1.amount } == tl(100))
         #expect(p.costLines(on: "2026-10-01").reduce(0) { $0 + $1.amount } == tl(130))
-        #expect(p.costLines(on: nil).reduce(0) { $0 + $1.amount } == tl(130))
+        // Tarih verilmezse BUGÜN geçerli olan kalem gelir: yeni maliyet
+        // 1 Ekim'de başladığı için bugün hâlâ eskisi geçerlidir
+        #expect(p.costLines(on: nil).reduce(0) { $0 + $1.amount } == tl(100))
     }
 
     @Test func gecmisAyinUrunMaliyetiDegismez() {
@@ -254,7 +256,7 @@ struct CostHistoryTests {
     @Test func kaldirilanKalemGecmisteGecerliKalir() {
         var p = Fx.sampuan(cost: tl(100))
         p.applyCostLines([], today: "2026-10-01")
-        #expect(p.costLines(on: nil).isEmpty)
+        #expect(p.costLines(on: "2026-10-01").isEmpty)
         #expect(p.costLines(on: "2026-09-15").reduce(0) { $0 + $1.amount } == tl(100))
     }
 

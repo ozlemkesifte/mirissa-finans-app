@@ -108,6 +108,8 @@ struct SettingsView: View {
                          : "Kapalıyken hiçbir ekranda KDV görünmez.")
                 }
 
+                ButunlukBolumu()
+
                 Section {
                     Picker("Fiyat kontrolü", selection: Binding(
                         get: { store.state.settings.priceCheckInterval },

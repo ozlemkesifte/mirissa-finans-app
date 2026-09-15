@@ -39,6 +39,18 @@ struct YearlyCard: View {
                             .foregroundStyle(Palette.inkFaint)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    // Eksik veri varsa hedef kesinmiş gibi gösterilmez
+                    ForEach(p.notes) { n in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "info.circle")
+                                .font(.caption)
+                                .foregroundStyle(Palette.uyari)
+                            Text(n.message)
+                                .font(.caption)
+                                .foregroundStyle(Palette.inkSoft)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     hedefDuzenle(p)
                 }
             }

@@ -135,7 +135,7 @@ public extension Engine {
             for m in months { orders += companyMonth(m).orders }
             result = ConsumptionRate(
                 perOrder: orders > 0 ? used / Double(orders) : 0,
-                perMonth: used / Double(window),
+                perMonth: window > 0 ? used / Double(window) : 0,
                 windowMonths: window
             )
             break

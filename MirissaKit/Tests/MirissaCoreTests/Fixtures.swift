@@ -1,8 +1,6 @@
 import Foundation
 @testable import MirissaCore
-
-/// Testlerde okunabilirlik için: 10 TL -> 1000 kuruş
-func tl(_ v: Double) -> Kurus { Money.fromTL(v) }
+@_exported import MirissaTestSupport
 
 enum Fx {
     static let koliId = "mat_koli"

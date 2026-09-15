@@ -163,9 +163,13 @@ public final class Engine {
                 channelVariableExpenses: channelDegiskenByCat[ch.id] ?? [:]
             ))
         }
-        // Satışı olmayan ama tanımlı kanallar da boş kartla görünsün
+        // Satışı olmayan ama tanımlı kanallar da boş kartla görünsün.
+        // Eksik bilgi uyarısı satış olup olmamasından bağımsızdır: kullanıcı
+        // "bilmiyorum" dediyse o kanalın hesabı her ay yaklaşıktır.
         for ch in state.activeChannels where !results.contains(where: { $0.channelId == ch.id }) {
-            results.append(.empty(channelId: ch.id, channelName: ch.name, month: month))
+            var bos = ChannelMonthResult.empty(channelId: ch.id, channelName: ch.name, month: month)
+            bos.eksikBilgiler = ch.rates(on: asOf).eksikler
+            results.append(bos)
         }
         results.sort { a, b in
             let ia = state.channels.firstIndex { $0.id == a.channelId } ?? 99

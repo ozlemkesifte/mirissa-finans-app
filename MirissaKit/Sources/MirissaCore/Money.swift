@@ -13,10 +13,15 @@ public enum Money {
         Double(k) / 100
     }
 
+    /// Taşma sınırı: bundan büyük tutarlar gerçek veri değildir.
+    /// Int'e çevirirken çökmek yerine sınırda tutulur.
+    static let enBuyukTutar = 9_000_000_000_000_000.0
+
     public static func roundHalfAwayFromZero(_ v: Double) -> Int {
         guard v.isFinite else { return 0 }
-        return v < 0 ? -Int((-v).rounded(.toNearestOrAwayFromZero))
-                     : Int(v.rounded(.toNearestOrAwayFromZero))
+        let sinirli = Swift.min(Swift.max(v, -enBuyukTutar), enBuyukTutar)
+        return sinirli < 0 ? -Int((-sinirli).rounded(.toNearestOrAwayFromZero))
+                           : Int(sinirli.rounded(.toNearestOrAwayFromZero))
     }
 
     /// Türkçe para biçimi: 185.000 TL / 1.234,56 TL

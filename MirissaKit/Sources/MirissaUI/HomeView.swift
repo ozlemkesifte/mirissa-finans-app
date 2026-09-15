@@ -26,6 +26,7 @@ struct HomeView: View {
                         YearlyCard(year: period.year)
                     }
                     EksikBilgiNotu(uyari: result.yaklasikUyarisi)
+                    ButunlukKarti()
                     islemler
                     YarimIslemKarti(sheet: $sheet)
                     PriceCheckCard(sheet: $sheet)

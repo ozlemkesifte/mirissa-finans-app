@@ -140,9 +140,11 @@ private struct CategoryCard: View {
     var onTap: (ExpenseInstance) -> Void
 
     /// Kategorinin, elle girilmiş satırlarla açıklanamayan kısmı
-    /// (komisyon, ürün maliyeti, ambalaj gibi satıştan türeyen tutarlar)
+    /// (komisyon, ürün maliyeti, ambalaj gibi satıştan türeyen tutarlar).
+    /// Kategori toplamı KDV hariç olduğu için satırlar da KDV hariç sayılır —
+    /// aksi halde satırların toplamı başlıktaki rakamı tutmazdı.
     private var otomatik: Kurus {
-        max(total - items.reduce(0) { $0 + $1.amount }, 0)
+        max(total - items.reduce(0) { $0 + $1.expenseAmount }, 0)
     }
 
     var body: some View {
@@ -195,9 +197,17 @@ private struct CategoryCard: View {
                                     }
                                     if i.sourceKind == .duzenli { Pill("her ay") }
                                     Spacer(minLength: 8)
-                                    Text(i.amount.tl)
-                                        .font(.subheadline.weight(.medium))
-                                        .foregroundStyle(Palette.ink)
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        // Kâra etki eden tutar (KDV hariç)
+                                        Text(i.expenseAmount.tl)
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(Palette.ink)
+                                        if i.amount != i.expenseAmount {
+                                            Text("\(i.amount.tl) ödendi")
+                                                .font(.caption2)
+                                                .foregroundStyle(Palette.inkFaint)
+                                        }
+                                    }
                                     if i.editable {
                                         Image(systemName: "chevron.right")
                                             .font(.caption2.weight(.bold))

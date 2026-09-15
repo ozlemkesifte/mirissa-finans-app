@@ -103,8 +103,10 @@ extension AppSettings: Codable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = AppSettings()
-        consumptionWindowMonths = try c.decodeIfPresent(Int.self, forKey: .consumptionWindowMonths)
-            ?? d.consumptionWindowMonths
+        // Bozuk bir yedekte sıfır gelirse sıfıra bölme olmasın
+        consumptionWindowMonths = max(
+            try c.decodeIfPresent(Int.self, forKey: .consumptionWindowMonths)
+                ?? d.consumptionWindowMonths, 1)
         capitalizePurchases = try c.decodeIfPresent(Bool.self, forKey: .capitalizePurchases)
             ?? d.capitalizePurchases
         companyName = try c.decodeIfPresent(String.self, forKey: .companyName) ?? d.companyName

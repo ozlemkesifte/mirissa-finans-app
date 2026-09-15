@@ -18,6 +18,11 @@ let package = Package(
             dependencies: ["MirissaCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .target(
+            name: "MirissaTestSupport",
+            dependencies: ["MirissaCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .executableTarget(
             name: "MirissaPreview",
             dependencies: ["MirissaCore", "MirissaUI"],
@@ -25,12 +30,12 @@ let package = Package(
         ),
         .testTarget(
             name: "MirissaCoreTests",
-            dependencies: ["MirissaCore"],
+            dependencies: ["MirissaCore", "MirissaTestSupport"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "MirissaUITests",
-            dependencies: ["MirissaCore", "MirissaUI"],
+            dependencies: ["MirissaCore", "MirissaUI", "MirissaTestSupport"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

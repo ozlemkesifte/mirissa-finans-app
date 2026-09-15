@@ -47,6 +47,7 @@ public enum BreakevenIssue: String, Sendable, Hashable, Identifiable {
     case ayHenuzBitmedi
     case araDurumIsaretli
     case fiyatGuncel
+    case eksikKanalBilgisi
 
     public var id: String { rawValue }
 
@@ -66,6 +67,8 @@ public enum BreakevenIssue: String, Sendable, Hashable, Identifiable {
             return "Girilen satışlar ayın tamamı değil, ara durum olarak işaretlendi."
         case .fiyatGuncel:
             return "Hedef, bu ayda geçerli olan güncel fiyatlarla hesaplandı. Geçmiş ayların raporu değişmedi."
+        case .eksikKanalBilgisi:
+            return "Bir satış kanalında girilmemiş kesinti var. Bu hedef, o kalem sıfırmış gibi hesaplandı — gerçekte daha yüksek olabilir."
         }
     }
 
@@ -218,6 +221,7 @@ public extension Engine {
         plan.unitsPerOrder = temel.unitsPerOrder
         if temel.urunMaliyetiEksik { plan.issues.append(.urunMaliyetiYok) }
         if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
+        if eksikKanalKesintisiVar(month: month) { plan.issues.append(.eksikKanalBilgisi) }
 
         guard temel.contributionPerOrder > 0 else {
             plan.issues.append(.katkiNegatif)
@@ -422,6 +426,13 @@ public extension Engine {
         )
     }
 
+    /// Kurulumda "bilmiyorum" denen bir kanal kesintisi var mı.
+    /// Varsa hedef kesin değil, yaklaşıktır — kullanıcıya açıkça söylenir.
+    func eksikKanalKesintisiVar(month: MonthKey) -> Bool {
+        let gun = Dates.monthEnd(month)
+        return state.activeChannels.contains { !$0.rates(on: gun).eksikler.isEmpty }
+    }
+
     /// Hedef ayın sabit giderleri. Satış girilmemiş aylarda bile
     /// kanalların aylık sabit ücretleri hesaba katılır.
     func plannedFixedCosts(month: MonthKey) -> Kurus {
@@ -536,6 +547,7 @@ public extension Engine {
         plan.contributionPerOrder = temel.contributionPerOrder
         if temel.urunMaliyetiEksik { plan.issues.append(.urunMaliyetiYok) }
         if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
+        if eksikKanalKesintisiVar(month: referansAy) { plan.issues.append(.eksikKanalBilgisi) }
         guard temel.contributionPerOrder > 0 else {
             plan.issues.append(.katkiNegatif)
             return plan

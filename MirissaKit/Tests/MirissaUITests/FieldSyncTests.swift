@@ -2,6 +2,7 @@ import Testing
 import Foundation
 @testable import MirissaCore
 @testable import MirissaUI
+import MirissaTestSupport
 
 /// Sihirbaz bir sonraki ürüne geçtiğinde SwiftUI aynı giriş alanını yeniden
 /// kullanır. Alan kendi metnini koruduğu için önceki cevap ekranda kalıyordu:
@@ -9,8 +10,6 @@ import Foundation
 /// Bağlı değer değiştiğinde metnin tazelenme kuralı burada test edilir.
 @Suite("Giriş alanı tazeleme")
 struct FieldSyncTests {
-
-    private func tl(_ v: Double) -> Kurus { Money.fromTL(v) }
 
     // MARK: Sıradaki kayda geçiş
 

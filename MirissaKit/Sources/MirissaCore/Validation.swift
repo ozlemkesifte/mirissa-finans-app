@@ -21,6 +21,20 @@ public enum IssueCode: String, Sendable, Hashable {
     case eksikBilgi
 }
 
+public extension IssueCode {
+    /// Kodun genel davranışı: geçersiz veri asla, çift sayım riski onayla geçilebilir
+    var defaultOverridable: Bool {
+        switch self {
+        case .gecersizMiktar, .gecersizTutar, .gecersizOran, .eksikBilgi:
+            return false
+        case .mukerrerFatura, .receteMaliyetiCiftSayim, .setMaliyetiCiftSayim,
+             .baslangicStoguTekrarAlim, .sabitGiderTekrari,
+             .kanalKesintisiCiftSayim, .negatifStok:
+            return true
+        }
+    }
+}
+
 public struct ValidationIssue: Identifiable, Hashable, Sendable {
     public var code: IssueCode
     public var severity: IssueSeverity
@@ -31,23 +45,20 @@ public struct ValidationIssue: Identifiable, Hashable, Sendable {
 
     /// Kullanıcı açıkça zorlarsa kaydedilebilir mi.
     /// Geçersiz veri hiçbir şekilde kaydedilmez; çift sayım riski
-    /// bilinçli onayla geçilebilir.
-    public var allowsOverride: Bool {
-        switch code {
-        case .gecersizMiktar, .gecersizTutar, .gecersizOran, .eksikBilgi:
-            return false
-        case .mukerrerFatura, .receteMaliyetiCiftSayim, .setMaliyetiCiftSayim,
-             .baslangicStoguTekrarAlim, .sabitGiderTekrari,
-             .kanalKesintisiCiftSayim, .negatifStok:
-            return true
-        }
-    }
+    /// genelde bilinçli onayla geçilebilir. Bazı durumlar (aynı tedarikçinin
+    /// aynı faturası) hiçbir şekilde geçilemez — onaylansa bile para iki kez sayılır.
+    public var allowsOverride: Bool { overridable ?? code.defaultOverridable }
 
-    public init(_ code: IssueCode, _ severity: IssueSeverity, _ title: String, _ detail: String) {
+    /// Kurala özel istisna; nil ise kodun genel davranışı geçerli
+    private var overridable: Bool?
+
+    public init(_ code: IssueCode, _ severity: IssueSeverity, _ title: String, _ detail: String,
+                overridable: Bool? = nil) {
         self.code = code
         self.severity = severity
         self.title = title
         self.detail = detail
+        self.overridable = overridable
     }
 }
 
@@ -157,7 +168,7 @@ public enum Validation {
 
         // Set kendi maliyet kalemi taşıyorsa bileşenlerle çakışabilir
         if draft.isBundle, !draft.components.isEmpty,
-           draft.costLines.contains(where: { $0.amount > 0 }) {
+           draft.costLines(on: nil).contains(where: { $0.amount > 0 }) {
             out.append(ValidationIssue(
                 .setMaliyetiCiftSayim, .uyari,
                 "Setin kendi maliyet kalemi var",
@@ -469,7 +480,8 @@ public extension Validation {
                     "Bu fatura zaten kayıtlı",
                     "\(no.uppercased()) numaralı \(vendor ?? "") faturası \(nerede) olarak "
                         + "\(Dates.displayDate(tarih)) tarihinde girilmiş. Aynı faturayı ikinci kez "
-                        + "kaydedemezsin."
+                        + "kaydedemezsin.",
+                    overridable: false
                 )
             }
             return ValidationIssue(

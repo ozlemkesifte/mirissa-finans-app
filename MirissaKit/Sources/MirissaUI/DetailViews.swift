@@ -76,7 +76,9 @@ struct ProductDetail: View {
             SectionTitle("Maliyet Dökümü", actionLabel: "Düzenle") { sheet = .editProduct(productId) }
             Card {
                 VStack(spacing: 9) {
-                    ForEach(p.costLines) { line in
+                    // Yalnızca bugün geçerli kalemler gösterilir; kapanmış
+                    // eski maliyetler ekranda toplam ile çelişirdi.
+                    ForEach(p.costLines(on: nil)) { line in
                         LabeledRow(line.label.isEmpty ? "Kalem" : line.label, line.amount.tl)
                     }
                     if p.isBundle, c.components != 0 {
@@ -85,7 +87,7 @@ struct ProductDetail: View {
                     if c.packaging != 0 {
                         LabeledRow("Paketleme malzemeleri", c.packaging.tl)
                     }
-                    if p.costLines.isEmpty && c.components == 0 && c.packaging == 0 {
+                    if p.costLines(on: nil).isEmpty && c.components == 0 && c.packaging == 0 {
                         Text("Henüz maliyet kalemi girilmedi.")
                             .font(.footnote).foregroundStyle(Palette.inkFaint)
                             .frame(maxWidth: .infinity, alignment: .leading)

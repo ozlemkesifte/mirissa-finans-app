@@ -595,7 +595,8 @@ public struct SetupWizard: View {
 
     private func malzemeDetayAdimi(_ sira: Int) -> some View {
         let indisler = seciliIndisler
-        let i = indisler.indices.contains(sira) ? indisler[sira] : indisler.last ?? 0
+        // Sıra geçerli değilse başka bir malzemeye yazmak yerine hiçbir şey yapma.
+        let i = indisler.indices.contains(sira) ? indisler[sira] : -1
         let m = malzemeTaslak(i)
         let birim = m.birim.displayName
         return SoruAdimi(
@@ -775,7 +776,8 @@ public struct SetupWizard: View {
     /// hangi kanal olursa olsun aynı akış çalışır.
     private func kanalKurulumAdimi(_ i: Int) -> some View {
         let sirali = kurulacakKanallar
-        let id = sirali.indices.contains(i) ? sirali[i] : (sirali.first ?? "")
+        // Yanlış kanalı kurmaktansa hiçbirini kurma.
+        let id = sirali.indices.contains(i) ? sirali[i] : ""
         return ChannelSetupFlow(channelId: id) {
             if i + 1 < sirali.count {
                 ileri(.kanalKurulum(i + 1))
@@ -1049,7 +1051,9 @@ public struct SetupWizard: View {
         urunler = s.products.filter { !$0.isBundle }.map { p in
             UrunTaslak(id: p.id, ad: p.name,
                        stok: p.openingQty ?? 0,
-                       maliyet: p.costLines.reduce(0) { $0 + $1.amount },
+                       // Yalnızca bugün geçerli kalemler; kapanmış eski
+                       // maliyetler toplanırsa maliyet iki kez sayılırdı.
+                       maliyet: p.costLines(on: nil).reduce(0) { $0 + $1.amount },
                        ambalajDahil: p.recipe.isEmpty ? nil
                         : p.recipe.allSatisfy { !$0.resolvedAddsCost },
                        listeFiyat: p.price(on: bugun) ?? 0,
@@ -1153,7 +1157,9 @@ public struct SetupWizard: View {
                     p.isBundle = true
                     p.components = bilesenler
                     p.recipe = recete
-                    p.costLines = []          // bileşen maliyeti ikinci kez yazılmaz
+                    // Bileşen maliyeti ikinci kez yazılmaz. Geçmiş kalemler
+                    // silinmez, bugünden itibaren geçersiz kılınır: eski aylar bozulmaz.
+                    p.applyCostLines([], today: Dates.today())
                     p.openingQty = nil        // setin kendi stoğu yok
                     p.openingUnitCost = nil
                     p.archived = false
