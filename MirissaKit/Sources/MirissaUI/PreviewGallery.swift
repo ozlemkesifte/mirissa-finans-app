@@ -80,6 +80,10 @@ public enum PreviewGallery {
             Screen(name: "f6-kurulum", title: "Kurulum", view: wrap(SetupWizard())),
             Screen(name: "f7-fiyat", title: "Fiyat güncelle", view: wrap(PriceUpdateFlow())),
             Screen(name: "f8-kanal-ekle", title: "Kanal ekle", view: wrap(ChannelAddFlow())),
+            Screen(name: "f10-devam", title: "Kaldığın yerden devam",
+                   view: wrap(DevamSorusu(baslik: "Trendyol kurulumu",
+                                          ilerleme: "7/12 adım tamamlandı",
+                                          devam: {}, bastan: {}, vazgec: {}))),
             Screen(name: "f9-kanal-kurulum", title: "Kanal kurulumu",
                    view: wrap(ChannelSetupFlow(channelId: ChannelIds.trendyol))),
         ]

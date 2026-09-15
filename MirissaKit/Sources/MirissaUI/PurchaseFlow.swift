@@ -6,7 +6,7 @@ struct PurchaseFlow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    private enum Adim: Hashable { case kalem, miktar, tutar, kdv, ozet }
+    private enum Adim: Hashable, Codable { case kalem, miktar, tutar, kdv, ozet }
 
     @State private var adim: Adim = .kalem
     @State private var gecmis: [Adim] = []
@@ -18,6 +18,25 @@ struct PurchaseFlow: View {
     @State private var kdvDahil = true
     @State private var kdvOrani: VatRate = .yirmi
     @State private var tarih: DateKey = Dates.today()
+    @State private var devamSorusu: WizardDraft?
+    @State private var taslakOkundu = false
+
+    private struct Kayit: Codable {
+        var adim: Adim
+        var gecmis: [Adim]
+        var kalem: ItemRef?
+        var miktar: Double
+        var birim: UnitCode
+        var tutar: Kurus
+        var kdvDahil: Bool
+        var kdvOrani: VatRate
+        var tarih: DateKey
+    }
+
+    private var taslakKaydi: TaslakKaydi {
+        TaslakKaydi(kind: .yeniIslem, subjectId: "alim",
+                    baslik: "Stok alımı girişi", toplamAdim: toplamAdim)
+    }
 
     private var kdvAcik: Bool { store.state.settings.vatEnabled }
     private var toplamAdim: Int { kdvAcik ? 5 : 4 }
@@ -32,6 +51,29 @@ struct PurchaseFlow: View {
     }
 
     var body: some View {
+        Group {
+            if let d = devamSorusu {
+                DevamSorusu(
+                    baslik: d.title, ilerleme: d.progressLabel,
+                    devam: { taslagiGeriYukle(); devamSorusu = nil },
+                    bastan: { taslakKaydi.sil(store); devamSorusu = nil },
+                    vazgec: { dismiss() }
+                )
+            } else {
+                icerik
+            }
+        }
+        .onAppear {
+            guard !taslakOkundu else { return }
+            taslakOkundu = true
+            if let d = taslakKaydi.mevcut(store), d.decode(Kayit.self) != nil {
+                devamSorusu = d
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var icerik: some View {
         switch adim {
         case .kalem: kalemAdimi
         case .miktar: miktarAdimi
@@ -39,6 +81,19 @@ struct PurchaseFlow: View {
         case .kdv: kdvAdimi
         case .ozet: ozetAdimi
         }
+    }
+
+    private func taslagiGeriYukle() {
+        guard let t = taslakKaydi.oku(store, Kayit.self) else { return }
+        adim = t.adim; gecmis = t.gecmis; kalem = t.kalem; miktar = t.miktar
+        birim = t.birim; tutar = t.tutar; kdvDahil = t.kdvDahil
+        kdvOrani = t.kdvOrani; tarih = t.tarih
+    }
+
+    private func taslakKaydet() {
+        taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Kayit(
+            adim: adim, gecmis: gecmis, kalem: kalem, miktar: miktar, birim: birim,
+            tutar: tutar, kdvDahil: kdvDahil, kdvOrani: kdvOrani, tarih: tarih))
     }
 
     // 1
@@ -204,17 +259,20 @@ struct PurchaseFlow: View {
     private func ileri(_ hedef: Adim) {
         gecmis.append(adim)
         withAnimation(.snappy(duration: 0.2)) { adim = hedef }
+        taslakKaydet()
     }
 
     private func geriGit() {
         guard let onceki = gecmis.popLast() else { return }
         withAnimation(.snappy(duration: 0.2)) { adim = onceki }
+        taslakKaydet()
     }
 
     private func kaydet() {
         guard var p = taslak else { return }
         p.id = Ids.make(.purchase)
         store.addPurchase(p)
+        taslakKaydi.sil(store)
         dismiss()
     }
 }

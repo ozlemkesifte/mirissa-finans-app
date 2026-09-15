@@ -6,7 +6,7 @@ struct ExpenseFlow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    private enum Adim: Hashable { case kategori, ad, tutar, kdv, tekrar, kapsam, ozet }
+    private enum Adim: Hashable, Codable { case kategori, ad, tutar, kdv, tekrar, kapsam, ozet }
 
     @State private var adim: Adim = .kategori
     @State private var gecmis: [Adim] = []
@@ -19,6 +19,26 @@ struct ExpenseFlow: View {
     @State private var tekrar: Recurrence = .tek
     @State private var kapsam = "ortak"
     @State private var tarih: DateKey = Dates.today()
+    @State private var devamSorusu: WizardDraft?
+    @State private var taslakOkundu = false
+
+    private struct Kayit: Codable {
+        var adim: Adim
+        var gecmis: [Adim]
+        var kategori: ExpenseCategory?
+        var ad: String
+        var tutar: Kurus
+        var kdvDahil: Bool
+        var kdvOrani: VatRate
+        var tekrar: Recurrence
+        var kapsam: String
+        var tarih: DateKey
+    }
+
+    private var taslakKaydi: TaslakKaydi {
+        TaslakKaydi(kind: .yeniIslem, subjectId: "gider",
+                    baslik: "Gider girişi", toplamAdim: toplamAdim)
+    }
 
     private var kategori: ExpenseCategory { secilenKategori ?? .diger }
 
@@ -37,6 +57,29 @@ struct ExpenseFlow: View {
     }
 
     var body: some View {
+        Group {
+            if let d = devamSorusu {
+                DevamSorusu(
+                    baslik: d.title, ilerleme: d.progressLabel,
+                    devam: { taslagiGeriYukle(); devamSorusu = nil },
+                    bastan: { taslakKaydi.sil(store); devamSorusu = nil },
+                    vazgec: { dismiss() }
+                )
+            } else {
+                icerik
+            }
+        }
+        .onAppear {
+            guard !taslakOkundu else { return }
+            taslakOkundu = true
+            if let d = taslakKaydi.mevcut(store), d.decode(Kayit.self) != nil {
+                devamSorusu = d
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var icerik: some View {
         switch adim {
         case .kategori: kategoriAdimi
         case .ad: adAdimi
@@ -46,6 +89,20 @@ struct ExpenseFlow: View {
         case .kapsam: kapsamAdimi
         case .ozet: ozetAdimi
         }
+    }
+
+    private func taslagiGeriYukle() {
+        guard let t = taslakKaydi.oku(store, Kayit.self) else { return }
+        adim = t.adim; gecmis = t.gecmis; secilenKategori = t.kategori
+        ad = t.ad; tutar = t.tutar; kdvDahil = t.kdvDahil; kdvOrani = t.kdvOrani
+        tekrar = t.tekrar; kapsam = t.kapsam; tarih = t.tarih
+    }
+
+    private func taslakKaydet() {
+        taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Kayit(
+            adim: adim, gecmis: gecmis, kategori: secilenKategori, ad: ad, tutar: tutar,
+            kdvDahil: kdvDahil, kdvOrani: kdvOrani, tekrar: tekrar,
+            kapsam: kapsam, tarih: tarih))
     }
 
     private var kategoriAdimi: some View {
@@ -225,6 +282,7 @@ struct ExpenseFlow: View {
                 var e = taslak
                 e.id = Ids.make(.expense)
                 store.addExpense(e)
+                taslakKaydi.sil(store)
                 dismiss()
             }
         )
@@ -233,11 +291,13 @@ struct ExpenseFlow: View {
     private func ileri(_ hedef: Adim) {
         gecmis.append(adim)
         withAnimation(.snappy(duration: 0.2)) { adim = hedef }
+        taslakKaydet()
     }
 
     private func geriGit() {
         guard let onceki = gecmis.popLast() else { return }
         withAnimation(.snappy(duration: 0.2)) { adim = onceki }
+        taslakKaydet()
     }
 }
 
@@ -246,7 +306,7 @@ struct CountFlow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    private enum Adim: Hashable { case kalem, sayim, sebep, ozet }
+    private enum Adim: Hashable, Codable { case kalem, sayim, sebep, ozet }
 
     @State private var adim: Adim = .kalem
     @State private var gecmis: [Adim] = []
@@ -254,17 +314,68 @@ struct CountFlow: View {
     @State private var sayilan: Double = 0
     @State private var sebep: AdjustReason = .sayimFarki
     @State private var tarih: DateKey = Dates.today()
+    @State private var devamSorusu: WizardDraft?
+    @State private var taslakOkundu = false
+
+    private struct Kayit: Codable {
+        var adim: Adim
+        var gecmis: [Adim]
+        var kalem: ItemRef?
+        var sayilan: Double
+        var sebep: AdjustReason
+        var tarih: DateKey
+    }
+
+    private var taslakKaydi: TaslakKaydi {
+        TaslakKaydi(kind: .stokKurulumu, subjectId: nil,
+                    baslik: "Stok sayımı", toplamAdim: 3)
+    }
 
     private var sistemdeki: Double { kalem.map { store.engine.qty($0) } ?? 0 }
     private var fark: Double { sayilan - sistemdeki }
 
     var body: some View {
+        Group {
+            if let d = devamSorusu {
+                DevamSorusu(
+                    baslik: d.title, ilerleme: d.progressLabel,
+                    devam: { taslagiGeriYukle(); devamSorusu = nil },
+                    bastan: { taslakKaydi.sil(store); devamSorusu = nil },
+                    vazgec: { dismiss() }
+                )
+            } else {
+                icerik
+            }
+        }
+        .onAppear {
+            guard !taslakOkundu else { return }
+            taslakOkundu = true
+            if let d = taslakKaydi.mevcut(store), d.decode(Kayit.self) != nil {
+                devamSorusu = d
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var icerik: some View {
         switch adim {
         case .kalem: kalemAdimi
         case .sayim: sayimAdimi
         case .sebep: sebepAdimi
         case .ozet: ozetAdimi
         }
+    }
+
+    private func taslagiGeriYukle() {
+        guard let t = taslakKaydi.oku(store, Kayit.self) else { return }
+        adim = t.adim; gecmis = t.gecmis; kalem = t.kalem
+        sayilan = t.sayilan; sebep = t.sebep; tarih = t.tarih
+    }
+
+    private func taslakKaydet() {
+        taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Kayit(
+            adim: adim, gecmis: gecmis, kalem: kalem,
+            sayilan: sayilan, sebep: sebep, tarih: tarih))
     }
 
     private var kalemAdimi: some View {
@@ -351,6 +462,7 @@ struct CountFlow: View {
                 store.addCount(StockCount(date: tarih, item: kalem, countedQty: sayilan,
                                           unit: store.state.itemBaseUnit(kalem),
                                           reason: fark == 0 ? nil : sebep))
+                taslakKaydi.sil(store)
                 dismiss()
             }
         )
@@ -365,10 +477,12 @@ struct CountFlow: View {
     private func ileri(_ hedef: Adim) {
         gecmis.append(adim)
         withAnimation(.snappy(duration: 0.2)) { adim = hedef }
+        taslakKaydet()
     }
 
     private func geriGit() {
         guard let onceki = gecmis.popLast() else { return }
         withAnimation(.snappy(duration: 0.2)) { adim = onceki }
+        taslakKaydet()
     }
 }

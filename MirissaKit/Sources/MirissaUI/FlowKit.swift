@@ -329,3 +329,61 @@ struct SayiSayaci: View {
         .accessibilityLabel(icon == "plus" ? "Artır" : "Azalt")
     }
 }
+
+/// "Kaldığın yerden devam etmek ister misin?" — yarım kalmış bir akış
+/// yeniden açıldığında çıkar.
+struct DevamSorusu: View {
+    var baslik: String
+    var ilerleme: String
+    var devam: () -> Void
+    var bastan: () -> Void
+    var vazgec: (() -> Void)?
+
+    var body: some View {
+        SoruAdimi(
+            soru: "Kaldığın yerden devam etmek ister misin?",
+            aciklama: "\(baslik) · \(ilerleme)",
+            vazgec: vazgec
+        ) {
+            VStack(spacing: Metrics.gap) {
+                SecenekButonu(baslik: "Evet, devam et",
+                              aciklama: "Verdiğin cevaplar duruyor",
+                              ikon: "arrow.forward.circle", action: devam)
+                SecenekButonu(baslik: "Hayır, baştan başla",
+                              aciklama: "Önceki cevaplar silinir",
+                              ikon: "arrow.counterclockwise",
+                              renk: Palette.gider, action: bastan)
+            }
+        }
+    }
+}
+
+/// Akışların taslak kaydını tek yerden yönetir.
+/// Her akış kendi durumunu `Codable` bir yapıda verir; burada diske yazılır.
+@MainActor
+struct TaslakKaydi {
+    var kind: WizardKind
+    var subjectId: Id?
+    var baslik: String
+    var toplamAdim: Int
+
+    func kaydet<S: Encodable>(_ store: AppStore, adim: Int, durum: S) {
+        guard adim > 0 else { return }
+        guard let d = WizardDraft.make(kind: kind, subjectId: subjectId, title: baslik,
+                                       step: adim, totalSteps: toplamAdim, state: durum)
+        else { return }
+        store.saveDraft(d)
+    }
+
+    func oku<S: Decodable>(_ store: AppStore, _ type: S.Type) -> S? {
+        store.draft(kind, subjectId: subjectId)?.decode(type)
+    }
+
+    func mevcut(_ store: AppStore) -> WizardDraft? {
+        store.draft(kind, subjectId: subjectId)
+    }
+
+    func sil(_ store: AppStore) {
+        store.clearDraft(kind, subjectId: subjectId)
+    }
+}

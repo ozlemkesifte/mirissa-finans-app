@@ -354,6 +354,34 @@ public final class AppStore {
         }
     }
 
+    // MARK: - Yarım kalan akışlar
+
+    /// Her adımda çağrılır. Aynı akışın önceki kaydının üzerine yazar,
+    /// başka akışların kaydına dokunmaz.
+    public func saveDraft(_ d: WizardDraft) {
+        mutate { s in
+            if let i = s.drafts.firstIndex(where: { $0.id == d.id }) { s.drafts[i] = d }
+            else { s.drafts.append(d) }
+        }
+    }
+
+    public func draft(_ kind: WizardKind, subjectId: Id? = nil) -> WizardDraft? {
+        let anahtar = "\(kind.rawValue)#\(subjectId ?? "-")"
+        return state.drafts.first { $0.id == anahtar }
+    }
+
+    /// Akış tamamlandığında veya kullanıcı sildiğinde çağrılır.
+    public func clearDraft(_ kind: WizardKind, subjectId: Id? = nil) {
+        let anahtar = "\(kind.rawValue)#\(subjectId ?? "-")"
+        guard state.drafts.contains(where: { $0.id == anahtar }) else { return }
+        mutate { $0.drafts.removeAll { $0.id == anahtar } }
+    }
+
+    public func clearDraft(id: String) {
+        guard state.drafts.contains(where: { $0.id == id }) else { return }
+        mutate { $0.drafts.removeAll { $0.id == id } }
+    }
+
     public func setPriceCheckInterval(_ i: PriceCheckInterval) {
         mutate { $0.settings.priceCheckInterval = i }
     }

@@ -160,6 +160,9 @@ public struct AppState: Hashable, Sendable {
     public var adjustments: [StockAdjustment]
     public var counts: [StockCount]
     public var balances: [BalanceItem]
+    /// Yarım kalmış soru-cevap akışları. Diskte saklanır; uygulama
+    /// kapansa bile cevaplar kaybolmaz.
+    public var drafts: [WizardDraft]
     public var settings: AppSettings
 
     public init(
@@ -173,6 +176,7 @@ public struct AppState: Hashable, Sendable {
         adjustments: [StockAdjustment] = [],
         counts: [StockCount] = [],
         balances: [BalanceItem] = [],
+        drafts: [WizardDraft] = [],
         settings: AppSettings = AppSettings()
     ) {
         self.materials = materials
@@ -185,6 +189,7 @@ public struct AppState: Hashable, Sendable {
         self.adjustments = adjustments
         self.counts = counts
         self.balances = balances
+        self.drafts = drafts
         self.settings = settings
     }
 
@@ -196,7 +201,7 @@ public struct AppState: Hashable, Sendable {
 extension AppState: Codable {
     enum CodingKeys: String, CodingKey {
         case materials, products, channels, channelMonths, sales
-        case expenses, purchases, adjustments, counts, balances, settings
+        case expenses, purchases, adjustments, counts, balances, drafts, settings
     }
 
     public init(from decoder: Decoder) throws {
@@ -211,6 +216,7 @@ extension AppState: Codable {
         adjustments = try c.decodeIfPresent([StockAdjustment].self, forKey: .adjustments) ?? []
         counts = try c.decodeIfPresent([StockCount].self, forKey: .counts) ?? []
         balances = try c.decodeIfPresent([BalanceItem].self, forKey: .balances) ?? []
+        drafts = try c.decodeIfPresent([WizardDraft].self, forKey: .drafts) ?? []
         // Kayıtlı dosyası olan kullanıcı kurulumu zaten yapmıştır
         settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings)
             ?? AppSettings(setupCompleted: true)

@@ -24,6 +24,13 @@ func demoState() -> AppState {
         s.products[i].setPrice(Money.fromTL(890), channelId: nil, from: "2026-09-01")
     }
 
+    // Yarım kalmış bir kanal kurulumu — kart görünsün
+    if let d = WizardDraft.make(kind: .kanalKurulumu, subjectId: ChannelIds.trendyol,
+                                title: "Trendyol kurulumu", step: 7, totalSteps: 12,
+                                updatedAt: "2026-09-14", state: ["adim": "kargoVarMi"]) {
+        s.drafts.append(d)
+    }
+
     func esik(_ id: Id, _ min: Double, _ kritik: Double) {
         if let i = s.materials.firstIndex(where: { $0.id == id }) {
             s.materials[i].minQty = min

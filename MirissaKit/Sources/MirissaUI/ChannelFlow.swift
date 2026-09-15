@@ -12,7 +12,7 @@ struct ChannelSetupFlow: View {
     /// Kurulum sihirbazının içinden çağrıldığında sıradaki kanala geçmek için
     var onBitti: (() -> Void)?
 
-    private enum Adim: Hashable {
+    private enum Adim: Hashable, Codable {
         case urunler
         case fiyat(Int)
         case komisyonVarMi
@@ -60,6 +60,30 @@ struct ChannelSetupFlow: View {
     @State private var ekler: [ChannelExtraFee] = []
     @State private var taslakKalem = ChannelExtraFee(label: "", basis: .yuzde)
     @State private var yuklendi = false
+    @State private var devamSorusu: WizardDraft?
+    @State private var taslakOkundu = false
+
+    /// Akışın diske yazılan durumu — uygulama kapansa bile kaybolmaz
+    private struct Taslak: Codable {
+        var adim: Adim
+        var gecmis: [Adim]
+        var seciliUrunler: [Id]
+        var fiyatlar: [Id: Kurus]
+        var komisyonVar: Bool?
+        var komisyonBasis: FeeBasis
+        var komisyonDeger: Double
+        var komisyonBilinmiyor: Bool
+        var kargoVar: Bool?
+        var kargoBasis: FeeBasis
+        var kargoDeger: Double
+        var kargoBilinmiyor: Bool
+        var ekler: [ChannelExtraFee]
+    }
+
+    private var taslakKaydi: TaslakKaydi {
+        TaslakKaydi(kind: .kanalKurulumu, subjectId: channelId,
+                    baslik: "\(kanalAdi) kurulumu", toplamAdim: 12)
+    }
 
     private var kanal: Channel? { store.state.channel(channelId) }
     private var kanalAdi: String { kanal?.name ?? "Kanal" }
@@ -70,8 +94,66 @@ struct ChannelSetupFlow: View {
     }
 
     var body: some View {
-        icerik
-            .onAppear(perform: yukle)
+        Group {
+            if let d = devamSorusu {
+                DevamSorusu(
+                    baslik: d.title,
+                    ilerleme: d.progressLabel,
+                    devam: {
+                        taslagiGeriYukle()
+                        devamSorusu = nil
+                    },
+                    bastan: {
+                        taslakKaydi.sil(store)
+                        devamSorusu = nil
+                    },
+                    vazgec: { dismiss() }
+                )
+            } else {
+                icerik
+            }
+        }
+        .onAppear(perform: baslat)
+    }
+
+    private func baslat() {
+        guard !taslakOkundu else { return }
+        taslakOkundu = true
+        if let d = taslakKaydi.mevcut(store), d.decode(Taslak.self) != nil {
+            devamSorusu = d
+            return
+        }
+        yukle()
+    }
+
+    private func taslagiGeriYukle() {
+        guard let t = taslakKaydi.oku(store, Taslak.self) else { yukle(); return }
+        yuklendi = true
+        adim = t.adim
+        gecmis = t.gecmis
+        seciliUrunler = Set(t.seciliUrunler)
+        fiyatlar = t.fiyatlar
+        komisyonVar = t.komisyonVar
+        komisyonBasis = t.komisyonBasis
+        komisyonDeger = t.komisyonDeger
+        komisyonBilinmiyor = t.komisyonBilinmiyor
+        kargoVar = t.kargoVar
+        kargoBasis = t.kargoBasis
+        kargoDeger = t.kargoDeger
+        kargoBilinmiyor = t.kargoBilinmiyor
+        ekler = t.ekler
+    }
+
+    private func taslakKaydet() {
+        taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Taslak(
+            adim: adim, gecmis: gecmis,
+            seciliUrunler: Array(seciliUrunler).sorted(), fiyatlar: fiyatlar,
+            komisyonVar: komisyonVar, komisyonBasis: komisyonBasis,
+            komisyonDeger: komisyonDeger, komisyonBilinmiyor: komisyonBilinmiyor,
+            kargoVar: kargoVar, kargoBasis: kargoBasis,
+            kargoDeger: kargoDeger, kargoBilinmiyor: kargoBilinmiyor,
+            ekler: ekler
+        ))
     }
 
     @ViewBuilder
@@ -573,6 +655,8 @@ struct ChannelSetupFlow: View {
             store.updateProduct(urun)
         }
 
+        // Akış tamamlandı: yarım kayıt silinir
+        taslakKaydi.sil(store)
         if let onBitti { onBitti() } else { dismiss() }
     }
 
@@ -649,11 +733,13 @@ struct ChannelSetupFlow: View {
     private func ileri(_ hedef: Adim) {
         gecmis.append(adim)
         withAnimation(.snappy(duration: 0.2)) { adim = hedef }
+        taslakKaydet()
     }
 
     private func geriGit() {
         guard let onceki = gecmis.popLast() else { return }
         withAnimation(.snappy(duration: 0.2)) { adim = onceki }
+        taslakKaydet()
     }
 }
 

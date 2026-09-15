@@ -10,7 +10,7 @@ struct PriceUpdateFlow: View {
     /// Doğrudan bir ürünle açıldığında ilk soru atlanır
     var onUrunId: Id?
 
-    private enum Adim: Hashable { case urun, kanal, fiyat, tarih, ozet }
+    private enum Adim: Hashable, Codable { case urun, kanal, fiyat, tarih, ozet }
 
     @State private var adim: Adim = .urun
     @State private var gecmis: [Adim] = []
@@ -20,6 +20,24 @@ struct PriceUpdateFlow: View {
     @State private var yeniFiyat: Kurus = 0
     @State private var baslangic: DateKey = Dates.today()
     @State private var tarihSeciliyor = false
+    @State private var devamSorusu: WizardDraft?
+    @State private var taslakOkundu = false
+
+    private struct Taslak: Codable {
+        var adim: Adim
+        var gecmis: [Adim]
+        var urunId: Id
+        var kanalId: Id?
+        var kanalSecildi: Bool
+        var yeniFiyat: Kurus
+        var baslangic: DateKey
+        var tarihSeciliyor: Bool
+    }
+
+    private var taslakKaydi: TaslakKaydi {
+        TaslakKaydi(kind: .fiyatGuncelleme, subjectId: nil,
+                    baslik: "Fiyat güncelleme", toplamAdim: 4)
+    }
 
     private var urun: Product? { store.state.product(urunId) }
     private var bugun: DateKey { Dates.today() }
@@ -29,13 +47,52 @@ struct PriceUpdateFlow: View {
     }
 
     var body: some View {
-        icerik
-            .onAppear {
-                if let onUrunId, urunId.isEmpty {
-                    urunId = onUrunId
-                    adim = .kanal
-                }
+        Group {
+            if let d = devamSorusu {
+                DevamSorusu(
+                    baslik: d.title, ilerleme: d.progressLabel,
+                    devam: { taslagiGeriYukle(); devamSorusu = nil },
+                    bastan: { taslakKaydi.sil(store); devamSorusu = nil },
+                    vazgec: { dismiss() }
+                )
+            } else {
+                icerik
             }
+        }
+        .onAppear(perform: baslat)
+    }
+
+    private func baslat() {
+        guard !taslakOkundu else { return }
+        taslakOkundu = true
+        if let d = taslakKaydi.mevcut(store), d.decode(Taslak.self) != nil {
+            devamSorusu = d
+            return
+        }
+        if let onUrunId, urunId.isEmpty {
+            urunId = onUrunId
+            adim = .kanal
+        }
+    }
+
+    private func taslagiGeriYukle() {
+        guard let t = taslakKaydi.oku(store, Taslak.self) else { return }
+        adim = t.adim
+        gecmis = t.gecmis
+        urunId = t.urunId
+        kanalId = t.kanalId
+        kanalSecildi = t.kanalSecildi
+        yeniFiyat = t.yeniFiyat
+        baslangic = t.baslangic
+        tarihSeciliyor = t.tarihSeciliyor
+    }
+
+    private func taslakKaydet() {
+        taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Taslak(
+            adim: adim, gecmis: gecmis, urunId: urunId, kanalId: kanalId,
+            kanalSecildi: kanalSecildi, yeniFiyat: yeniFiyat,
+            baslangic: baslangic, tarihSeciliyor: tarihSeciliyor
+        ))
     }
 
     @ViewBuilder
@@ -257,17 +314,20 @@ struct PriceUpdateFlow: View {
         p.setPrice(yeniFiyat, channelId: kanalId, from: baslangic)
         store.updateProduct(p)
         store.markPriceCheck()
+        taslakKaydi.sil(store)
         dismiss()
     }
 
     private func ileri(_ hedef: Adim) {
         gecmis.append(adim)
         withAnimation(.snappy(duration: 0.2)) { adim = hedef }
+        taslakKaydet()
     }
 
     private func geriGit() {
         guard let onceki = gecmis.popLast() else { return }
         withAnimation(.snappy(duration: 0.2)) { adim = onceki }
+        taslakKaydet()
     }
 }
 

@@ -8,7 +8,7 @@ import MirissaCore
 public struct SetupWizard: View {
     @Environment(AppStore.self) private var store
 
-    public enum Adim: Hashable {
+    public enum Adim: Hashable, Codable {
         case karsilama
         case urunSayisi
         case urunAdi(Int)
@@ -42,6 +42,24 @@ public struct SetupWizard: View {
     @State private var ekKanallar: [ChannelPreset] = []
     @State private var yeniKanalAdi = ""
     @State private var yuklendi = false
+    @State private var devamSorusu: WizardDraft?
+    @State private var taslakOkundu = false
+
+    /// Kurulumun diske yazılan hâli
+    private struct Taslak: Codable {
+        var adim: Adim
+        var gecmis: [Adim]
+        var urunler: [UrunTaslak]
+        var setler: [SetTaslak]
+        var malzemeler: [MalzemeTaslak]
+        var giderler: [GiderTaslak]
+        var seciliKanallar: [Id]
+        var kurulacakKanallar: [Id]
+    }
+
+    private var taslakKaydi: TaslakKaydi {
+        TaslakKaydi(kind: .ilkKurulum, subjectId: nil, baslik: "İlk kurulum", toplamAdim: 14)
+    }
 
     public init() {}
 
@@ -60,9 +78,52 @@ public struct SetupWizard: View {
     }
 
     public var body: some View {
-        icerik
-            .background(Palette.bg)
-            .onAppear(perform: yukle)
+        Group {
+            if let d = devamSorusu {
+                DevamSorusu(
+                    baslik: d.title, ilerleme: d.progressLabel,
+                    devam: { taslagiGeriYukle(); devamSorusu = nil },
+                    bastan: { taslakKaydi.sil(store); yukle(); devamSorusu = nil }
+                )
+            } else {
+                icerik
+            }
+        }
+        .background(Palette.bg)
+        .onAppear(perform: baslat)
+    }
+
+    private func baslat() {
+        guard !taslakOkundu else { return }
+        taslakOkundu = true
+        if let d = taslakKaydi.mevcut(store), d.decode(Taslak.self) != nil {
+            yuklendi = true       // taslak varken mevcut veriyle üzerine yazma
+            devamSorusu = d
+            return
+        }
+        yukle()
+    }
+
+    private func taslagiGeriYukle() {
+        guard let t = taslakKaydi.oku(store, Taslak.self) else { yukle(); return }
+        yuklendi = true
+        adim = t.adim
+        gecmis = t.gecmis
+        urunler = t.urunler
+        setler = t.setler
+        malzemeler = t.malzemeler
+        giderler = t.giderler
+        seciliKanallar = Set(t.seciliKanallar)
+        kurulacakKanallar = t.kurulacakKanallar
+    }
+
+    private func taslakKaydet() {
+        taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Taslak(
+            adim: adim, gecmis: gecmis, urunler: urunler, setler: setler,
+            malzemeler: malzemeler, giderler: giderler,
+            seciliKanallar: Array(seciliKanallar).sorted(),
+            kurulacakKanallar: kurulacakKanallar
+        ))
     }
 
     @ViewBuilder
@@ -744,11 +805,13 @@ public struct SetupWizard: View {
     private func ileri(_ hedef: Adim) {
         gecmis.append(adim)
         withAnimation(.snappy(duration: 0.2)) { adim = hedef }
+        taslakKaydet()
     }
 
     private func geriGit() {
         guard let onceki = gecmis.popLast() else { return }
         withAnimation(.snappy(duration: 0.2)) { adim = onceki }
+        taslakKaydet()
     }
 
     // MARK: Binding yardımcıları
@@ -1111,13 +1174,14 @@ public struct SetupWizard: View {
             // kaydedildi; burada tekrar yazılmaz.
 
             s.settings.setupCompleted = true
+            s.drafts.removeAll { $0.kind == .ilkKurulum }
         }
     }
 }
 
 // MARK: - Taslak modeller
 
-struct UrunTaslak: Identifiable {
+struct UrunTaslak: Identifiable, Codable {
     var id: Id = Ids.make(.product)
     var ad: String
     var stok: Double = 0
@@ -1130,7 +1194,7 @@ struct UrunTaslak: Identifiable {
 
 /// Set / çoklu paket — fiziksel ürün değil, satış kombinasyonu (SKU).
 /// Kendi stoğu tutulmaz, maliyeti bileşenlerinden hesaplanır.
-struct SetTaslak: Identifiable {
+struct SetTaslak: Identifiable, Codable {
     var id: Id = Ids.make(.product)
     var ad: String
     /// ürün id → bir pakette kaç adet
@@ -1141,7 +1205,7 @@ struct SetTaslak: Identifiable {
     var kanalFiyat: [Id: Kurus] = [:]
 }
 
-struct MalzemeTaslak: Identifiable {
+struct MalzemeTaslak: Identifiable, Codable {
     var id: Id = Ids.make(.material)
     var ad: String
     var birim: UnitCode
@@ -1155,7 +1219,7 @@ struct MalzemeTaslak: Identifiable {
     var yeni: Bool = false
 }
 
-struct GiderTaslak: Identifiable {
+struct GiderTaslak: Identifiable, Codable {
     var id: Id = Ids.make(.expense)
     var ad: String
     var tutar: Kurus

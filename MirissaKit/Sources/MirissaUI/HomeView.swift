@@ -27,6 +27,7 @@ struct HomeView: View {
                     }
                     EksikBilgiNotu(uyari: result.yaklasikUyarisi)
                     islemler
+                    YarimIslemKarti(sheet: $sheet)
                     PriceCheckCard(sheet: $sheet)
                     if !alerts.isEmpty { stockAlerts }
                     TrendChart(
