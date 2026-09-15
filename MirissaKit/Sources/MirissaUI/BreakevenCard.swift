@@ -68,8 +68,8 @@ struct BreakevenCard: View {
                     .foregroundStyle(Palette.ink)
                 LabeledRow("Kaydedilmiş gider", kaydedilmisGider.tl, tone: Palette.gider)
                 if let basaBas = p.targets.first(where: { $0.isBreakeven }) {
-                    LabeledRow("Başa baş hedefi", "yaklaşık \(basaBas.orders) sipariş")
-                    LabeledRow("Günlük ortalama hedef", "\(basaBas.dailyOrders) sipariş",
+                    LabeledRow("Başa baş hedefi", "yaklaşık \(basaBas.orders) kargo")
+                    LabeledRow("Günlük ortalama hedef", "günde \(basaBas.dailyOrders) kargo",
                                tone: Palette.uyari, strong: true)
                 }
             }
@@ -81,7 +81,7 @@ struct BreakevenCard: View {
                     .tracking(0.6)
                     .foregroundStyle(Palette.uyari)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("\(basaBas.orders) sipariş")
+                    Text("\(basaBas.orders) kargo / ay")
                         .font(.system(.title2, design: .rounded).weight(.semibold))
                         .foregroundStyle(Palette.ink)
                         .lineLimit(1)
@@ -127,7 +127,7 @@ struct BreakevenCard: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Palette.kar)
                     } else {
-                        Text("Başa baş için kalan \(kalan) sipariş"
+                        Text("Başa baş için kalan \(kalan) kargo"
                              + (basaBas.remainingDailyOrders.map { " · günde ~\($0)" } ?? ""))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Palette.uyari)
@@ -282,7 +282,7 @@ private struct TargetRow: View {
                     .foregroundStyle(target.isCustom ? Palette.ink : Palette.inkSoft)
                 if target.isCustom { Pill("hedefim", tone: Palette.accent, background: Palette.karYumusak) }
                 Spacer(minLength: 8)
-                Text("\(target.orders) sipariş")
+                Text("\(target.orders) kargo / ay")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.ink)
             }
@@ -293,9 +293,9 @@ private struct TargetRow: View {
     }
 
     private var altSatir: String {
-        var parcalar = ["günlük ortalama \(target.dailyOrders) sipariş"]
+        var parcalar = ["≈ günde \(target.dailyOrders) kargo"]
         if let kalan = target.remainingOrders {
-            parcalar = ["kalan \(kalan) sipariş"]
+            parcalar = ["kalan \(kalan) kargo"]
             if let g = target.remainingDailyOrders { parcalar.append("günde ~\(g)") }
         }
         if target.products > Double(target.orders) + 0.5 {

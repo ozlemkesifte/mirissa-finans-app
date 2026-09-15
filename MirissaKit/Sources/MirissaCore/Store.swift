@@ -327,6 +327,33 @@ public final class AppStore {
         mutate { $0.settings.lastPriceCheck = day }
     }
 
+    public func setYearlyProfitGoal(_ amount: Kurus?, for year: Int) {
+        mutate { s in
+            if let a = amount, a > 0 { s.settings.yearlyProfitGoals["\(year)"] = a }
+            else { s.settings.yearlyProfitGoals["\(year)"] = nil }
+        }
+    }
+
+    /// Kanalı ekler veya günceller. Oran tarihçesi korunur.
+    public func upsertChannel(_ c: Channel) {
+        mutate { s in
+            if let i = s.channels.firstIndex(where: { $0.id == c.id }) { s.channels[i] = c }
+            else { s.channels.append(c) }
+        }
+    }
+
+    /// Kanala yeni tarihli kesinti seti ekler; eski oranlar silinmez.
+    public func applyChannelRates(_ channelId: Id, _ rates: ChannelRates) {
+        mutate { s in
+            guard let i = s.channels.firstIndex(where: { $0.id == channelId }) else { return }
+            var c = s.channels[i]
+            c.setRates(rates)
+            c.setupCompleted = true
+            c.archived = false
+            s.channels[i] = c
+        }
+    }
+
     public func setPriceCheckInterval(_ i: PriceCheckInterval) {
         mutate { $0.settings.priceCheckInterval = i }
     }

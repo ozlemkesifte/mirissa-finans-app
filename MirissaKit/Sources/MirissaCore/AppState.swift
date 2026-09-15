@@ -50,6 +50,13 @@ public struct AppSettings: Hashable, Sendable {
         return Dates.daysBetween(son, today) >= gun
     }
 
+    /// Yıllık kâr hedefi (yıl → kuruş)
+    public var yearlyProfitGoals: [String: Kurus] = [:]
+
+    public func yearlyProfitGoal(for year: Int) -> Kurus? {
+        yearlyProfitGoals["\(year)"].flatMap { $0 > 0 ? $0 : nil }
+    }
+
     public func profitGoal(for month: MonthKey) -> Kurus? {
         profitGoals[month].flatMap { $0 > 0 ? $0 : nil }
     }
@@ -90,7 +97,7 @@ extension AppSettings: Codable {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
         case progressAsOf, expectedMix
         case defaultVatRate, defaultVatIncluded, vatEnabled, setupCompleted
-        case priceCheckInterval, lastPriceCheck
+        case priceCheckInterval, lastPriceCheck, yearlyProfitGoals
     }
 
     public init(from decoder: Decoder) throws {
@@ -112,6 +119,8 @@ extension AppSettings: Codable {
         priceCheckInterval = try c.decodeIfPresent(PriceCheckInterval.self,
                                                    forKey: .priceCheckInterval) ?? .aylik
         lastPriceCheck = try c.decodeIfPresent(DateKey.self, forKey: .lastPriceCheck)
+        yearlyProfitGoals = try c.decodeIfPresent([String: Kurus].self,
+                                                  forKey: .yearlyProfitGoals) ?? [:]
     }
 }
 

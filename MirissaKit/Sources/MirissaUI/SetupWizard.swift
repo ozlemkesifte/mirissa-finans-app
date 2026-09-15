@@ -22,12 +22,11 @@ public struct SetupWizard: View {
         case malzemeSecimi
         case malzemeDetay(Int)
         case setAmbalaji(Int)
-        case fiyatSorusu
-        case fiyat(Int)
+        case kanalSecimi
+        case kanalAdi
+        case kanalKurulum(Int)
         case giderVarMi
         case giderler
-        case kanalKullanim(Int)
-        case kanalDetay(Int)
         case ozet
     }
 
@@ -38,6 +37,10 @@ public struct SetupWizard: View {
     @State private var setler: [SetTaslak] = []
     @State private var giderler: [GiderTaslak] = []
     @State private var kanallar: [KanalTaslak] = []
+    @State private var seciliKanallar: Set<Id> = []
+    @State private var kurulacakKanallar: [Id] = []
+    @State private var ekKanallar: [ChannelPreset] = []
+    @State private var yeniKanalAdi = ""
     @State private var yuklendi = false
 
     public init() {}
@@ -78,12 +81,11 @@ public struct SetupWizard: View {
         case .malzemeSecimi: malzemeSecimAdimi
         case let .malzemeDetay(i): malzemeDetayAdimi(i)
         case let .setAmbalaji(i): setAmbalajiAdimi(i)
-        case .fiyatSorusu: fiyatSorusuAdimi
-        case let .fiyat(i): fiyatAdimi(i)
+        case .kanalSecimi: kanalSecimAdimi
+        case .kanalAdi: kanalAdiAdimi
+        case let .kanalKurulum(i): kanalKurulumAdimi(i)
         case .giderVarMi: giderVarMiAdimi
         case .giderler: giderAdimi
-        case let .kanalKullanim(i): kanalKullanimAdimi(i)
-        case let .kanalDetay(i): kanalDetayAdimi(i)
         case .ozet: ozetAdimi
         }
     }
@@ -420,55 +422,7 @@ public struct SetupWizard: View {
     }
 
     private func sonrakiSetAmbalajAdimi(_ i: Int) -> Adim {
-        i + 1 < setler.count ? .setAmbalaji(i + 1) : .fiyatSorusu
-    }
-
-    // MARK: 8b — Satış fiyatları
-
-    /// Fiyatı sorulacak her satış seçeneği: önce tekil ürünler, sonra paketler
-    private var fiyatliKalemler: [(ad: String, set: Bool, sira: Int)] {
-        doluUrunler.enumerated().map { ($0.element.ad, false, $0.offset) }
-            + setler.enumerated()
-                .filter { !$0.element.ad.trimmingCharacters(in: .whitespaces).isEmpty }
-                .map { ($0.element.ad, true, $0.offset) }
-    }
-
-    private var fiyatSorusuAdimi: some View {
-        SoruAdimi(
-            soru: "Satış fiyatlarını şimdi girmek ister misin?",
-            aciklama: "Her satış seçeneği için ayrı fiyat girebilirsin. Kâr hesabı yine "
-                + "gerçek satış tutarından yapılır; fiyat sadece giriş kolaylığı sağlar.",
-            geri: geriGit
-        ) {
-            EvetHayirSorusu(
-                evet: "Evet, girelim",
-                hayir: "Şimdilik geç",
-                hayirAciklama: "Sonra ürün ekranından girebilirsin"
-            ) { secim in
-                ileri(secim && !fiyatliKalemler.isEmpty ? .fiyat(0) : .giderVarMi)
-            }
-        }
-    }
-
-    private func fiyatAdimi(_ sira: Int) -> some View {
-        let kalemler = fiyatliKalemler
-        let kalem: (ad: String, set: Bool, sira: Int) =
-            kalemler.indices.contains(sira) ? kalemler[sira] : (ad: "", set: false, sira: 0)
-        return SoruAdimi(
-            soru: "\(kalem.ad) kaça satılıyor?",
-            aciklama: "Kanala göre fiyatın değişiyorsa ayrı ayrı yazabilirsin. "
-                + "Boş bıraktığın kanalda etiket fiyatı geçerli olur.",
-            adim: sira + 1, toplam: kalemler.count,
-            geri: geriGit,
-            ileri: { ileri(sira + 1 < kalemler.count ? .fiyat(sira + 1) : .giderVarMi) }
-        ) {
-            BuyukParaAlani(baslik: "Etiket fiyatı",
-                           deger: fiyatBinding(kalem.set, kalem.sira, kanal: nil))
-            ForEach(kanallar.filter(\.acik)) { k in
-                BuyukParaAlani(baslik: "\(k.ad) fiyatı",
-                               deger: fiyatBinding(kalem.set, kalem.sira, kanal: k.id))
-            }
-        }
+        i + 1 < setler.count ? .setAmbalaji(i + 1) : .kanalSecimi
     }
 
     // MARK: 6 — Malzeme seçimi
@@ -544,7 +498,7 @@ public struct SetupWizard: View {
 
     private func sonrakiMalzemeAdimi(_ sira: Int) -> Adim {
         if sira + 1 < seciliIndisler.count { return .malzemeDetay(sira + 1) }
-        guard !setler.isEmpty else { return .fiyatSorusu }
+        guard !setler.isEmpty else { return .kanalSecimi }
         setAmbalajlariniHazirla()
         return .setAmbalaji(0)
     }
@@ -567,7 +521,7 @@ public struct SetupWizard: View {
                     ileri(.giderler)
                 } else {
                     giderler = []
-                    ileri(ilkKanalAdimi)
+                    ileri(.ozet)
                 }
             }
         }
@@ -578,7 +532,7 @@ public struct SetupWizard: View {
             soru: "Bu giderler neler?",
             aciklama: "Adını ve aylık tutarını yaz.",
             geri: geriGit,
-            ileri: { ileri(ilkKanalAdimi) }
+            ileri: { ileri(.ozet) }
         ) {
             ForEach($giderler) { $g in
                 Card {
@@ -601,47 +555,121 @@ public struct SetupWizard: View {
         }
     }
 
-    // MARK: 9 — Kanallar
 
-    private var ilkKanalAdimi: Adim { kanallar.isEmpty ? .ozet : .kanalKullanim(0) }
+    // MARK: 9 — Satış kanalları
 
-    private func kanalKullanimAdimi(_ i: Int) -> some View {
+    private var kanalSecimAdimi: some View {
         SoruAdimi(
-            soru: "\(kanalTaslak(i).ad) üzerinden satış yapıyor musun?",
-            adim: i + 1, toplam: kanallar.count,
-            geri: geriGit
-        ) {
-            EvetHayirSorusu(
-                evet: "Evet",
-                hayir: "Hayır",
-                secim: kanalTaslak(i).acik
-            ) { secim in
-                if kanallar.indices.contains(i) { kanallar[i].acik = secim }
-                ileri(secim ? .kanalDetay(i) : sonrakiKanalAdimi(i))
-            }
-        }
-    }
-
-    private func kanalDetayAdimi(_ i: Int) -> some View {
-        SoruAdimi(
-            soru: "\(kanalTaslak(i).ad) senden ne kesiyor?",
-            aciklama: "Komisyon oranını ve sipariş başına ödediğin kargo tutarını girersen "
-                + "kârlılık doğru hesaplanır. Her ay gerçek tutarı da yazabilirsin.",
-            adim: i + 1, toplam: kanallar.count,
+            soru: "Hangi satış kanallarında varsın?",
+            aciklama: "Birden fazla seçebilirsin. Her biri için fiyatlarını ve "
+                + "kesintilerini ayrı ayrı soracağım.",
+            ileriAktif: !seciliKanallar.isEmpty,
             geri: geriGit,
-            ileri: { ileri(sonrakiKanalAdimi(i)) }
+            ileri: { kanallariKurVeBasla() }
         ) {
-            Card {
-                VStack(spacing: 12) {
-                    PercentField("Komisyon oranı", value: kanalBinding(i).komisyon)
-                    MoneyField("Sipariş başı kargo", value: kanalBinding(i).kargo)
+            Card(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(kanalSecenekleri.enumerated()), id: \.element.id) { i, k in
+                        Button { kanalSec(k.id) } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: seciliKanallar.contains(k.id)
+                                      ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(seciliKanallar.contains(k.id)
+                                                     ? Palette.accent : Palette.inkFaint)
+                                Text(k.name).foregroundStyle(Palette.ink)
+                                Spacer()
+                            }
+                            .padding(.horizontal, Metrics.pad)
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if i < kanalSecenekleri.count - 1 {
+                            Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
+                        }
+                    }
                 }
             }
+            BigButton("Listede yok — kendim yazayım", icon: "plus", tone: Palette.gider) {
+                yeniKanalAdi = ""
+                ileri(.kanalAdi)
+            }
         }
     }
 
-    private func sonrakiKanalAdimi(_ i: Int) -> Adim {
-        i + 1 < kanallar.count ? .kanalKullanim(i + 1) : .ozet
+    private var kanalAdiAdimi: some View {
+        SoruAdimi(
+            soru: "Kanalın adı ne?",
+            aciklama: "Örneğin bir pazaryeri, bir mağaza ya da toptan müşteri.",
+            ileriAktif: !yeniKanalAdi.trimmingCharacters(in: .whitespaces).isEmpty,
+            geri: geriGit,
+            ileri: {
+                let ad = yeniKanalAdi.trimmingCharacters(in: .whitespaces)
+                let id = "kanal_" + ad.lowercased()
+                    .replacingOccurrences(of: " ", with: "_")
+                ekKanallar.append(ChannelPreset(id: id, name: ad, kind: .other))
+                seciliKanallar.insert(id)
+                geriGit()
+            }
+        ) {
+            Card {
+                TextField("Kanal adı", text: $yeniKanalAdi)
+                    .font(.title3)
+                    .foregroundStyle(Palette.ink)
+            }
+        }
+    }
+
+    /// Seçilen kanalı tek tek kuran soru-cevap. Kanal bağımsızdır:
+    /// hangi kanal olursa olsun aynı akış çalışır.
+    private func kanalKurulumAdimi(_ i: Int) -> some View {
+        let sirali = kurulacakKanallar
+        let id = sirali.indices.contains(i) ? sirali[i] : (sirali.first ?? "")
+        return ChannelSetupFlow(channelId: id) {
+            if i + 1 < sirali.count {
+                ileri(.kanalKurulum(i + 1))
+            } else {
+                ileri(.giderVarMi)
+            }
+        }
+    }
+
+    private var kanalSecenekleri: [ChannelPreset] {
+        var out = ChannelPreset.hazir
+        // Kayıtlı ama hazır listede olmayan kanallar da görünsün
+        for c in store.state.channels where !out.contains(where: { $0.id == c.id }) {
+            out.append(ChannelPreset(id: c.id, name: c.name, kind: c.kind))
+        }
+        out += ekKanallar.filter { k in !out.contains { $0.id == k.id } }
+        return out
+    }
+
+    private func kanalSec(_ id: Id) {
+        if seciliKanallar.contains(id) { seciliKanallar.remove(id) }
+        else { seciliKanallar.insert(id) }
+    }
+
+    /// Seçilenleri kaydeder, seçilmeyenleri arşivler, ilk kanalın kurulumunu açar.
+    private func kanallariKurVeBasla() {
+        let secilenler = kanalSecenekleri.filter { seciliKanallar.contains($0.id) }
+        kurulacakKanallar = secilenler.map(\.id)
+        store.mutate { s in
+            for k in secilenler {
+                if let i = s.channels.firstIndex(where: { $0.id == k.id }) {
+                    s.channels[i].archived = false
+                    s.channels[i].name = k.name
+                } else {
+                    s.channels.append(Channel(id: k.id, name: k.name, kind: k.kind,
+                                              feeVatRate: .yirmi, feesIncludeVat: true,
+                                              setupCompleted: false))
+                }
+            }
+            for i in s.channels.indices where !self.seciliKanallar.contains(s.channels[i].id) {
+                s.channels[i].archived = true
+            }
+        }
+        ileri(kurulacakKanallar.isEmpty ? .giderVarMi : .kanalKurulum(0))
     }
 
     // MARK: 10 — Özet
@@ -1079,20 +1107,8 @@ public struct SetupWizard: View {
                 }
             }
 
-            // --- Kanallar ---
-            for t in kanallar {
-                guard let i = s.channels.firstIndex(where: { $0.id == t.id }) else { continue }
-                s.channels[i].archived = !t.acik
-                if t.acik {
-                    if s.channels[i].kind == .ownStore {
-                        s.channels[i].paymentPct = t.komisyon
-                        s.channels[i].commissionPct = 0
-                    } else {
-                        s.channels[i].commissionPct = t.komisyon
-                    }
-                    s.channels[i].shippingPerOrder = t.kargo
-                }
-            }
+            // Kanal oranları ve kanal fiyatları kendi soru-cevap akışında
+            // kaydedildi; burada tekrar yazılmaz.
 
             s.settings.setupCompleted = true
         }

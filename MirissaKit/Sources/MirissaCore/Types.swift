@@ -399,6 +399,11 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public var feeVatRate: VatRate?
     /// Kesinti tutarları KDV'yi içeriyor mu
     public var feesIncludeVat: Bool?
+    /// Tarihli kesinti ayarları. Boşsa yukarıdaki düz alanlar kullanılır.
+    /// Komisyon değişince eski kayıt silinmez; geçmiş dönemler bozulmaz.
+    public var rateHistory: [ChannelRates]?
+    /// Kurulum soru-cevabı tamamlandı mı
+    public var setupCompleted: Bool?
 
     public init(
         id: Id,
@@ -413,7 +418,9 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         otherDeductionPct: Double = 0,
         otherDeductionMonthly: Kurus = 0,
         feeVatRate: VatRate? = nil,
-        feesIncludeVat: Bool? = nil
+        feesIncludeVat: Bool? = nil,
+        rateHistory: [ChannelRates]? = nil,
+        setupCompleted: Bool? = nil
     ) {
         self.id = id
         self.name = name
@@ -428,15 +435,71 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         self.otherDeductionMonthly = otherDeductionMonthly
         self.feeVatRate = feeVatRate
         self.feesIncludeVat = feesIncludeVat
+        self.rateHistory = rateHistory
+        self.setupCompleted = setupCompleted
     }
 
     public var resolvedFeeVatRate: VatRate { feeVatRate ?? .yok }
     public var resolvedFeesIncludeVat: Bool { feesIncludeVat ?? true }
+    public var resolvedSetupCompleted: Bool { setupCompleted ?? true }
+
+    /// Verilen tarihte geçerli kesinti ayarları.
+    /// Tarihçe yoksa kanalın düz alanları kullanılır — eski veriler aynen çalışır.
+    public func rates(on date: DateKey) -> ChannelRates {
+        let uygun = (rateHistory ?? []).filter { $0.from <= date }
+        if let son = uygun.max(by: { $0.from < $1.from }) { return son }
+        if let ilk = (rateHistory ?? []).min(by: { $0.from < $1.from }), ilk.from > date {
+            // İlk kayıttan öncesi: o günlerde kanal henüz kurulmamış sayılır,
+            // yine de düz alanlara düşülür ki geçmiş rapor boş kalmasın.
+            _ = ilk
+        }
+        return duzAlanlardanRates()
+    }
+
+    /// Bugün geçerli ayarlar
+    public var currentRates: ChannelRates { rates(on: Dates.today()) }
+
+    /// Yeni oran seti ekler; eskisi silinmez.
+    public mutating func setRates(_ yeni: ChannelRates) {
+        var liste = (rateHistory ?? []).filter { $0.from != yeni.from }
+        // İlk kez tarihçe açılıyorsa, o güne kadarki oranlar kayda geçirilir.
+        // Aksi halde geçmiş aylar yeni oranla hesaplanır ve raporlar değişirdi.
+        if liste.isEmpty, yeni.from > "1970-01-01" {
+            var eski = duzAlanlardanRates()
+            eski.id = "\(id)_baslangic"
+            liste.append(eski)
+        }
+        liste.append(yeni)
+        rateHistory = liste.sorted { $0.from < $1.from }
+        // Düz alanlar "bugünkü değer" olarak güncel tutulur: eski ekranlar bozulmaz.
+        let bugunku = rates(on: Dates.today())
+        commissionPct = bugunku.commissionPct
+        paymentPct = bugunku.paymentPct
+        shippingPerOrder = bugunku.shippingPerOrder
+        serviceFeePerOrder = bugunku.serviceFeePerOrder
+        platformFeeMonthly = bugunku.platformFeeMonthly
+        otherDeductionPct = bugunku.otherDeductionPct
+        otherDeductionMonthly = bugunku.otherDeductionMonthly
+    }
+
+    private func duzAlanlardanRates() -> ChannelRates {
+        ChannelRates(
+            id: "\(id)_duz", from: "1970-01-01",
+            commissionPct: commissionPct,
+            paymentPct: paymentPct,
+            shippingPerOrder: shippingPerOrder,
+            serviceFeePerOrder: serviceFeePerOrder,
+            platformFeeMonthly: platformFeeMonthly,
+            otherDeductionPct: otherDeductionPct,
+            otherDeductionMonthly: otherDeductionMonthly
+        )
+    }
 }
 
 public enum ChannelKind: String, Codable, Sendable {
-    case marketplace   // Trendyol tipi: komisyon + hizmet bedeli
-    case ownStore      // Shopify tipi: ödeme komisyonu + platform ücreti
+    case marketplace   // Pazaryeri: komisyon + hizmet bedeli
+    case ownStore      // Kendi sitesi: ödeme komisyonu + platform ücreti
+    case manual        // Elden, fuar, WhatsApp
     case other
 }
 
@@ -444,6 +507,130 @@ public enum ChannelIds {
     public static let trendyol = "trendyol"
     public static let shopify = "shopify"
     public static let other = "diger"
+}
+
+/// Kurulumda seçilebilecek hazır kanallar. Liste sabit değil:
+/// "Diğer" ile istenen isimde kanal eklenebilir ve hepsi aynı
+/// soru-cevap motorundan geçer.
+public struct ChannelPreset: Identifiable, Hashable, Sendable {
+    public var id: Id
+    public var name: String
+    public var kind: ChannelKind
+
+    public init(id: Id, name: String, kind: ChannelKind) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+    }
+
+    public static let hazir: [ChannelPreset] = [
+        ChannelPreset(id: ChannelIds.trendyol, name: "Trendyol", kind: .marketplace),
+        ChannelPreset(id: ChannelIds.shopify, name: "Shopify / Kendi web sitem", kind: .ownStore),
+        ChannelPreset(id: "hepsiburada", name: "Hepsiburada", kind: .marketplace),
+        ChannelPreset(id: "amazon", name: "Amazon", kind: .marketplace),
+        ChannelPreset(id: "ciceksepeti", name: "ÇiçekSepeti", kind: .marketplace),
+        ChannelPreset(id: "n11", name: "N11", kind: .marketplace),
+        ChannelPreset(id: "pazarama", name: "Pazarama", kind: .marketplace),
+        ChannelPreset(id: "manuel", name: "Manuel / fiziksel satış", kind: .manual),
+    ]
+}
+
+/// Bir kesintinin nasıl hesaplandığı.
+public enum FeeBasis: String, Codable, CaseIterable, Sendable, Hashable, Identifiable {
+    /// Satış tutarının yüzdesi
+    case yuzde
+    /// Her sipariş için sabit tutar
+    case siparisBasi
+    /// Ay başına sabit tutar (sipariş sayısından bağımsız)
+    case aylikSabit
+    /// Otomatik hesaplanmaz; kullanıcı her ay gerçek tutarı girer
+    case elleAylik
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .yuzde: return "Satışın yüzdesi"
+        case .siparisBasi: return "Sipariş başına sabit tutar"
+        case .aylikSabit: return "Ayda bir sabit tutar"
+        case .elleAylik: return "Aylık gerçek tutarı ben gireceğim"
+        }
+    }
+}
+
+/// Kanalın bilinen alanlarına sığmayan kesintiler: kampanya katkısı,
+/// kupon katkısı, işlem bedeli, POS komisyonu, kanal reklamı…
+/// Liste açık uçludur; kullanıcı istediği adla ekleyebilir.
+public struct ChannelExtraFee: Codable, Identifiable, Hashable, Sendable {
+    public var id: Id
+    public var label: String
+    public var basis: FeeBasis
+    /// `yuzde` ise oran (4 = %4), diğerlerinde kuruş
+    public var value: Double
+    /// "Şimdilik bilmiyorum" — hesaba katılmaz, sonuç yaklaşık işaretlenir
+    public var unknown: Bool
+
+    public init(id: Id = Ids.make(.channelFee), label: String, basis: FeeBasis,
+                value: Double = 0, unknown: Bool = false) {
+        self.id = id
+        self.label = label
+        self.basis = basis
+        self.value = value
+        self.unknown = unknown
+    }
+}
+
+/// Bir kanalın belirli tarihten itibaren geçerli kesinti ayarları.
+/// Komisyon %4'ten %6'ya çıkınca eski dönemler %4 kalır.
+public struct ChannelRates: Codable, Identifiable, Hashable, Sendable {
+    public var id: Id
+    public var from: DateKey
+    public var commissionPct: Double
+    public var paymentPct: Double
+    public var shippingPerOrder: Kurus
+    public var serviceFeePerOrder: Kurus
+    public var platformFeeMonthly: Kurus
+    public var otherDeductionPct: Double
+    public var otherDeductionMonthly: Kurus
+    public var extras: [ChannelExtraFee]
+    /// Kurulumda "bilmiyorum" denen alanların adları
+    public var unknownFields: [String]
+
+    public init(
+        id: Id = Ids.make(.channelRate),
+        from: DateKey,
+        commissionPct: Double = 0,
+        paymentPct: Double = 0,
+        shippingPerOrder: Kurus = 0,
+        serviceFeePerOrder: Kurus = 0,
+        platformFeeMonthly: Kurus = 0,
+        otherDeductionPct: Double = 0,
+        otherDeductionMonthly: Kurus = 0,
+        extras: [ChannelExtraFee] = [],
+        unknownFields: [String] = []
+    ) {
+        self.id = id
+        self.from = from
+        self.commissionPct = commissionPct
+        self.paymentPct = paymentPct
+        self.shippingPerOrder = shippingPerOrder
+        self.serviceFeePerOrder = serviceFeePerOrder
+        self.platformFeeMonthly = platformFeeMonthly
+        self.otherDeductionPct = otherDeductionPct
+        self.otherDeductionMonthly = otherDeductionMonthly
+        self.extras = extras
+        self.unknownFields = unknownFields
+    }
+
+    /// Otomatik hesaba girmeyen, yalnızca elle girilecek kesintiler
+    public var elleGirilecekler: [ChannelExtraFee] {
+        extras.filter { $0.basis == .elleAylik }
+    }
+
+    /// Hesaba katılamayan bilinmeyen alanlar
+    public var eksikler: [String] {
+        unknownFields + extras.filter(\.unknown).map(\.label)
+    }
 }
 
 /// Kanal + ay için gerçek rakam girişleri.

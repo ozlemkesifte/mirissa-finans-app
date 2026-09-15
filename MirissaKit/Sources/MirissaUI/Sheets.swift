@@ -8,6 +8,8 @@ public enum AppSheet: Identifiable, Hashable {
     case expenseFlow
     case countFlow
     case priceUpdate(Id?)
+    case channelWizard(Id)
+    case channelAdd
     case addSale(MonthKey)
     case editSale(Id)
     case addExpense(MonthKey)
@@ -35,6 +37,8 @@ public enum AppSheet: Identifiable, Hashable {
         case .expenseFlow: return "expenseFlow"
         case .countFlow: return "countFlow"
         case let .priceUpdate(i): return "priceUpdate-\(i ?? "-")"
+        case let .channelWizard(i): return "channelWizard-\(i)"
+        case .channelAdd: return "channelAdd"
         case let .addSale(m): return "addSale-\(m)"
         case let .editSale(i): return "editSale-\(i)"
         case let .addExpense(m): return "addExpense-\(m)"
@@ -67,6 +71,8 @@ public extension View {
             case .expenseFlow: ExpenseFlow()
             case .countFlow: CountFlow()
             case let .priceUpdate(i): PriceUpdateFlow(onUrunId: i)
+            case let .channelWizard(i): ChannelSetupFlow(channelId: i)
+            case .channelAdd: ChannelAddFlow()
             case let .addSale(m): SaleForm(month: m)
             case let .editSale(i): SaleForm(editing: i)
             case let .addExpense(m): ExpenseForm(month: m)

@@ -227,8 +227,9 @@ struct PriceUpdateFlow: View {
                 + "o tarihe kadarki raporlar aynı kalır")
         }
         if let (once, sonra) = hedefOnizleme() {
-            satirlar.append("Bu değişiklikten sonra yaklaşık başa baş hedefin "
-                + "\(once) siparişten \(sonra) siparişe değişecek")
+            let yon = sonra < once ? "düşecek" : "yükselecek"
+            satirlar.append("Yeni fiyatlarla aylık başa baş hedefin yaklaşık "
+                + "\(once) kargodan \(sonra) kargoya \(yon)")
         }
         return SaveSummary(lines: satirlar)
     }

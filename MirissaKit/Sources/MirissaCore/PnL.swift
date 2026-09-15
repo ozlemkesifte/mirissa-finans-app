@@ -51,6 +51,8 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var otherChannelExpensesFixed: Kurus
     public var productCost: Kurus
     public var packagingCost: Kurus
+    /// Kurulumda "bilmiyorum" denen ve hesaba katılamayan kalemler
+    public var eksikBilgiler: [String] = []
 
     public var id: String { "\(channelId)#\(month)" }
 
@@ -169,6 +171,22 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
     }
 
     public var hasData: Bool { gercekCiro != 0 || toplamGider != 0 || nakitCikisi != 0 }
+
+    /// Kurulumda "bilmiyorum" denen ve bu yüzden hesaba katılamayan kalemler.
+    /// Eksik veri uydurulmaz; sonucun yaklaşık olduğu açıkça yazılır.
+    public var eksikBilgiler: [(kanal: String, alan: String)] {
+        channels.flatMap { c in c.eksikBilgiler.map { (c.channelName, $0) } }
+    }
+
+    /// "Bu sonuç yaklaşık; Trendyol kargo gideri henüz girilmedi."
+    public var yaklasikUyarisi: String? {
+        let eksik = eksikBilgiler
+        guard !eksik.isEmpty else { return nil }
+        let liste = eksik.prefix(3).map { "\($0.kanal) \($0.alan)" }
+            .joined(separator: ", ")
+        let devam = eksik.count > 3 ? " ve \(eksik.count - 3) kalem daha" : ""
+        return "Bu sonuç yaklaşık; \(liste)\(devam) henüz girilmedi."
+    }
 
     /// Satışlardan doğan KDV
     public var hesaplananKdv: Kurus { channels.reduce(0) { $0 + $1.outputVat } }

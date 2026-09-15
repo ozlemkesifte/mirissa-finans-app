@@ -458,3 +458,115 @@ public extension BreakevenPlan {
         return Money.roundHalfAwayFromZero((tl / 1000).rounded() * 1000) * 100
     }
 }
+
+// MARK: - Yıllık başa baş
+
+/// Yılın tamamı için hedef: kaç kargo, ayda kaç, günde kaç.
+/// "Her sipariş aynı kârı bırakır" varsayımı yoktur; sipariş başına katkı
+/// gerçek kanal + ürün karışımının ağırlıklı ortalamasından gelir.
+public struct YearlyTarget: Hashable, Sendable, Identifiable {
+    public var label: String
+    public var targetProfit: Kurus
+    public var isBreakeven: Bool
+    public var isCustom: Bool
+    public var ordersPerYear: Int
+    public var ordersPerMonth: Int
+    public var ordersPerDay: Int
+    public var revenue: Kurus
+
+    public var id: String { "\(targetProfit)-\(isCustom)" }
+}
+
+public struct YearlyPlan: Hashable, Sendable {
+    public var year: Int
+    public var basis: TargetBasis
+    public var contributionPerOrder: Double
+    public var fixedCosts: Kurus
+    public var targets: [YearlyTarget]
+    public var issues: [BreakevenIssue]
+
+    /// Yılın gerçekleşen tarafı
+    public var actualRevenue: Kurus
+    public var actualExpenses: Kurus
+    public var actualProfit: Kurus
+    public var actualMarginPct: Double
+    public var actualOrders: Int
+
+    public var isApproximate: Bool { basis.isApproximate }
+    public var canCompute: Bool { !targets.isEmpty }
+    public var blocking: BreakevenIssue? { issues.first { $0.isBlocking } }
+    public var notes: [BreakevenIssue] { issues.filter { !$0.isBlocking } }
+}
+
+public extension Engine {
+
+    static let defaultYearlyGoals: [Kurus] = [
+        Money.fromTL(250_000), Money.fromTL(500_000), Money.fromTL(1_000_000),
+    ]
+
+    /// Yıllık başa baş ve kâr hedefleri.
+    func yearlyPlan(year y: Int, today: DateKey = Dates.today()) -> YearlyPlan {
+        let aylar = (1...12).map { Dates.monthKey(y, $0) }
+        let yil = year(y)
+        var plan = YearlyPlan(
+            year: y,
+            basis: .beklenenDagilim,
+            contributionPerOrder: 0,
+            fixedCosts: 0,
+            targets: [],
+            issues: [],
+            actualRevenue: yil.gercekCiro,
+            actualExpenses: yil.toplamGider,
+            actualProfit: yil.gercekKar,
+            actualMarginPct: yil.karMarjiPct,
+            actualOrders: yil.months.reduce(0) { $0 + $1.orders }
+        )
+
+        // Yılın sabit giderleri: her ayın planlanan sabit gideri toplanır.
+        plan.fixedCosts = aylar.reduce(0) { $0 + plannedFixedCosts(month: $1) }
+        if plan.fixedCosts == 0 { plan.issues.append(.sabitGiderYok) }
+
+        // Sipariş başına katkı, bugünün ayına göre belirlenen temelden gelir.
+        let referansAy = Dates.month(of: today)
+        guard let temel = targetBasis(before: referansAy) else {
+            plan.issues.append(.referansYok)
+            return plan
+        }
+        plan.basis = temel.basis
+        plan.contributionPerOrder = temel.contributionPerOrder
+        if temel.urunMaliyetiEksik { plan.issues.append(.urunMaliyetiYok) }
+        if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
+        guard temel.contributionPerOrder > 0 else {
+            plan.issues.append(.katkiNegatif)
+            return plan
+        }
+
+        let gunSayisi = Dates.isLeap(y) ? 366 : 365
+        func hedef(_ label: String, kar: Kurus, breakeven: Bool, custom: Bool) -> YearlyTarget? {
+            let gereken = (Double(plan.fixedCosts) + Double(kar)) / temel.contributionPerOrder
+            guard gereken.isFinite, gereken < 5_000_000 else { return nil }
+            let yillik = Int(ceil(max(gereken, 0)))
+            return YearlyTarget(
+                label: label, targetProfit: kar,
+                isBreakeven: breakeven, isCustom: custom,
+                ordersPerYear: yillik,
+                ordersPerMonth: Int(ceil(Double(yillik) / 12)),
+                ordersPerDay: Int(ceil(Double(yillik) / Double(gunSayisi))),
+                revenue: Money.roundHalfAwayFromZero(Double(yillik) * temel.revenuePerOrder)
+            )
+        }
+
+        var out: [YearlyTarget] = []
+        if let be = hedef("Başa baş", kar: 0, breakeven: true, custom: false) { out.append(be) }
+        let ozel = state.settings.yearlyProfitGoal(for: y)
+        let hedefler = ozel.map { [$0] } ?? Engine.defaultYearlyGoals
+        for k in hedefler {
+            if let t = hedef("\(Money.format(k)) kâr", kar: k,
+                             breakeven: false, custom: ozel != nil) {
+                out.append(t)
+            }
+        }
+        plan.targets = out
+        return plan
+    }
+}

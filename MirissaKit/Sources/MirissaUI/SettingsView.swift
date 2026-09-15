@@ -47,14 +47,23 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Satış kanalları") {
-                    ForEach(store.state.channels) { c in
-                        Button { sheet = .channelSetup(c.id) } label: {
+                Section {
+                    ForEach(store.state.channels.filter { !$0.archived }) { c in
+                        Button { sheet = .channelWizard(c.id) } label: {
                             HStack {
-                                Text(c.name).foregroundStyle(Palette.ink)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.name).foregroundStyle(Palette.ink)
+                                    if !c.currentRates.eksikler.isEmpty {
+                                        Text("Eksik: "
+                                             + c.currentRates.eksikler.joined(separator: ", "))
+                                            .font(.caption)
+                                            .foregroundStyle(Palette.uyari)
+                                    }
+                                }
                                 Spacer()
-                                if c.commissionPct > 0 || c.paymentPct > 0 {
-                                    Text(Money.formatPercent(c.commissionPct + c.paymentPct))
+                                if c.currentRates.commissionPct + c.currentRates.paymentPct > 0 {
+                                    Text(Money.formatPercent(
+                                        c.currentRates.commissionPct + c.currentRates.paymentPct))
                                         .foregroundStyle(Palette.inkFaint)
                                 }
                                 Image(systemName: "chevron.right")
@@ -63,14 +72,15 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    Button {
-                        let c = Channel(id: Ids.make(.channel), name: "Yeni kanal")
-                        store.addChannel(c)
-                        sheet = .channelSetup(c.id)
-                    } label: {
-                        Label("Kanal ekle", systemImage: "plus.circle")
+                    Button { sheet = .channelAdd } label: {
+                        Label("Satış kanalı ekle", systemImage: "plus.circle")
                     }
                     .foregroundStyle(Palette.accent)
+                } header: {
+                    Text("Satış kanalları")
+                } footer: {
+                    Text("Bir kanala dokununca fiyatları ve kesintileri tek tek yeniden sorulur. "
+                         + "Değişen komisyon bugünden geçerli olur; geçmiş aylar eski oranla kalır.")
                 }
 
                 Section {

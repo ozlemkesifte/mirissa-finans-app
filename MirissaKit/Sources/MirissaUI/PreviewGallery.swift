@@ -79,6 +79,9 @@ public enum PreviewGallery {
             Screen(name: "f5-sayim", title: "Sayım akışı", view: wrap(CountFlow())),
             Screen(name: "f6-kurulum", title: "Kurulum", view: wrap(SetupWizard())),
             Screen(name: "f7-fiyat", title: "Fiyat güncelle", view: wrap(PriceUpdateFlow())),
+            Screen(name: "f8-kanal-ekle", title: "Kanal ekle", view: wrap(ChannelAddFlow())),
+            Screen(name: "f9-kanal-kurulum", title: "Kanal kurulumu",
+                   view: wrap(ChannelSetupFlow(channelId: ChannelIds.trendyol))),
         ]
     }
 
@@ -90,7 +93,7 @@ public enum PreviewGallery {
     }
 
     public enum SetupPreviewStep: String, CaseIterable, Sendable {
-        case urunSayisi, setVarMi, setBilesenleri, setAmbalaji, fiyat
+        case urunSayisi, setVarMi, setBilesenleri, setAmbalaji, kanalSecimi
 
         var iceri: SetupWizard.Adim {
             switch self {
@@ -98,7 +101,7 @@ public enum PreviewGallery {
             case .setVarMi: return .setVarMi
             case .setBilesenleri: return .setBilesenleri(0)
             case .setAmbalaji: return .setAmbalaji(0)
-            case .fiyat: return .fiyat(0)
+            case .kanalSecimi: return .kanalSecimi
             }
         }
     }

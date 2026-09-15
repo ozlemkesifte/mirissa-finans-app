@@ -22,7 +22,10 @@ struct HomeView: View {
                     }
                     if period.scope == .month {
                         BreakevenCard(month: period.month)
+                    } else {
+                        YearlyCard(year: period.year)
                     }
+                    EksikBilgiNotu(uyari: result.yaklasikUyarisi)
                     islemler
                     PriceCheckCard(sheet: $sheet)
                     if !alerts.isEmpty { stockAlerts }

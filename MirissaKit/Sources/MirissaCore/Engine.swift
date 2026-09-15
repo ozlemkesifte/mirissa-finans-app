@@ -247,18 +247,40 @@ public final class Engine {
             return Figure(bolum.net, manual: manual != nil)
         }
 
-        r.commission = kesinti(cm?.commissionActual, auto: taban * (ch.commissionPct + ch.paymentPct) / 100)
-        r.shipping = kesinti(cm?.shippingActual, auto: Double(ch.shippingPerOrder) * Double(r.orders))
-        r.serviceFee = kesinti(cm?.serviceFeeActual, auto: Double(ch.serviceFeePerOrder) * Double(r.orders))
+        // O ayda geçerli oranlar kullanılır: komisyon sonradan değişse bile
+        // geçmiş ayın raporu değişmez.
+        let oranlar = ch.rates(on: asOf ?? Dates.monthEnd(month))
+        r.commission = kesinti(cm?.commissionActual,
+                               auto: taban * (oranlar.commissionPct + oranlar.paymentPct) / 100)
+        r.shipping = kesinti(cm?.shippingActual,
+                             auto: Double(oranlar.shippingPerOrder) * Double(r.orders))
+        r.serviceFee = kesinti(cm?.serviceFeeActual,
+                               auto: Double(oranlar.serviceFeePerOrder) * Double(r.orders))
+
+        // Kullanıcının kendi eklediği kesintiler. "Bilmiyorum" işaretliler
+        // hesaba katılmaz; sonuç yaklaşık olarak işaretlenir.
+        var ekDegisken = 0.0
+        var ekSabit = 0.0
+        for f in oranlar.extras where !f.unknown {
+            switch f.basis {
+            case .yuzde: ekDegisken += taban * f.value / 100
+            case .siparisBasi: ekDegisken += f.value * Double(r.orders)
+            case .aylikSabit: ekSabit += f.value
+            case .elleAylik: break   // yalnızca elle girilen aylık tutardan gelir
+            }
+        }
+        let sabitToplam = Double(oranlar.platformFeeMonthly)
+            + Double(oranlar.otherDeductionMonthly) + ekSabit
         r.otherDeduction = kesinti(
             cm?.otherDeductionActual,
-            auto: taban * ch.otherDeductionPct / 100 + Double(ch.platformFeeMonthly) + Double(ch.otherDeductionMonthly)
+            auto: taban * oranlar.otherDeductionPct / 100 + sabitToplam + ekDegisken
         )
         r.feeVat = kesintiKdv
+        r.eksikBilgiler = oranlar.eksikler
         // Aylık sabit kesintiler sipariş adedinden bağımsızdır; başa baş hesabı
         // için değişken kısımdan ayrı tutulur.
         r.fixedDeduction = min(
-            Vat.net(ch.platformFeeMonthly + ch.otherDeductionMonthly,
+            Vat.net(Money.roundHalfAwayFromZero(sabitToplam),
                     rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat),
             r.otherDeduction.amount
         )
