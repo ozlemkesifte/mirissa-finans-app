@@ -22,8 +22,6 @@ targets:
         product: MirissaCore
       - package: MirissaKit
         product: MirissaUI
-    info:
-      path: App/Info.plist
     settings:
       base:
         PRODUCT_NAME: MirissaFinans
