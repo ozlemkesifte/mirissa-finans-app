@@ -1,13 +1,13 @@
 name: Kontrol
 
-# Her gönderimde: testler + iOS derlemesi.
-# İmzalama gerektirmez, gizli anahtar istemez.
+# Testler + iOS derlemesi. İmzalama gerektirmez, gizli anahtar istemez.
+#
+# Her gönderimde çalışmaz: main'e her gönderimde TestFlight işi zaten
+# derliyor ve testler gönderimden önce yerelde çalıştırılıyor. Her
+# gönderimde ikinci bir macOS işi açmak Actions dakikalarını iki katına
+# çıkarıyordu (özel depoda macOS dakikası 10 kat sayılır) ve harcama
+# limitinin dolmasına yol açtı. Yalnızca PR'da ve elle çalışır.
 on:
-  push:
-    branches: ['**']
-    paths-ignore:
-      - '**.md'
-      - 'onizleme/**'
   pull_request:
   workflow_dispatch:
 
