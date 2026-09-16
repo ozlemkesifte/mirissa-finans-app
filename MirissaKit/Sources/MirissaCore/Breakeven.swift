@@ -238,6 +238,11 @@ public extension Engine {
         plan.contributionPerOrder = temel.contributionPerOrder
         plan.revenuePerOrder = temel.revenuePerOrder
         plan.unitsPerOrder = temel.unitsPerOrder
+        if temel.basis == .beklenenDagilim {
+            // Geçmiş aydan gelen katkıda satışa bağlı giderler zaten sipariş
+            // başına düşülmüştür; kurulumdan gelen katkıda yoktur.
+            plan.fixedCosts += satisaBagliAylikGiderler(month: month)
+        }
         if temel.urunMaliyetiEksik { plan.issues.append(.urunMaliyetiYok) }
         if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
         if eksikKanalKesintisiVar(month: month) { plan.issues.append(.eksikKanalBilgisi) }
@@ -317,6 +322,9 @@ public extension Engine {
                 plan.contributionPerOrder = temel.contributionPerOrder
                 plan.revenuePerOrder = temel.revenuePerOrder
                 plan.unitsPerOrder = temel.unitsPerOrder
+                if temel.basis == .beklenenDagilim {
+                    plan.fixedCosts += satisaBagliAylikGiderler(month: month)
+                }
                 plan.targets = buildTargets(plan: plan, month: month, days: days)
             } else {
                 plan.missing = missingForTarget(month: month, today: today)
@@ -490,13 +498,29 @@ public extension Engine {
     func plannedFixedCosts(month: MonthKey) -> Kurus {
         let r = companyMonth(month)
         var toplam = r.toplamSabitGider
+        // Ay sonucunda henüz yer almayan kanal ücretleri (kanal hiç iz
+        // bırakmamışsa gerçekleşen hesapta yoktur ama hedefte olmalıdır).
+        // Tarihçedeki güncel oran ve aylık sabit ek kesintiler de dahil.
         for ch in state.activeChannels {
             let sonuc = r.channels.first { $0.channelId == ch.id }
-            if sonuc == nil || sonuc!.isEmpty {
-                toplam += ch.platformFeeMonthly + ch.otherDeductionMonthly
-            }
+            let alindi = (sonuc?.fixedDeduction ?? 0) > 0
+            guard !alindi else { continue }
+            let o = ch.rates(on: Dates.monthEnd(month))
+            let ek = o.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
+                .reduce(0.0) { $0 + $1.value }
+            toplam += o.platformFeeMonthly + o.otherDeductionMonthly
+                + Money.roundHalfAwayFromZero(ek)
         }
         return toplam
+    }
+
+    /// Ayın "satışa bağlı" işaretli giderleri. Geçmiş satış yokken sipariş
+    /// başına dağıtılacak bir oran olmadığı için hedefte aylık tutar olarak
+    /// karşılanmaları gerekir — yoksa hedef bu giderleri hiç görmez.
+    func satisaBagliAylikGiderler(month: MonthKey) -> Kurus {
+        let r = companyMonth(month)
+        return r.ortakGiderDegisken
+            + r.channels.reduce(0) { $0 + $1.adsVariable + $1.otherChannelExpensesVariable }
     }
 
     private func ordersNeeded(forProfit profit: Kurus, fixed: Kurus, perOrder: Double) -> Int? {
@@ -600,6 +624,9 @@ public extension Engine {
         }
         plan.basis = temel.basis
         plan.contributionPerOrder = temel.contributionPerOrder
+        if temel.basis == .beklenenDagilim {
+            plan.fixedCosts += aylar.reduce(0) { $0 + satisaBagliAylikGiderler(month: $1) }
+        }
         if temel.urunMaliyetiEksik { plan.issues.append(.urunMaliyetiYok) }
         if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
         if eksikKanalKesintisiVar(month: referansAy) { plan.issues.append(.eksikKanalBilgisi) }

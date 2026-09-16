@@ -74,11 +74,15 @@ struct PlannedTargetTests {
         s.settings.salesMix = SalesMix(channelShares: [G.trendyol: 100],
                                        productShares: [G.sampuan: 100], confirmed: true)
         let plan = Engine(s).plan(month: "2026-09", today: "2026-09-16")
-        // Sabit gider 10.000 TL, katkı 545 TL -> ceil(10.000/545) = 19
-        #expect(plan.fixedCosts == tl(10_000))
-        #expect(plan.targets.first { $0.isBreakeven }?.orders == 19)
-        // 25.000 TL kâr için: ceil(35.000/545) = 65
-        #expect(plan.targets.first { $0.targetProfit == tl(25_000) }?.orders == 65)
+        // Sabit gider 10.000 TL + bu ay girilmiş 20.000 TL satışa bağlı Trendyol
+        // reklamı. Geçmiş satış olmadığı için reklam sipariş başına dağıtılamaz;
+        // aylık tutar olarak karşılanması gerekir.
+        // (Önceki sürüm reklamı hiç görmüyor ve 19 kargo diyordu — yanlıştı.)
+        #expect(plan.fixedCosts == tl(30_000))
+        // ceil(30.000 / 545) = 56
+        #expect(plan.targets.first { $0.isBreakeven }?.orders == 56)
+        // 25.000 TL kâr için: ceil(55.000 / 545) = 101
+        #expect(plan.targets.first { $0.targetProfit == tl(25_000) }?.orders == 101)
     }
 
     // MARK: Senaryo 2 — geçmiş satış yok, yaklaşık dağılım tanımlı

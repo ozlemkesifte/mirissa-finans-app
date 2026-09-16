@@ -154,7 +154,12 @@ public final class Engine {
         for ch in state.channels {
             let rows = salesOfMonth.filter { $0.channelId == ch.id }
             let catBucket = channelByCat[ch.id] ?? [:]
-            guard !rows.isEmpty || !catBucket.isEmpty || state.channelMonth(month: month, channelId: ch.id) != nil else {
+            // Satışı olmasa bile aylık sabit ücreti olan kanal o ayın gideridir:
+            // mağaza aboneliği satış olmayan ayda da ödenir.
+            let ucretVar = !ch.archived && aylikSabitKanalUcreti(ch, month: month) > 0
+            guard !rows.isEmpty || !catBucket.isEmpty
+                    || state.channelMonth(month: month, channelId: ch.id) != nil
+                    || ucretVar else {
                 continue
             }
             results.append(computeChannel(
@@ -308,6 +313,31 @@ public final class Engine {
             acc + max(kv.value - (channelVariableExpenses[kv.key] ?? 0), 0)
         }
         return r
+    }
+
+    /// Kanalın bu ay için aylık sabit ücreti (abonelik, mağaza ücreti).
+    ///
+    /// Ücret yalnızca kanalın ilk izinden itibaren işler: ilk satışı ya da
+    /// açıkça tarihli ilk ayar kaydı. Böylece sonradan eklenen bir kanalın
+    /// ücreti, kanal henüz yokken geçen aylara geriye dönük yazılmaz ve
+    /// geçmiş bir ayın kârı zamanla değişmez.
+    func aylikSabitKanalUcreti(_ ch: Channel, month: MonthKey) -> Kurus {
+        guard let baslangic = kanalBaslangicAyi(ch), month >= baslangic else { return 0 }
+        let r = ch.rates(on: Dates.monthEnd(month))
+        let ek = r.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
+            .reduce(0.0) { $0 + $1.value }
+        return r.platformFeeMonthly + r.otherDeductionMonthly + Money.roundHalfAwayFromZero(ek)
+    }
+
+    /// Kanalın ilk göründüğü ay: ilk satışı veya tarihli ilk ayar kaydı
+    func kanalBaslangicAyi(_ ch: Channel) -> MonthKey? {
+        let ilkSatis = state.sales.filter { $0.channelId == ch.id }.map(\.month).min()
+        let ilkAyar = (ch.rateHistory ?? [])
+            .map(\.from)
+            .filter { $0 > "1970-01-01" }
+            .min()
+            .map { Dates.month(of: $0) }
+        return [ilkSatis, ilkAyar].compactMap { $0 }.min()
     }
 
     private func figure(_ manual: Kurus?, auto: Double) -> Figure {
