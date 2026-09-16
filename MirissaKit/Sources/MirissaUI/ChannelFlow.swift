@@ -757,7 +757,6 @@ struct ChannelAddFlow: View {
 
     @State private var secilen: Id?
     @State private var adYaziliyor = false
-    @State private var yeniAd = ""
 
     var body: some View {
         if let secilen {

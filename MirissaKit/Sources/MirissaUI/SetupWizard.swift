@@ -43,7 +43,6 @@ public struct SetupWizard: View {
     @State private var seciliKanallar: Set<Id> = []
     @State private var kurulacakKanallar: [Id] = []
     @State private var ekKanallar: [ChannelPreset] = []
-    @State private var yeniKanalAdi = ""
     @State private var malzemeArama = ""
     @State private var yuklendi = false
     @State private var devamSorusu: WizardDraft?
@@ -757,7 +756,6 @@ public struct SetupWizard: View {
                 }
             }
             BigButton("Listede yok — kendim yazayım", icon: "plus", tone: Palette.gider) {
-                yeniKanalAdi = ""
                 ileri(.kanalAdi)
             }
         }

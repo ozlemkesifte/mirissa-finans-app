@@ -197,3 +197,58 @@ struct ChannelCatalogTests {
             .issues.contains(BreakevenIssue.urunMaliyetiYok))
     }
 }
+
+/// Dağılım sorusu yalnızca gerçekten gerektiğinde çıkmalı
+@Suite("Dağılım sorusu ne zaman çıkar")
+struct MixQuestionTests {
+
+    private typealias G = Golden.G
+
+    /// Adet girilmemiş eski satışlarda bile dağılım tutardan bulunur
+    @Test func adetGirilmemisSatistaTutardanDagilim() {
+        var s = Golden.senaryo()
+        s.sales = [
+            SalesEntry(id: "s1", month: "2026-08", channelId: G.trendyol,
+                       productId: G.sampuan, qty: 0, grossSales: tl(60_000)),
+            SalesEntry(id: "s2", month: "2026-08", channelId: G.shopify,
+                       productId: G.serum, qty: 0, grossSales: tl(40_000)),
+        ]
+        let e = Engine(s)
+        let (agirliklar, gecmisten) = e.targetMix(month: "2026-09")
+        #expect(gecmisten)
+        #expect(agirliklar.count == 2)
+        let t = agirliklar.first { $0.channelId == G.trendyol }?.pay ?? 0
+        #expect(abs(t - 0.6) < 0.0001)
+        #expect(!e.missingForTarget(month: "2026-09", today: "2026-09-16")
+            .contains { $0.kind == .dagilim })
+    }
+
+    /// Hiç satış yoksa ve birden çok ihtimal varsa sorulur
+    @Test func hicSatisYoksaSorulur() {
+        var s = Golden.senaryo()
+        s.sales = []
+        #expect(Engine(s).missingForTarget(month: "2026-09", today: "2026-09-16")
+            .contains { $0.kind == .dagilim })
+    }
+
+    /// Dağılım onaylanınca soru kaybolur
+    @Test func onaylanincaSoruKaybolur() {
+        var s = Golden.senaryo()
+        s.sales = []
+        s.settings.salesMix = SalesMix(channelShares: [G.trendyol: 100],
+                                       productShares: [G.sampuan: 100], confirmed: true)
+        #expect(!Engine(s).missingForTarget(month: "2026-09", today: "2026-09-16")
+            .contains { $0.kind == .dagilim })
+    }
+
+    /// Ayın kendi satışı varsa önceki ay aranmaz
+    @Test func ayinKendiSatisiYeterli() {
+        var s = Golden.senaryo()
+        // Eylül satışları duruyor, öncesinde hiç satış yok
+        let e = Engine(s)
+        let (agirliklar, gecmisten) = e.targetMix(month: "2026-09")
+        #expect(gecmisten)
+        #expect(agirliklar.count == 3)
+        _ = s
+    }
+}

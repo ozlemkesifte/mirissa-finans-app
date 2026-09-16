@@ -16,20 +16,26 @@ struct EksikleriTamamlaFlow: View {
     }
 
     var body: some View {
-        if let m = duzenlenen, m.kind == .fiyat {
-            fiyatAdimi(m)
-        } else if eksikler.isEmpty {
-            tamamAdimi
-        } else {
-            listeAdimi
+        Group {
+            if let m = duzenlenen, m.kind == .fiyat {
+                fiyatAdimi(m)
+            } else if eksikler.isEmpty {
+                tamamAdimi
+            } else {
+                listeAdimi
+            }
         }
+        // Sheet yalnızca bir dala bağlıysa listedeki satırlar ölü dokunuş olur
+        .appSheets($acilan)
     }
 
     // MARK: Liste
 
     private var listeAdimi: some View {
         SoruAdimi(
-            soru: "Hedefi hesaplamak için \(eksikler.count) bilgi eksik",
+            soru: eksikler.count == 1
+                ? "Hedef için bir şey daha gerekiyor"
+                : "Hedef için \(eksikler.count) şey gerekiyor",
             aciklama: "Birine dokun, sorayım. Hepsini şimdi girmek zorunda değilsin — "
                 + "girdiğin her bilgi hedefi daha doğru yapar.",
             vazgec: { dismiss() }
@@ -70,20 +76,29 @@ struct EksikleriTamamlaFlow: View {
     }
 
     private func ac(_ m: MissingSetupInfo) {
-        switch m.kind {
-        case .fiyat:
+        if m.kind == .fiyat {
             fiyatTutar = 0
             duzenlenen = m
+            return
+        }
+        acilan = Self.hedefEkran(m)
+    }
+
+    /// Her eksik türünün gideceği ekran. Hiçbir tür boşta kalmamalı —
+    /// boş kalırsa kullanıcı dokunur ve hiçbir şey açılmaz.
+    static func hedefEkran(_ m: MissingSetupInfo) -> AppSheet? {
+        switch m.kind {
+        case .fiyat:
+            // Fiyat akış içinde sorulur, ayrı ekran açılmaz
+            return m.productId.map { AppSheet.priceUpdate($0) }
         case .urunMaliyeti:
-            acilan = m.productId.map { AppSheet.editProduct($0) }
-        case .kanalKesintisi:
-            acilan = m.channelId.map { AppSheet.channelWizard($0) }
+            return m.productId.map { AppSheet.editProduct($0) }
+        case .kanalKesintisi, .kanalUrunleri:
+            return m.channelId.map { AppSheet.channelWizard($0) }
         case .sabitGider:
-            acilan = .expenseFlow
+            return .expenseFlow
         case .dagilim:
-            acilan = .satisDagilimi
-        case .kanalUrunleri:
-            acilan = m.channelId.map { AppSheet.channelWizard($0) }
+            return .satisDagilimi
         }
     }
 
@@ -140,7 +155,6 @@ struct EksikleriTamamlaFlow: View {
                 }
             }
         }
-        .appSheets($acilan)
     }
 }
 
@@ -170,9 +184,10 @@ struct SatisDagilimiFlow: View {
     @ViewBuilder
     private var icerik: some View {
         switch adim {
-        case .kanal: kanalAdimi
-        case .urun: urunAdimi
-        case .ozet: ozetAdimi
+        // Tek kanal varsa payını sormanın anlamı yok
+        case .kanal: kanallar.count > 1 ? AnyView(kanalAdimi) : AnyView(urunAdimi)
+        case .urun: AnyView(urunAdimi)
+        case .ozet: AnyView(ozetAdimi)
         }
     }
 
@@ -182,6 +197,9 @@ struct SatisDagilimiFlow: View {
         let mevcut = store.state.settings.salesMix ?? SalesMix.esitOneri(state: store.state)
         kanalPay = mevcut.channelShares.filter { k, _ in kanallar.contains { $0.id == k } }
         urunPay = mevcut.productShares.filter { k, _ in urunler.contains { $0.id == k } }
+        // Tek kanal varsa payı zaten %100
+        if kanallar.count == 1 { kanalPay = [kanallar[0].id: 100] }
+        if urunler.count == 1 { urunPay = [urunler[0].id: 100] }
     }
 
     // MARK: Kanal payları
@@ -228,7 +246,7 @@ struct SatisDagilimiFlow: View {
             aciklama: "Set ve paketler de ayrı birer satış seçeneğidir.",
             adim: 2, toplam: 2,
             ileriAktif: urunToplam > 0,
-            geri: geriGit, vazgec: { dismiss() },
+            geri: kanallar.count > 1 ? geriGit : nil, vazgec: { dismiss() },
             ileri: { ileri(.ozet) }
         ) {
             VStack(spacing: Metrics.gap) {

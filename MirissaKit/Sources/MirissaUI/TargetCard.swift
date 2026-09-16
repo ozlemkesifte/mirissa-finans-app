@@ -88,7 +88,40 @@ struct HedefKarti: View {
 
     // MARK: Eksik bilgi
 
+    /// Tek eksik "dağılım sorusu" ise bu bir veri eksiği değil,
+    /// sorulmamış bir sorudur — kullanıcıya hata gibi gösterilmez.
+    private var yalnizcaDagilimSorusu: Bool {
+        plan.missing.count == 1 && plan.missing.first?.kind == .dagilim
+    }
+
+    @ViewBuilder
     private func eksikBolumu(_ p: BreakevenPlan) -> some View {
+        if yalnizcaDagilimSorusu {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("BU AY MASRAFLARI KARŞILAMAK İÇİN")
+                    .font(.caption.weight(.semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(Palette.inkFaint)
+                Text("Tek bir soru kaldı")
+                    .font(.headline)
+                    .foregroundStyle(Palette.ink)
+                Text("Satışlarının hangi kanal ve üründen geldiğini söylersen "
+                     + "bu ay kaç kargo çıkarman gerektiğini hesaplayabilirim. "
+                     + "Bir dakika sürer, kesin olması da gerekmiyor.")
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                BigButton("Dağılımı gir", icon: "chart.pie") {
+                    sheet = .satisDagilimi
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            eksikListesi(p)
+        }
+    }
+
+    private func eksikListesi(_ p: BreakevenPlan) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("BU AY MASRAFLARI KARŞILAMAK İÇİN")
                 .font(.caption.weight(.semibold))
@@ -96,7 +129,7 @@ struct HedefKarti: View {
                 .foregroundStyle(Palette.inkFaint)
             Text(p.missing.isEmpty
                  ? "Hedef henüz hesaplanamıyor."
-                 : "Başa baş hedefini hesaplamak için \(p.missing.count) bilgi eksik.")
+                 : "Hedefi hesaplamak için \(p.missing.count) şey gerekiyor.")
                 .font(.headline)
                 .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)

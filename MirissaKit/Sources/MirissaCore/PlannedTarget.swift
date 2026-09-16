@@ -114,16 +114,23 @@ public extension Engine {
     /// Geçmiş ay varsa gerçek dağılım, yoksa kullanıcının onayladığı yaklaşık dağılım.
     func targetMix(month: MonthKey) -> (agirliklar: [(channelId: Id, productId: Id, pay: Double)],
                                         gecmisten: Bool) {
+        /// Adet girilmişse adede, girilmemişse satış tutarına göre ağırlık.
+        /// Eski kayıtlarda adet boş bırakılmış olabilir; dağılım yine de bulunur.
+        func agirlik(_ e: SalesEntry) -> Double {
+            e.netQty > 0 ? e.netQty : Double(max(e.netSales, 0))
+        }
+        func dagilim(_ ay: MonthKey) -> [(channelId: Id, productId: Id, pay: Double)]? {
+            let satislar = state.sales.filter { $0.month == ay && agirlik($0) > 0 }
+            let toplam = satislar.reduce(0.0) { $0 + agirlik($1) }
+            guard toplam > 0 else { return nil }
+            return satislar.map {
+                (channelId: $0.channelId, productId: $0.productId, pay: agirlik($0) / toplam)
+            }
+        }
+
         // 1) Son tamamlanmış aydan gerçek dağılım
         for geri in 1...12 {
-            let m = Dates.addMonths(month, -geri)
-            let satislar = state.sales.filter { $0.month == m && $0.netQty > 0 }
-            let toplam = satislar.reduce(0.0) { $0 + $1.netQty }
-            guard toplam > 0 else { continue }
-            let agirliklar = satislar.map {
-                (channelId: $0.channelId, productId: $0.productId, pay: $0.netQty / toplam)
-            }
-            return (agirliklar, true)
+            if let d = dagilim(Dates.addMonths(month, -geri)) { return (d, true) }
         }
         // 2) Kullanıcının onayladığı yaklaşık dağılım.
         //    Bir SKU o kanalda satılmıyorsa dağılıma girmez.
@@ -142,11 +149,30 @@ public extension Engine {
             guard toplam > 0 else { return ([], false) }
             return (filtreli.map { ($0.channelId, $0.productId, $0.pay / toplam) }, false)
         }
-        // 3) Tek kanal + tek ürün varsa soracak bir şey yok
-        let kanallar = state.activeChannels
-        let urunler = state.activeProducts
-        if kanallar.count == 1, urunler.count == 1 {
-            return ([(kanallar[0].id, urunler[0].id, 1)], false)
+        // 3) Ayın kendi satışları girilmişse dağılımı oradan al
+        if let d = dagilim(month) { return (d, true) }
+
+        // 4) Sonraki aylarda satış varsa (kullanıcı ileriye kayıt girmiş olabilir)
+        for ileri in 1...12 {
+            if let d = dagilim(Dates.addMonths(month, ileri)) { return (d, true) }
+        }
+
+        // 5) Tek bir olasılık varsa soracak bir şey yok:
+        //    tek kanal ve o kanalda tek SKU satılıyorsa dağılım zaten belli.
+        let gun = Dates.monthEnd(month)
+        var tekIkililer: [(channelId: Id, productId: Id, pay: Double)] = []
+        for ch in state.activeChannels {
+            let satilan = ch.soldProducts(in: state, on: gun)
+            guard !satilan.isEmpty else { tekIkililer = []; break }
+            tekIkililer += satilan.map { (ch.id, $0, 0) }
+        }
+        if tekIkililer.count == 1 {
+            return ([(tekIkililer[0].channelId, tekIkililer[0].productId, 1)], false)
+        }
+        // Tek ürün varsa ürün dağılımı sormaya gerek yok; kanal payları da
+        // tek kanalsa bellidir.
+        if state.activeChannels.count == 1, state.activeProducts.count == 1 {
+            return ([(state.activeChannels[0].id, state.activeProducts[0].id, 1)], false)
         }
         return ([], false)
     }
@@ -164,7 +190,8 @@ public extension Engine {
         let (agirliklar, _) = targetMix(month: month)
 
         if agirliklar.isEmpty {
-            out.append(MissingSetupInfo(.dagilim, "Satışlarının yaklaşık dağılımı sorulmadı"))
+            out.append(MissingSetupInfo(
+                .dagilim, "Satışların hangi kanal ve üründen geliyor?"))
         }
 
         // Hangi ikililer için bilgi gerekiyor:
