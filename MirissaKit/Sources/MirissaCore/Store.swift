@@ -17,9 +17,16 @@ public final class AppStore {
     private var saveTask: Task<Void, Never>?
     private let saveDelay: Duration
 
-    public init(file: FileStore = FileStore(), saveDelay: Duration = .milliseconds(400)) {
+    /// Fatura eklerinin temizlik yapılacağı klasör. nil = uygulamanın klasörü.
+    /// Testlerde her depo kendi klasörünü kullanır; aksi halde paralel çalışan
+    /// testler birbirinin dosyalarını silebilir.
+    private let ekKlasoru: URL?
+
+    public init(file: FileStore = FileStore(), saveDelay: Duration = .milliseconds(400),
+                attachmentsDirectory: URL? = nil) {
         self.file = file
         self.saveDelay = saveDelay
+        self.ekKlasoru = attachmentsDirectory
         let loaded = file.load()
         self.loadError = loaded.error
         let s = loaded.state ?? SeedData.initialState()
@@ -30,8 +37,10 @@ public final class AppStore {
 
     /// Testler için diske hiç dokunmayan sürüm
     public static func inMemory(_ s: AppState = SeedData.initialState()) -> AppStore {
-        let store = AppStore(file: FileStore(url: URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("mirissa-test-\(UUID().uuidString).json")))
+        let kok = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("mirissa-test-\(UUID().uuidString)", isDirectory: true)
+        let store = AppStore(file: FileStore(url: kok.appendingPathComponent("veri.json")),
+                             attachmentsDirectory: kok)
         store.replace(s)
         return store
     }
@@ -263,7 +272,7 @@ public final class AppStore {
 
     /// Hiçbir kayda bağlı olmayan fatura dosyalarını temizler
     public func pruneAttachments() {
-        AttachmentStore.prune(keeping: state.attachmentNames)
+        AttachmentStore.prune(keeping: state.attachmentNames, in: ekKlasoru)
     }
 
     /// Düzenli gideri durdurur: geçmiş aylar olduğu gibi kalır.

@@ -64,6 +64,19 @@ public enum AttachmentStore {
         }
     }
 
+    /// Belirli bir klasörde temizlik. Klasör verilmezse uygulamanın klasörü.
+    /// Birden çok depo aynı anda çalışıyorsa (testler) her biri yalnızca
+    /// kendi klasörünü temizler; birbirinin dosyasını silmez.
+    public static func prune(keeping names: Set<String>, in klasor: URL?) {
+        guard let klasor else { prune(keeping: names); return }
+        let ekler = klasor.appendingPathComponent("ekler", isDirectory: true)
+        let dosyalar = (try? FileManager.default.contentsOfDirectory(
+            at: ekler, includingPropertiesForKeys: nil)) ?? []
+        for f in dosyalar where !names.contains(f.lastPathComponent) {
+            try? FileManager.default.removeItem(at: f)
+        }
+    }
+
     /// Büyük fotoğrafları küçültür. Platformdan bağımsız (ImageIO).
     static func shrinkToJPEG(_ data: Data, maxPixel: Int = 2000, quality: Double = 0.72) -> Data? {
         guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }

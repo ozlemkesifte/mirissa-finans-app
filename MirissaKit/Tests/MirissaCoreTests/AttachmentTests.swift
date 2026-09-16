@@ -111,3 +111,48 @@ struct AttachmentTests {
         #expect(geri.attachmentNames.isEmpty)
     }
 }
+
+/// Bir deponun temizliği başka bir deponun fatura dosyasını silmemeli.
+/// (CI'da paralel çalışan testlerin birbirinin dosyasını sildiği bulundu.)
+@Suite("Ek klasörü yalıtımı", .serialized)
+@MainActor
+struct AttachmentIsolationTests {
+
+    @Test func baskaDepoTemizligiDosyayiSilmez() throws {
+        let ortak = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mirissa-ortak-\(UUID().uuidString)")
+        AttachmentStore.overrideDirectory = ortak
+        defer {
+            try? FileManager.default.removeItem(at: ortak)
+            AttachmentStore.overrideDirectory = nil
+        }
+        // Birinci taraf ortak klasöre bir fatura kaydediyor
+        let dosya = try AttachmentStore.save(data: Data("%PDF-1.4 x".utf8),
+                                             suggestedExtension: "pdf")
+        #expect(AttachmentStore.exists(dosya))
+
+        // Aynı anda başka bir test deposu kayıt silip temizlik yapıyor
+        let baska = AppStore.inMemory(Golden.senaryo())
+        baska.deletePurchase("pur_g1")
+        baska.deleteExpense("exp_g2")
+        baska.pruneAttachments()
+
+        // Ortak klasördeki dosya yerinde kalmalı
+        #expect(AttachmentStore.exists(dosya))
+    }
+
+    @Test func depoKendiKlasorundekiYetimiTemizler() throws {
+        let kok = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mirissa-kendi-\(UUID().uuidString)")
+        let ekler = kok.appendingPathComponent("ekler", isDirectory: true)
+        try FileManager.default.createDirectory(at: ekler, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: kok) }
+        let yetim = ekler.appendingPathComponent("yetim.pdf")
+        try Data("x".utf8).write(to: yetim)
+
+        let st = AppStore(file: FileStore(url: kok.appendingPathComponent("veri.json")),
+                          saveDelay: .zero, attachmentsDirectory: kok)
+        st.pruneAttachments()
+        #expect(!FileManager.default.fileExists(atPath: yetim.path))
+    }
+}
