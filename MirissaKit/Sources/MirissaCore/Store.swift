@@ -26,7 +26,12 @@ public final class AppStore {
                 attachmentsDirectory: URL? = nil) {
         self.file = file
         self.saveDelay = saveDelay
+        // Veri dosyası uygulamanın kendi yerinde değilse (testler, yedek açma)
+        // ekler de o dosyanın yanındaki klasörde aranır; ortak klasöre dokunulmaz.
+        let dosyaKlasoru = file.url.deletingLastPathComponent()
         self.ekKlasoru = attachmentsDirectory
+            ?? (file.url.standardizedFileURL == Persistence.defaultFile().standardizedFileURL
+                ? nil : dosyaKlasoru)
         let loaded = file.load()
         self.loadError = loaded.error
         let s = loaded.state ?? SeedData.initialState()
