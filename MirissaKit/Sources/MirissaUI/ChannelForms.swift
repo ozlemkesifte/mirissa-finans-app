@@ -97,6 +97,7 @@ struct ChannelMonthForm: View {
     var month: MonthKey
 
     @State private var orderCount: Double?
+    @State private var bigOrderCount: Double?
     @State private var commission: Kurus?
     @State private var shipping: Kurus?
     @State private var serviceFee: Kurus?
@@ -125,10 +126,15 @@ struct ChannelMonthForm: View {
 
             Section {
                 OptionalQtyField("Sipariş sayısı", suffix: "sipariş", value: $orderCount)
+                OptionalQtyField("3+ ürünlü sipariş (2 koli)", suffix: "sipariş", value: $bigOrderCount)
             } footer: {
-                Text(live.ordersIsEstimate
+                Text((live.ordersIsEstimate
                      ? "Şu an satılan adetten tahmin ediliyor: \(live.orders) sipariş. Gerçek sayıyı girersen kargo daha doğru hesaplanır."
                      : "Kargo ve hizmet bedeli bu sayı üzerinden hesaplanır.")
+                     + " Koli: 1–2 ürünlük sipariş 1, 3 ve üzeri 2 koli. "
+                     + (live.koliSayisi > 0
+                        ? "Bu ay \(Int(live.koliSayisi)) koli sayıldı\(live.koliTahmini ? " (tahmini)" : "")."
+                        : ""))
             }
 
             Section {
@@ -164,6 +170,7 @@ struct ChannelMonthForm: View {
         loaded = true
         guard let cm = store.state.channelMonth(month: month, channelId: channelId) else { return }
         orderCount = cm.orderCount.map(Double.init)
+        bigOrderCount = cm.bigOrderCount.map(Double.init)
         commission = cm.commissionActual
         shipping = cm.shippingActual
         serviceFee = cm.serviceFeeActual
@@ -183,7 +190,8 @@ struct ChannelMonthForm: View {
             serviceFeeActual: serviceFee,
             otherDeductionActual: other,
             adsActual: ads,
-            note: note.isEmpty ? nil : note
+            note: note.isEmpty ? nil : note,
+            bigOrderCount: bigOrderCount.map { Int($0.rounded()) }
         ))
     }
 }

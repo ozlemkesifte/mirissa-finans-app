@@ -52,6 +52,16 @@ public struct StockMaterial: Codable, Identifiable, Hashable, Sendable {
     public var openingDate: DateKey?
     public var archived: Bool
     public var note: String?
+    /// Sipariş başına kullanılır (koli gibi): ürün adedine göre değil, gönderilen
+    /// koli sayısına göre düşer. 1–2 ürünlük sipariş 1, 3 ve üzeri 2 adet.
+    public var perOrder: Bool?
+
+    public var usedPerOrder: Bool { perOrder ?? false }
+
+    /// Adında "koli" geçen malzeme, kullanıcı aksini seçmedikçe sipariş başına kullanılır
+    public static func koliMi(_ ad: String) -> Bool {
+        ad.lowercased(with: Locale(identifier: "tr_TR")).contains("koli")
+    }
 
     public var packSizes: [UnitCode: Double] {
         get {
@@ -76,8 +86,10 @@ public struct StockMaterial: Codable, Identifiable, Hashable, Sendable {
         openingUnitCost: Kurus? = nil,
         openingDate: DateKey? = nil,
         archived: Bool = false,
-        note: String? = nil
+        note: String? = nil,
+        perOrder: Bool? = nil
     ) {
+        self.perOrder = perOrder
         self.id = id
         self.name = name
         self.category = category
@@ -665,6 +677,8 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
     public var otherDeductionActual: Kurus?
     public var adsActual: Kurus?
     public var note: String?
+    /// 3 ve daha fazla ürünlü (2 koli giden) sipariş sayısı. Girilmemişse tahmin edilir.
+    public var bigOrderCount: Int?
 
     public init(
         id: Id = Ids.make(.channelMonth),
@@ -676,8 +690,10 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
         serviceFeeActual: Kurus? = nil,
         otherDeductionActual: Kurus? = nil,
         adsActual: Kurus? = nil,
-        note: String? = nil
+        note: String? = nil,
+        bigOrderCount: Int? = nil
     ) {
+        self.bigOrderCount = bigOrderCount
         self.id = id
         self.month = month
         self.channelId = channelId
@@ -693,7 +709,7 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
     public var isEmpty: Bool {
         orderCount == nil && commissionActual == nil && shippingActual == nil
             && serviceFeeActual == nil && otherDeductionActual == nil && adsActual == nil
-            && (note?.isEmpty ?? true)
+            && bigOrderCount == nil && (note?.isEmpty ?? true)
     }
 }
 

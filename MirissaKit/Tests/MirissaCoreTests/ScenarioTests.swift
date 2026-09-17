@@ -85,8 +85,9 @@ struct ScenarioTests {
         let r = e.companyMonth("2026-09")
 
         // --- Stok düşümü doğru mu ---
-        // Koli: 1000 alındı, 80 şampuan + 50 serum + 30 set = 160 kullanıldı, 10 hasarlı
-        #expect(e.qty(.material(SeedData.M.koli)) == 830)
+        // Koli sipariş başına: Trendyol 118 sipariş / 130 ürün → 3+ ürünlü sipariş olamaz → 118 koli;
+        // Shopify 30 sipariş → 30 koli. 1000 − 148 − 10 hasarlı = 842
+        #expect(e.qty(.material(SeedData.M.koli)) == 842)
         // Şampuan kutusu sadece tekil şampuan satışında kullanılır (set kendi kutusunu kullanır)
         #expect(e.qty(.material(SeedData.M.sampuanKutu)) == 400 - 80)
         #expect(e.qty(.material(SeedData.M.setKutu)) == 100 - 30)

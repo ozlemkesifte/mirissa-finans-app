@@ -19,6 +19,10 @@ struct MoneyConservationTests {
 
     private func senaryo(_ g: inout Rastgele) -> AppState {
         var s = Fx.base()           // maliyet kalemi yok: ürün maliyeti alımlardan gelir
+        // Yarısında koli sipariş başına düşer
+        if Bool.random(using: &g) {
+            s.materials[s.materials.firstIndex { $0.id == Fx.koliId }!].perOrder = true
+        }
         let aylar = ["2026-07", "2026-08", "2026-09"]
         // Bol stok: eksiye düşmesin (eksi stok ayrı bir kuraldır)
         for (i, ay) in aylar.enumerated() {
@@ -48,6 +52,14 @@ struct MoneyConservationTests {
                     productId: urun, qty: adet, grossSales: tl(adet * 500),
                     returnsAmount: tl(iade * 500), returnsQty: iade,
                     returnsRestock: Bool.random(using: &g)))
+            }
+            if Bool.random(using: &g) {
+                let toplam = s.sales.filter { $0.month == ay && $0.channelId == ChannelIds.trendyol }
+                    .reduce(0.0) { $0 + $1.qty }
+                let o = max(Int(toplam / 1.6), 1)
+                s.channelMonths.append(ChannelMonth(
+                    id: "cm\(i)", month: ay, channelId: ChannelIds.trendyol, orderCount: o,
+                    bigOrderCount: Bool.random(using: &g) ? Int.random(in: 0...o, using: &g) : nil))
             }
             let nedenler = AdjustReason.userSelectable
             for k in 0..<4 {

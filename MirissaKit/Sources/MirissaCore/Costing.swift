@@ -10,10 +10,14 @@ public struct CostBreakdown: Hashable, Sendable {
     /// Ürünün kendi maliyeti girilen kalemlerden değil, gerçek alımların
     /// ağırlıklı ortalamasından geldi
     public var ownFromPurchases: Bool = false
+    /// Sipariş başına kullanılan malzemeler (koli): tek ürünlük bir siparişte.
+    /// `packaging` bunları içermez; satışta koli sayısına göre ayrıca düşülür.
+    public var orderPackaging: Kurus = 0
 
     /// Paketleme hariç ürün maliyeti — satılan malın maliyeti (SMM) budur
     public var intrinsic: Kurus { ownLines + components }
-    public var total: Kurus { intrinsic + packaging }
+    /// Tek ürünlük bir siparişin toplam maliyeti
+    public var total: Kurus { intrinsic + packaging + orderPackaging }
 
     public static let zero = CostBreakdown(ownLines: 0, components: 0, packaging: 0)
 }
@@ -26,6 +30,95 @@ public enum CostingError: Error, CustomStringConvertible {
     private var cycle: [String] {
         if case let .cycle(c) = self { return c }
         return []
+    }
+}
+
+/// Sipariş başına kullanılan malzemelerin (koli) aylık tüketimi.
+///
+/// Satışlar ay toplamı olarak girilir, siparişlerin kaç üründen oluştuğu bilinmez.
+/// Kural: 1–2 ürünlük sipariş 1 koli, 3 ve üzeri ürünlük sipariş 2 koli.
+///   koli = sipariş sayısı + 3 ve üzeri ürünlü sipariş sayısı
+/// Sipariş sayısı girilmemişse her ürün ayrı koli sayılır (tahmini).
+/// 3+ ürünlü sipariş sayısı girilmemişse en az olabilecek değer alınır:
+/// siparişlere 2'şer ürün düştükten sonra artan her ürün bir 3+ sipariş demektir (tahmini).
+public enum OrderPackaging {
+    public static let ikinciKoliUrunSayisi = 3
+
+    public struct Tuketim: Hashable, Sendable {
+        public var materialId: Id
+        /// Temel birim cinsinden (koli: adet)
+        public var qty: BaseQty
+    }
+
+    public struct Sonuc: Hashable, Sendable {
+        public var kalemler: [Tuketim]
+        /// Gönderilen toplam koli (sipariş) birimi
+        public var koliSayisi: Double
+        public var siparisSayisi: Int?
+        public var buyukSiparis: Int
+        /// Sipariş sayısı ya da 3+ sipariş sayısı girilmediği için tahmin
+        public var tahmini: Bool
+        public static let bos = Sonuc(kalemler: [], koliSayisi: 0, siparisSayisi: nil,
+                                      buyukSiparis: 0, tahmini: false)
+    }
+
+    /// Bir kanalın bir aydaki sipariş başı malzeme tüketimi
+    public static func hesapla(_ s: AppState, month: MonthKey, channelId: Id) -> Sonuc {
+        let satirlar = s.sales.filter { $0.month == month && $0.channelId == channelId && $0.qty > 0 }
+        let adet = satirlar.reduce(0.0) { $0 + $1.qty }
+        guard adet > 0 else { return .bos }
+        let malzemeler = Dictionary(s.materials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let urunler = Dictionary(s.products.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+
+        // Her sipariş-başı malzeme için: bu malzemeyi kullanan ürün adedi × satırdaki miktar
+        var agirlik: [Id: Double] = [:]
+        for e in satirlar {
+            guard let p = urunler[e.productId] else { continue }
+            for line in p.recipe where line.resolvedConsumesStock {
+                guard let m = malzemeler[line.materialId], m.usedPerOrder,
+                      let birim = Units.toBaseOrNil(qty: line.qty, unit: line.unit,
+                                                    baseUnit: m.baseUnit, packSizes: m.packSizes),
+                      birim > 0 else { continue }
+                agirlik[m.id, default: 0] += birim * e.qty
+            }
+        }
+        guard !agirlik.isEmpty else { return .bos }
+
+        let cm = s.channelMonth(month: month, channelId: channelId)
+        var koli = adet
+        var tahmini = true
+        var buyuk = 0
+        var siparis: Int? = nil
+        if let o = cm?.orderCount, o > 0 {
+            let o = min(o, Int(adet.rounded(.up)))
+            siparis = o
+            if let b = cm?.bigOrderCount {
+                buyuk = min(max(b, 0), o)
+                tahmini = false
+            } else {
+                buyuk = min(max(Int((adet - 2 * Double(o)).rounded(.up)), 0), o)
+            }
+            koli = min(Double(o + buyuk), adet)
+        }
+        let kalemler = agirlik.keys.sorted().map { id -> Tuketim in
+            // Koli sayısı, malzemeyi kullanan ürünlerin payı kadar
+            let q = (koli * agirlik[id]! / adet).rounded()
+            return Tuketim(materialId: id, qty: max(q, 1))
+        }
+        return Sonuc(kalemler: kalemler, koliSayisi: koli, siparisSayisi: siparis,
+                     buyukSiparis: buyuk, tahmini: tahmini)
+    }
+
+    /// Bir siparişte ortalama kaç koli gider (sipariş sayısı girilmiş son aydan).
+    /// Veri yoksa ürün adedine kuraldan: 3 ve üzeri 2, değilse 1.
+    public static func koliPerSiparis(_ s: AppState, channelId: Id, month: MonthKey,
+                                      urunAdedi: Double) -> Double {
+        for geri in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0] {
+            let ay = Dates.addMonths(month, -geri)
+            let r = hesapla(s, month: ay, channelId: channelId)
+            if let o = r.siparisSayisi, o > 0 { return r.koliSayisi / Double(o) }
+        }
+        return urunAdedi >= Double(ikinciKoliUrunSayisi) ? 2 : 1
     }
 }
 
@@ -76,14 +169,15 @@ public enum Costing {
     public static func packagingCost(
         product: Product,
         materials: [Id: StockMaterial],
-        unitCostOf: (Id) -> Double
+        unitCostOf: (Id) -> Double,
+        perOrder: Bool = false
     ) -> Kurus {
         var total = 0.0
         for line in product.recipe {
             // Üretim maliyetine zaten dahilse maliyeti tekrar sayma.
             // Stok hareketi bundan etkilenmez; yalnızca çift maliyet önlenir.
             guard line.resolvedAddsCost else { continue }
-            guard let mat = materials[line.materialId] else { continue }
+            guard let mat = materials[line.materialId], mat.usedPerOrder == perOrder else { continue }
             guard let base = Units.toBaseOrNil(
                 qty: line.qty, unit: line.unit,
                 baseUnit: mat.baseUnit, packSizes: mat.packSizes
@@ -158,7 +252,9 @@ public enum Costing {
             }
         }
         let pack = packagingCost(product: p, materials: materials, unitCostOf: unitCostOf)
+        let siparis = packagingCost(product: p, materials: materials, unitCostOf: unitCostOf,
+                                    perOrder: true)
         return CostBreakdown(ownLines: own, components: comps, packaging: pack,
-                             ownFromPurchases: alimdan)
+                             ownFromPurchases: alimdan, orderPackaging: siparis)
     }
 }

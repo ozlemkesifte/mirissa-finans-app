@@ -8,7 +8,7 @@ struct SaleFlow: View {
 
     private enum Adim: Hashable, Codable {
         case ay, kanal, urunSecimi, urunDetay(Int), iadeVarMi, iadeDetay
-        case kesintiBiliyorMu, kesintiDetay, ozet
+        case siparis, kesintiBiliyorMu, kesintiDetay, ozet
     }
 
     struct SatirTaslak: Identifiable, Codable {
@@ -35,6 +35,8 @@ struct SaleFlow: View {
     @State private var komisyon: Kurus = 0
     @State private var kargo: Kurus = 0
     @State private var siparisSayisi: Double = 0
+    @State private var buyukSiparis: Double = 0
+    @State private var buyukSiparisBiliniyor = true
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
     @State private var urunArama = ""
@@ -56,6 +58,8 @@ struct SaleFlow: View {
         var komisyon: Kurus
         var kargo: Kurus
         var siparisSayisi: Double
+        var buyukSiparis: Double?
+        var buyukSiparisBiliniyor: Bool?
     }
 
     private var taslakKaydi: TaslakKaydi {
@@ -70,6 +74,7 @@ struct SaleFlow: View {
         indirim = t.indirim; iadeTutar = t.iadeTutar; iadeAdet = t.iadeAdet
         iadeSatilabilir = t.iadeSatilabilir; gercekKesinti = t.gercekKesinti
         komisyon = t.komisyon; kargo = t.kargo; siparisSayisi = t.siparisSayisi
+        buyukSiparis = t.buyukSiparis ?? 0; buyukSiparisBiliniyor = t.buyukSiparisBiliniyor ?? true
     }
 
     private func taslakKaydet() {
@@ -78,10 +83,11 @@ struct SaleFlow: View {
             secilenler: secilenler, satirlar: satirlar, iadeVar: iadeVar,
             indirim: indirim, iadeTutar: iadeTutar, iadeAdet: iadeAdet,
             iadeSatilabilir: iadeSatilabilir, gercekKesinti: gercekKesinti,
-            komisyon: komisyon, kargo: kargo, siparisSayisi: siparisSayisi))
+            komisyon: komisyon, kargo: kargo, siparisSayisi: siparisSayisi,
+            buyukSiparis: buyukSiparis, buyukSiparisBiliniyor: buyukSiparisBiliniyor))
     }
 
-    private var toplamAdim: Int { 6 }
+    private var toplamAdim: Int { 7 }
 
     var body: some View {
         Group {
@@ -114,6 +120,7 @@ struct SaleFlow: View {
         case let .urunDetay(i): urunDetayAdimi(i).id("satisUrun-\(i)")
         case .iadeVarMi: iadeSoruAdimi
         case .iadeDetay: iadeDetayAdimi
+        case .siparis: siparisAdimi
         case .kesintiBiliyorMu: kesintiSoruAdimi
         case .kesintiDetay: kesintiDetayAdimi
         case .ozet: ozetAdimi
@@ -295,7 +302,7 @@ struct SaleFlow: View {
                 secim: nil
             ) { secim in
                 iadeVar = secim
-                ileri(secim ? .iadeDetay : .kesintiBiliyorMu)
+                ileri(secim ? .iadeDetay : .siparis)
             }
         }
     }
@@ -305,7 +312,7 @@ struct SaleFlow: View {
             soru: "İade ve indirim tutarları",
             adim: 5, toplam: toplamAdim,
             geri: geriGit, vazgec: { dismiss() },
-            ileri: { ileri(.kesintiBiliyorMu) }
+            ileri: { ileri(.siparis) }
         ) {
             BuyukParaAlani(baslik: "İndirim", deger: $indirim)
             BuyukParaAlani(baslik: "İade tutarı", deger: $iadeTutar)
@@ -331,12 +338,66 @@ struct SaleFlow: View {
         }
     }
 
-    // 6 — Kanal kesintileri
+    // 6 — Sipariş ve koli
+    private var kanalinAyToplamAdedi: Double {
+        let kayitli = store.state.sales.filter { $0.month == ay && $0.channelId == kanalId }
+            .reduce(0.0) { $0 + $1.qty }
+        return kayitli + satirlar.reduce(0.0) { $0 + $1.adet }
+    }
+
+    private var siparisAdimi: some View {
+        let mevcut = store.state.channelMonth(month: ay, channelId: kanalId)
+        let adet = kanalinAyToplamAdedi
+        return SoruAdimi(
+            soru: "Bu ay bu kanaldan toplam kaç sipariş (kargo) çıktı?",
+            aciklama: "Kargo ve koli sipariş sayısına göre hesaplanır. Bilmiyorsan boş bırak; "
+                + "o zaman her ürün ayrı sipariş ve ayrı koli sayılır.",
+            adim: 6, toplam: toplamAdim,
+            geri: geriGit, vazgec: { dismiss() },
+            ileri: { ileri(.kesintiBiliyorMu) }
+        ) {
+            BuyukSayiAlani(baslik: "Sipariş sayısı (bu ayın toplamı)", birim: "sipariş", deger: $siparisSayisi)
+            if siparisSayisi > 0 {
+                Card {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Bunlardan kaçında 3 veya daha fazla ürün vardı?")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink)
+                        Text("1–2 ürünlük sipariş 1 koli, 3 ve üzeri ürünlü sipariş 2 koli gider.")
+                            .font(.caption).foregroundStyle(Palette.inkFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Picker("", selection: $buyukSiparisBiliniyor) {
+                            Text("Biliyorum").tag(true)
+                            Text("Bilmiyorum").tag(false)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                    }
+                }
+                if buyukSiparisBiliniyor {
+                    BuyukSayiAlani(baslik: "3+ ürünlü sipariş", birim: "sipariş", deger: $buyukSiparis)
+                } else {
+                    let tahmin = min(max(Int((adet - 2 * siparisSayisi).rounded(.up)), 0), Int(siparisSayisi))
+                    Text("Bu ay toplam \(Int(adet)) ürün \(Int(siparisSayisi)) siparişte gitti. "
+                         + (tahmin > 0
+                            ? "Her siparişe en fazla 2 ürün sığsaydı \(tahmin) ürün artardı; en az \(tahmin) siparişi 2 koli sayacağım (tahmini)."
+                            : "Bu siparişlere 2'şer ürün sığıyor; hepsini 1 koli sayacağım (tahmini)."))
+                        .font(.footnote).foregroundStyle(Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .onAppear {
+            if siparisSayisi == 0, let o = mevcut?.orderCount { siparisSayisi = Double(o) }
+            if buyukSiparis == 0, let b = mevcut?.bigOrderCount { buyukSiparis = Double(b) }
+        }
+    }
+
+    // 7 — Kanal kesintileri
     private var kesintiSoruAdimi: some View {
         SoruAdimi(
             soru: "Gerçek komisyon ve kargo tutarını biliyor musun?",
             aciklama: "Bilmiyorsan kanal ayarlarındaki oranlardan hesaplarım.",
-            adim: 6, toplam: toplamAdim,
+            adim: 7, toplam: toplamAdim,
             geri: geriGit, vazgec: { dismiss() }
         ) {
             EvetHayirSorusu(
@@ -361,14 +422,12 @@ struct SaleFlow: View {
         SoruAdimi(
             soru: "Gerçek kesintiler",
             aciklama: "Girdiğin rakamlar otomatik hesabın yerine geçer, üstüne eklenmez.",
-            adim: 6, toplam: toplamAdim,
+            adim: 7, toplam: toplamAdim,
             geri: geriGit, vazgec: { dismiss() },
             ileri: { ileri(.ozet) }
         ) {
             BuyukParaAlani(baslik: "Komisyon", deger: $komisyon)
             BuyukParaAlani(baslik: "Kargo", deger: $kargo)
-            BuyukSayiAlani(baslik: "Sipariş sayısı (isteğe bağlı)", birim: "sipariş",
-                           deger: $siparisSayisi)
         }
     }
 
@@ -458,15 +517,19 @@ struct SaleFlow: View {
 
     private func kaydet() {
         for t in taslaklar() { store.addSale(t) }
-        if gercekKesinti {
-            let mevcut = store.state.channelMonth(month: ay, channelId: kanalId)
-            store.upsertChannelMonth(ChannelMonth(
-                id: mevcut?.id ?? Ids.make(.channelMonth),
-                month: ay, channelId: kanalId,
-                orderCount: siparisSayisi > 0 ? Int(siparisSayisi.rounded()) : mevcut?.orderCount,
-                commissionActual: komisyon > 0 ? komisyon : nil,
-                shippingActual: kargo > 0 ? kargo : nil
-            ))
+        if gercekKesinti || siparisSayisi > 0 {
+            // Var olan elle girilmiş tutarlar korunur; yalnızca bu akışta girilenler güncellenir
+            var cm = store.state.channelMonth(month: ay, channelId: kanalId)
+                ?? ChannelMonth(month: ay, channelId: kanalId)
+            if siparisSayisi > 0 {
+                cm.orderCount = Int(siparisSayisi.rounded())
+                cm.bigOrderCount = buyukSiparisBiliniyor ? Int(buyukSiparis.rounded()) : nil
+            }
+            if gercekKesinti {
+                cm.commissionActual = komisyon > 0 ? komisyon : nil
+                cm.shippingActual = kargo > 0 ? kargo : nil
+            }
+            store.upsertChannelMonth(cm)
         }
         taslakKaydi.sil(store)
         dismiss()

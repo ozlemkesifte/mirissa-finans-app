@@ -85,7 +85,8 @@ struct SaleForm: View {
                 if !productId.isEmpty, qty > 0 {
                     let b = store.engine.cost(of: productId, asOf: Dates.monthEnd(month))
                     LabeledRow("Ürün maliyeti", Money.roundHalfAwayFromZero(Double(b.intrinsic) * (qty - returnsQty)).tl)
-                    LabeledRow("Ambalaj maliyeti", Money.roundHalfAwayFromZero(Double(b.packaging) * qty).tl)
+                    LabeledRow(b.orderPackaging > 0 ? "Ambalaj maliyeti (koli hariç)" : "Ambalaj maliyeti",
+                               Money.roundHalfAwayFromZero(Double(b.packaging) * qty).tl)
                 }
             } header: {
                 Text("Sistem hesaplıyor")

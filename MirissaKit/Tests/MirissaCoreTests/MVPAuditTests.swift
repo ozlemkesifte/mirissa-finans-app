@@ -157,8 +157,9 @@ struct MVPAuditTests {
     // 7 + 8 — Satışla otomatik stok düşümü ve paketleme reçeteleri
     @Test func madde07_08_otomatikStokDusumuVeRecete() {
         let e = Engine(kurulum())
-        // 80 şampuan + 50 serum + 30 set = 160 sipariş, her birinde 1 koli; 10 tanesi hasarlı
-        #expect(e.qty(.material(SeedData.M.koli)) == 1000 - 160 - 10)
+        // Koli sipariş başına: Trendyol 128 sipariş (130 ürün, hiçbirinde 3+ ürün olamaz: 130 ≤ 2×128)
+        // → 128 koli; Shopify 30 sipariş → 30 koli; 10 tanesi hasarlı
+        #expect(e.qty(.material(SeedData.M.koli)) == 1000 - 128 - 30 - 10)
         // Set kendi kutusunu kullanır, bileşenlerin kutuları harcanmaz
         #expect(e.qty(.material(SeedData.M.sampuanKutu)) == 400 - 80)
         #expect(e.qty(.material(SeedData.M.serumKutu)) == 300 - 50)
@@ -293,7 +294,8 @@ struct MVPAuditTests {
         let sonra = Engine(s)
 
         #expect(sonra.companyMonth("2026-09").gercekKar != once.gercekKar)
-        #expect(sonra.qty(.material(SeedData.M.koli)) == 500 - 180)   // yeniden hesaplandı
+        // Koli sipariş sayısına göre: 128 + 30 = 158 (şampuan adedi artsa da sipariş sayısı aynı)
+        #expect(sonra.qty(.material(SeedData.M.koli)) == 500 - 158)   // yeniden hesaplandı
         #expect(approx(sonra.unitCost(.material(SeedData.M.koli), asOf: "2026-08-31"), Double(tl(10))))
     }
 

@@ -95,7 +95,7 @@ public extension Engine {
         return unitContributions(on: date).map { u in
             let bilinen = unitsPerOrder(channelId: u.channelId, month: ay)
             let adet = bilinen ?? 1
-            let s = siparisBasina(u, urunAdedi: adet)
+            let s = siparisBasina(u, urunAdedi: adet, ay: ay)
             let ch = state.channel(u.channelId)
             return AdTarget(productId: u.productId, productName: u.productName,
                             channelId: u.channelId, channelName: u.channelName,

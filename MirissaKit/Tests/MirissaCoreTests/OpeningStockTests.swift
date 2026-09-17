@@ -42,7 +42,9 @@ struct OpeningStockTests {
         #expect(approx(e.unitCost(.material(SeedData.M.koli)), Double(tl(11))))
         #expect(e.balance(.material(SeedData.M.koli)).value == tl(11) * 380)
         // Paketleme maliyeti başlangıç stoğunun birim maliyetini kullanır
-        #expect(e.cost(of: SeedData.P.sampuan).packaging > 0)
+        let b = e.cost(of: SeedData.P.sampuan)
+        #expect(b.packaging + b.orderPackaging > 0)
+        #expect(b.orderPackaging == Money.roundHalfAwayFromZero(e.unitCost(.material(SeedData.M.koli))))
     }
 
     @Test func buAyinGideriOlarakYAZILMAZ() {

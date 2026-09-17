@@ -108,6 +108,14 @@ public enum Persistence {
             s.products[i].recipe.removeAll { !materialIds.contains($0.materialId) }
             s.products[i].components.removeAll { !productIds.contains($0.productId) || $0.productId == selfId }
         }
+        // Kargo kolisi siparişe göre gider (1–2 ürün 1 koli, 3+ ürün 2 koli).
+        // Kullanıcı hiç seçmemişse adında "koli" geçen malzemeler buna ayarlanır;
+        // kendisi kapattıysa dokunulmaz.
+        for i in s.materials.indices where s.materials[i].perOrder == nil {
+            if StockMaterial.koliMi(s.materials[i].name) {
+                s.materials[i].perOrder = true
+            }
+        }
         // Silinmiş ürünler kanalın "burada satılıyor" listesinde kalmasın
         for i in s.channels.indices {
             if let liste = s.channels[i].soldProductIds {

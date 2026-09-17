@@ -291,6 +291,15 @@ public final class Engine {
         }
         r.netSales = r.grossSales - r.discount - r.returnsAmount
 
+        // Sipariş başına malzemeler (koli): ürün adedine değil gönderilen koli sayısına göre
+        let siparisAmbalaji = OrderPackaging.hesapla(state, month: month, channelId: ch.id)
+        for k in siparisAmbalaji.kalemler {
+            r.packagingCost += Money.roundHalfAwayFromZero(
+                k.qty * unitCost(.material(k.materialId), asOf: asOf))
+        }
+        r.koliSayisi = siparisAmbalaji.koliSayisi
+        r.koliTahmini = siparisAmbalaji.tahmini && !siparisAmbalaji.kalemler.isEmpty
+
         if let oc = cm?.orderCount, oc > 0 {
             r.orders = oc
             r.ordersIsEstimate = false

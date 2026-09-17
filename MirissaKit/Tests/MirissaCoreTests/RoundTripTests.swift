@@ -187,8 +187,9 @@ struct RoundTripTests {
         let satir = p.recipe.first { $0.materialId == G.kutu }
         #expect(satir?.resolvedAddsCost == false)
         #expect(satir?.resolvedConsumesStock == true)      // stok tüketimi etkilenmez
-        // Kutu artık maliyete girmez: ambalaj 15 yerine 10
-        #expect(Engine(geri).cost(of: G.sampuan, asOf: "2026-09-30").packaging == tl(10))
+        // Kutu artık maliyete girmez: ambalaj 15 yerine 10 (koli; yüklemede sipariş başına işaretlenir)
+        let b = Engine(geri).cost(of: G.sampuan, asOf: "2026-09-30")
+        #expect(b.packaging + b.orderPackaging == tl(10))
     }
 
     /// Bozuk satırlar uygulamayı çökertmez, ayıklanır

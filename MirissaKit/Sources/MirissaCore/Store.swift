@@ -94,7 +94,11 @@ public final class AppStore {
 
     // MARK: - Malzeme
 
-    public func addMaterial(_ m: StockMaterial) { mutate { $0.materials.append(m) } }
+    public func addMaterial(_ m: StockMaterial) {
+        var yeni = m
+        if yeni.perOrder == nil, StockMaterial.koliMi(yeni.name) { yeni.perOrder = true }
+        mutate { $0.materials.append(yeni) }
+    }
 
     public func updateMaterial(_ m: StockMaterial) {
         mutate { s in

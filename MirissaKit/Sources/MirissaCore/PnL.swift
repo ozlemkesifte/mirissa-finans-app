@@ -51,6 +51,9 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var otherChannelExpensesFixed: Kurus
     public var productCost: Kurus
     public var packagingCost: Kurus
+    /// Gönderilen koli sayısı (sipariş başı malzemeler) ve tahmini olup olmadığı
+    public var koliSayisi: Double = 0
+    public var koliTahmini: Bool = false
     /// Kurulumda "bilmiyorum" denen ve hesaba katılamayan kalemler
     public var eksikBilgiler: [String] = []
 
@@ -269,6 +272,8 @@ public extension Array where Element == ChannelMonthResult {
             r.otherChannelExpensesFixed += c.otherChannelExpensesFixed
             r.productCost += c.productCost
             r.packagingCost += c.packagingCost
+            r.koliSayisi += c.koliSayisi
+            r.koliTahmini = r.koliTahmini || c.koliTahmini
             for (k, v) in c.otherChannelExpenses { r.otherChannelExpenses[k, default: 0] += v }
         }
         r.commission.isManual = manualCommission

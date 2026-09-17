@@ -274,7 +274,7 @@ public enum Movements {
                 // Maliyete dahil olup olmaması stok hareketini etkilemez:
                 // yalnızca "stoktan düşmez" işaretli satırlar atlanır.
                 guard line.resolvedConsumesStock else { continue }
-                guard let mat = s.material(line.materialId) else { continue }
+                guard let mat = s.material(line.materialId), !mat.usedPerOrder else { continue }
                 guard let perUnit = Units.toBaseOrNil(
                     qty: line.qty, unit: line.unit,
                     baseUnit: mat.baseUnit, packSizes: mat.packSizes
@@ -294,6 +294,31 @@ public enum Movements {
                     sourceId: e.id,
                     reason: nil,
                     label: "\(sold.name) paketlemesinde kullanıldı"
+                ))
+            }
+        }
+        // 3) Sipariş başına malzemeler (koli): kanal-ay başına gönderilen koli sayısı
+        var kanalAylar = Set<String>()
+        for e in s.sales where e.qty > 0 { kanalAylar.insert("\(e.month)|\(e.channelId)") }
+        for anahtar in kanalAylar.sorted() {
+            let parca = anahtar.split(separator: "|").map(String.init)
+            let (ay, kanal) = (parca[0], parca[1])
+            let sonuc = OrderPackaging.hesapla(s, month: ay, channelId: kanal)
+            let kanalAdi = s.channel(kanal)?.name ?? "Satış"
+            for k in sonuc.kalemler {
+                out.append(Movement(
+                    id: "mv:order:\(ay):\(kanal):\(k.materialId)",
+                    item: .material(k.materialId),
+                    date: Dates.monthEnd(ay),
+                    sortDate: nil,
+                    kind: .satis,
+                    delta: -k.qty,
+                    absoluteTo: nil,
+                    inCost: nil,
+                    source: .sales,
+                    sourceId: anahtar,
+                    reason: nil,
+                    label: "\(kanalAdi) siparişlerinde kullanıldı"
                 ))
             }
         }

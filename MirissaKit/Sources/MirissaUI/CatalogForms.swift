@@ -15,6 +15,7 @@ struct MaterialForm: View {
     @State private var criticalQty: Double?
     @State private var packSizes: [String: Double] = [:]
     @State private var showPack = false
+    @State private var siparisBasi: Bool?
     @State private var loaded = false
     @State private var showDelete = false
 
@@ -75,6 +76,19 @@ struct MaterialForm: View {
             }
 
             Section {
+                Toggle("Sipariş başına kullanılıyor (koli gibi)", isOn: Binding(
+                    get: { siparisBasi ?? StockMaterial.koliMi(name) },
+                    set: { siparisBasi = $0 }
+                ))
+            } header: {
+                Text("Nasıl harcanıyor?")
+            } footer: {
+                Text((siparisBasi ?? StockMaterial.koliMi(name))
+                     ? "Gönderilen koli sayısına göre düşer: 1–2 ürünlük sipariş 1 adet, 3 ve üzeri ürünlü sipariş 2 adet."
+                     : "Satılan her ürün için reçetedeki miktar kadar düşer (patpat, kutu, dolgu gibi).")
+            }
+
+            Section {
                 OptionalQtyField("Stok azalıyor uyarısı", suffix: baseUnit.displayName, value: $minQty)
                 OptionalQtyField("Kritik stok uyarısı", suffix: baseUnit.displayName, value: $criticalQty)
             } header: {
@@ -112,6 +126,7 @@ struct MaterialForm: View {
         minQty = m.minQty; criticalQty = m.criticalQty
         packSizes = m.packSizesRaw
         showPack = !m.packSizesRaw.isEmpty
+        siparisBasi = m.perOrder
     }
 
     private func save() {
@@ -119,11 +134,13 @@ struct MaterialForm: View {
         if let id = editingId, var m = store.state.material(id) {
             m.name = name; m.category = category; m.baseUnit = baseUnit
             m.minQty = minQty; m.criticalQty = criticalQty; m.packSizesRaw = clean
+            m.perOrder = siparisBasi ?? m.perOrder
             store.updateMaterial(m)
         } else {
             store.addMaterial(StockMaterial(
                 name: name, category: category, baseUnit: baseUnit,
-                packSizesRaw: clean, minQty: minQty, criticalQty: criticalQty
+                packSizesRaw: clean, minQty: minQty, criticalQty: criticalQty,
+                perOrder: siparisBasi
             ))
         }
     }

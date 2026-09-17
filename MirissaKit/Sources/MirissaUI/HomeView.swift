@@ -287,6 +287,10 @@ struct ChannelCard: View {
                     }
                     if result.productCost != 0 { LabeledRow("Ürün maliyeti", "-" + result.productCost.tl) }
                     if result.packagingCost != 0 { LabeledRow("Ambalaj", "-" + result.packagingCost.tl) }
+                    if result.koliSayisi > 0 {
+                        LabeledRow("Gönderilen koli", "\(Int(result.koliSayisi))",
+                                   tone: Palette.inkSoft, badge: result.koliTahmini ? "tahmini" : nil)
+                    }
                     Divider().overlay(Palette.separator)
                     LabeledRow("KANALDA KALAN", result.kanaldaKalan.tl,
                                tone: result.kanaldaKalan < 0 ? Palette.zarar : Palette.kar, strong: true)

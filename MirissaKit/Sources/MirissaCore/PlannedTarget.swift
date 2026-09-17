@@ -17,17 +17,20 @@ public struct UnitContribution: Identifiable, Hashable, Sendable {
     /// Siparişte kaç ürün olursa olsun bir kez kesilir.
     public var perOrderFees: Kurus = 0
     public var productCost: Kurus
+    /// Ürün başına ambalaj (patpat, kutu, dolgu…) — koli hariç
     public var packagingCost: Kurus
+    /// Bir kolinin (sipariş başı malzemelerin) maliyeti
+    public var orderPackagingCost: Kurus = 0
 
     public var id: String { "\(channelId)#\(productId)" }
 
-    /// Tek ürünlük bir siparişin şirkete bıraktığı tutar
+    /// Tek ürünlük bir siparişin şirkete bıraktığı tutar (1 koli)
     public var contribution: Kurus {
-        netRevenue - channelFees - productCost - packagingCost
+        netRevenue - channelFees - productCost - packagingCost - orderPackagingCost
     }
 
-    /// Siparişteki her ürünün bıraktığı tutar, sipariş başı kesintiler hariç
-    public var perUnitBeforeOrderFees: Kurus { contribution + perOrderFees }
+    /// Siparişteki her ürünün bıraktığı tutar, sipariş başı kesintiler ve koli hariç
+    public var perUnitBeforeOrderFees: Kurus { contribution + perOrderFees + orderPackagingCost }
 
     public var marginPct: Double {
         netRevenue > 0 ? Double(contribution) / Double(netRevenue) * 100 : 0
@@ -83,7 +86,8 @@ public extension Engine {
             channelId: channelId, channelName: ch.name,
             price: fiyat, netRevenue: net,
             channelFees: k.toplam, perOrderFees: k.siparisBasi,
-            productCost: b.intrinsic, packagingCost: b.packaging
+            productCost: b.intrinsic, packagingCost: b.packaging,
+            orderPackagingCost: b.orderPackaging
         )
     }
 
@@ -122,11 +126,15 @@ public extension Engine {
     }
 
     /// Siparişte ortalama U ürün varsa o siparişin değeri ve bıraktığı tutar.
-    func siparisBasina(_ u: UnitContribution, urunAdedi adet: Double)
+    /// Kargo ve hizmet bedeli siparişte bir kez; koli 1–2 ürüne 1, 3+ ürüne 2.
+    func siparisBasina(_ u: UnitContribution, urunAdedi adet: Double, ay: MonthKey)
     -> (deger: Double, kalan: Double, ciro: Double) {
-        (Double(u.price) * adet,
-         Double(u.perUnitBeforeOrderFees) * adet - Double(u.perOrderFees),
-         Double(u.netRevenue) * adet)
+        let koli = OrderPackaging.koliPerSiparis(state, channelId: u.channelId, month: ay,
+                                                 urunAdedi: adet)
+        return (Double(u.price) * adet,
+                Double(u.perUnitBeforeOrderFees) * adet - Double(u.perOrderFees)
+                    - Double(u.orderPackagingCost) * koli,
+                Double(u.netRevenue) * adet)
     }
 
     /// Satış karışımına göre ortalama bir sipariş.
@@ -142,6 +150,7 @@ public extension Engine {
         var deger = 0.0, kalanUrun = 0.0, ciro = 0.0, adetPay = 0.0
         var kanalAdet: [Id: Double] = [:]
         var kanalSiparisKesintisi: [Id: Kurus] = [:]
+        var kanalKoliMaliyeti: [Id: Double] = [:]
         var kalemler: [UnitContribution] = []
         for a in agirliklar {
             guard let u = unitContribution(productId: a.productId,
@@ -152,6 +161,7 @@ public extension Engine {
             adetPay += a.pay
             kanalAdet[a.channelId, default: 0] += a.pay
             kanalSiparisKesintisi[a.channelId] = u.perOrderFees
+            kanalKoliMaliyeti[a.channelId, default: 0] += Double(u.orderPackagingCost) * a.pay
             kalemler.append(u)
         }
         guard adetPay > 0 else { return nil }
@@ -161,6 +171,9 @@ public extension Engine {
             let u = unitsPerOrder(channelId: kanal, month: month) ?? 1
             siparisPay += adet / u
             siparisKesintisi += adet / u * Double(kanalSiparisKesintisi[kanal] ?? 0)
+            // Kolinin ortalama maliyeti (bu kanaldaki ürünlerin payına göre) × siparişte koli sayısı
+            let koli = OrderPackaging.koliPerSiparis(state, channelId: kanal, month: month, urunAdedi: u)
+            siparisKesintisi += adet / u * koli * (kanalKoliMaliyeti[kanal] ?? 0) / adet
         }
         guard siparisPay > 0 else { return nil }
         return (deger / siparisPay, (kalanUrun - siparisKesintisi) / siparisPay,

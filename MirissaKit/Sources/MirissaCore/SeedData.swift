@@ -29,7 +29,7 @@ public enum SeedData {
 
     public static func materials() -> [StockMaterial] {
         [
-            StockMaterial(id: M.koli, name: "Kargo kolisi", category: .ambalaj, baseUnit: .adet),
+            StockMaterial(id: M.koli, name: "Kargo kolisi", category: .ambalaj, baseUnit: .adet, perOrder: true),
             StockMaterial(id: M.sampuanKutu, name: "Şampuan kutusu", category: .ambalaj, baseUnit: .adet),
             StockMaterial(id: M.serumKutu, name: "Serum kutusu", category: .ambalaj, baseUnit: .adet),
             StockMaterial(id: M.setKutu, name: "Set kutusu", category: .ambalaj, baseUnit: .adet),

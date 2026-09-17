@@ -570,7 +570,8 @@ public extension Validation {
         let toplamMaliyet = Money.roundHalfAwayFromZero(Double(maliyet.intrinsic) * draft.netQty)
             + Money.roundHalfAwayFromZero(Double(maliyet.packaging) * draft.qty)
         if toplamMaliyet > 0 {
-            lines.append("\(Money.format(toplamMaliyet)) ürün + ambalaj maliyeti")
+            lines.append("\(Money.format(toplamMaliyet)) ürün + ambalaj maliyeti"
+                         + (maliyet.orderPackaging > 0 ? " (koli hariç; koli sipariş sayısına göre düşer)" : ""))
         }
         return SaveSummary(lines: lines, note: nil)
     }
