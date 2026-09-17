@@ -5,6 +5,13 @@ import ImageIO
 import UniformTypeIdentifiers
 @testable import MirissaCore
 
+/// Ek testleri `AttachmentStore.overrideDirectory` ortak ayarını değiştirir.
+/// Tüm alt gruplar bu tek sıralı grup içinde çalışır; aksi halde iki grup aynı
+/// anda ayarı değiştirip birbirinin dosyasını kaybettirir.
+@Suite("Ek testleri", .serialized)
+enum EkTestleri {}
+
+extension EkTestleri {
 @Suite("Fatura ekleri", .serialized)
 struct AttachmentTests {
 
@@ -112,6 +119,9 @@ struct AttachmentTests {
     }
 }
 
+}
+
+extension EkTestleri {
 /// Bir deponun temizliği başka bir deponun fatura dosyasını silmemeli.
 /// (CI'da paralel çalışan testlerin birbirinin dosyasını sildiği bulundu.)
 @Suite("Ek klasörü yalıtımı", .serialized)
@@ -155,4 +165,5 @@ struct AttachmentIsolationTests {
         st.pruneAttachments()
         #expect(!FileManager.default.fileExists(atPath: yetim.path))
     }
+}
 }
