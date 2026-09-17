@@ -24,6 +24,19 @@ public struct AdTarget: Identifiable, Hashable, Sendable {
     public var beforeAds: Kurus
     /// Kullanıcının siparişte bırakmak istediği tutar (nil = henüz seçilmedi)
     public var keepPerOrder: Kurus?
+    /// Bir siparişte ortalama kaç ürün var (girilen sipariş sayılarından; yoksa 1)
+    public var unitsPerOrder: Double = 1
+    /// Sipariş başına ürün adedi gerçek veriden mi geldi
+    public var unitsPerOrderKnown: Bool = false
+    /// Maliyeti girilmemiş ürünler — hesap bunlar için gerçek değil
+    public var missingCostProducts: [String] = []
+    /// Kurulumda "bilmiyorum" denen kanal kesintileri
+    public var missingFees: [String] = []
+    /// Kanal pazaryeri mi (Trendyol gibi), kendi site mi
+    public var isMarketplace: Bool = false
+
+    /// Hesap eksik bilgiye dayanıyor mu
+    public var eksikBilgiVar: Bool { !missingCostProducts.isEmpty || !missingFees.isEmpty }
 
     public var id: String { "\(channelId)#\(productId)" }
 
@@ -35,7 +48,8 @@ public struct AdTarget: Identifiable, Hashable, Sendable {
     }
 
     /// Sipariş başına en fazla reklam harcaması. Hedef seçilmemişse başa baş sınırı.
-    public var maxCPA: Kurus { beforeAds - (keepPerOrder ?? 0) }
+    /// Bırakılacak tutar eksi olamaz: eksi bir hedef, zararı "hedef" gibi gösterirdi.
+    public var maxCPA: Kurus { beforeAds - max(keepPerOrder ?? 0, 0) }
 
     public var targetROAS: Double? {
         guard keepPerOrder != nil, maxCPA > 0 else { return nil }
@@ -73,15 +87,34 @@ public enum AdVerdict: String, Sendable, Hashable {
 
 public extension Engine {
 
-    /// Satılan her SKU + kanal için reklam hedefi. Fiyatı olmayanlar listede yok.
+    /// Satılan her SKU + kanal için reklam hedefi, sipariş başına.
+    /// Fiyatı olmayanlar listede yok. Siparişte birden çok ürün çıkıyorsa
+    /// sipariş değeri ve kalan tutar o adetle hesaplanır; kargo bir kez düşülür.
     func adTargets(keepPerOrder: Kurus?, on date: DateKey = Dates.today()) -> [AdTarget] {
-        unitContributions(on: date).map {
-            AdTarget(productId: $0.productId, productName: $0.productName,
-                     channelId: $0.channelId, channelName: $0.channelName,
-                     orderValue: $0.price, beforeAds: $0.contribution,
-                     keepPerOrder: keepPerOrder)
+        let ay = Dates.month(of: date)
+        return unitContributions(on: date).map { u in
+            let bilinen = unitsPerOrder(channelId: u.channelId, month: ay)
+            let adet = bilinen ?? 1
+            let s = siparisBasina(u, urunAdedi: adet)
+            let ch = state.channel(u.channelId)
+            return AdTarget(productId: u.productId, productName: u.productName,
+                            channelId: u.channelId, channelName: u.channelName,
+                            orderValue: Money.roundHalfAwayFromZero(s.deger),
+                            beforeAds: Money.roundHalfAwayFromZero(s.kalan),
+                            keepPerOrder: keepPerOrder,
+                            unitsPerOrder: adet, unitsPerOrderKnown: bilinen != nil,
+                            missingCostProducts: eksikMaliyetAdlari([u.productId], on: date),
+                            missingFees: ch?.rates(on: date).eksikler ?? [],
+                            isMarketplace: ch?.kind == .marketplace)
         }
         .sorted { ($0.breakevenROAS ?? .infinity) < ($1.breakevenROAS ?? .infinity) }
+    }
+
+    private func eksikMaliyetAdlari(_ urunler: [Id], on date: DateKey) -> [String] {
+        var gorulen = Set<Id>()
+        return urunler.flatMap { maliyetiEksikUrunler($0, asOf: date) }
+            .filter { gorulen.insert($0).inserted }
+            .map { productsById[$0]?.name ?? "Ürün" }
     }
 
     /// Satış karışımına göre ağırlıklı ortak hedef.
@@ -89,22 +122,24 @@ public extension Engine {
     func blendedAdTarget(month: MonthKey, keepPerOrder: Kurus?,
                          today: DateKey = Dates.today()) -> AdTarget? {
         let gun = max(today, Dates.monthStart(month))
-        let (agirliklar, _) = targetMix(month: month)
-        guard !agirliklar.isEmpty else { return nil }
-        var deger = 0.0, kalan = 0.0, pay = 0.0
-        for a in agirliklar {
-            guard let u = unitContribution(productId: a.productId,
-                                           channelId: a.channelId, on: gun) else { continue }
-            deger += Double(u.price) * a.pay
-            kalan += Double(u.contribution) * a.pay
-            pay += a.pay
+        guard let k = karisikSiparis(month: month, today: today) else { return nil }
+        let kanallar = Set(k.kalemler.map(\.channelId))
+        var eksikKesinti: [String] = []
+        for id in kanallar.sorted() {
+            guard let ch = state.channel(id) else { continue }
+            eksikKesinti += ch.rates(on: gun).eksikler.map { "\(ch.name) \($0)" }
         }
-        guard pay > 0 else { return nil }
+        let tumPazaryeri = kanallar.allSatisfy { state.channel($0)?.kind == .marketplace }
         return AdTarget(productId: "", productName: "Satış karışımı",
                         channelId: "", channelName: "Tüm kanallar",
-                        orderValue: Money.roundHalfAwayFromZero(deger / pay),
-                        beforeAds: Money.roundHalfAwayFromZero(kalan / pay),
-                        keepPerOrder: keepPerOrder)
+                        orderValue: Money.roundHalfAwayFromZero(k.deger),
+                        beforeAds: Money.roundHalfAwayFromZero(k.kalan),
+                        keepPerOrder: keepPerOrder,
+                        unitsPerOrder: k.adet,
+                        unitsPerOrderKnown: kanallar.contains { unitsPerOrder(channelId: $0, month: month) != nil },
+                        missingCostProducts: eksikMaliyetAdlari(k.kalemler.map(\.productId), on: gun),
+                        missingFees: eksikKesinti,
+                        isMarketplace: tumPazaryeri)
     }
 
     /// Ayın gerçekleşen reklam performansı

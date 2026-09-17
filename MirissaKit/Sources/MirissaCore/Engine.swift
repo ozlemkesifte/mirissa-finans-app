@@ -226,8 +226,11 @@ public final class Engine {
             r.grossSales += Vat.net(e.grossSales, rate: oran, included: dahil)
             r.discount += Vat.net(e.discount, rate: oran, included: dahil)
             r.returnsAmount += Vat.net(e.returnsAmount, rate: oran, included: dahil)
-            r.netSalesIncVat += e.netSales
-            r.outputVat += e.vatSplit.vat
+            // Kesintiler müşterinin ödediği KDV dahil tutar üzerinden alınır.
+            // Satış "KDV hariç" girilmişse KDV'si eklenir; aksi halde komisyon eksik çıkar.
+            let bolum = e.vatSplit
+            r.netSalesIncVat += bolum.net + bolum.vat
+            r.outputVat += bolum.vat
             r.units += e.qty
             r.returnedUnits += e.returnsQty
             let b = cost(of: e.productId, asOf: asOf)
@@ -269,17 +272,17 @@ public final class Engine {
         // Kullanıcının kendi eklediği kesintiler. "Bilmiyorum" işaretliler
         // hesaba katılmaz; sonuç yaklaşık olarak işaretlenir.
         var ekDegisken = 0.0
-        var ekSabit = 0.0
         for f in oranlar.extras where !f.unknown {
             switch f.basis {
             case .yuzde: ekDegisken += taban * f.value / 100
             case .siparisBasi: ekDegisken += f.value * Double(r.orders)
-            case .aylikSabit: ekSabit += f.value
+            case .aylikSabit: break   // aylikSabitKanalUcreti içinde
             case .elleAylik: break   // yalnızca elle girilen aylık tutardan gelir
             }
         }
-        let sabitToplam = Double(oranlar.platformFeeMonthly)
-            + Double(oranlar.otherDeductionMonthly) + ekSabit
+        // Aylık sabit ücret yalnızca kanal başladıktan sonraki aylarda işler.
+        // Kanala başlamadan önce girilmiş bir gider (ör. tanıtım reklamı) o aya ücret yazdırmaz.
+        let sabitToplam = Double(aylikSabitKanalUcreti(ch, month: month))
         r.otherDeduction = kesinti(
             cm?.otherDeductionActual,
             auto: taban * oranlar.otherDeductionPct / 100 + sabitToplam + ekDegisken
@@ -376,6 +379,7 @@ public final class Engine {
             out.ortakGiderDegisken += m.ortakGiderDegisken
             out.stokAlimi += m.stokAlimi
             out.nakitCikisi += m.nakitCikisi
+            out.giderKdv += m.giderKdv
             for (k, v) in m.expenseBreakdown { out.expenseBreakdown[k, default: 0] += v }
             for c in m.channels { byChannel[c.channelId, default: []].append(c) }
         }

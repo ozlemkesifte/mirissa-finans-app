@@ -147,11 +147,12 @@ public final class AppStore {
             guard let i = s.channels.firstIndex(where: { $0.id == c.id }) else { return }
             let eski = s.channels[i]
             var yeni = c
-            if !(eski.rateHistory ?? []).isEmpty, Self.oranlarDegisti(eski, c) {
-                // Tarihçeyi koru, değişikliği bugünden başlat
-                yeni.rateHistory = eski.rateHistory
+            if Self.oranlarDegisti(eski, c) {
+                // Tarihçeyi koru, değişikliği bugünden başlat. Tarihçe hiç yoksa
+                // eski oranlar başlangıç kaydı olarak saklanır; geçmiş aylar değişmez.
+                var gecmis = eski
                 let bugunku = eski.currentRates
-                yeni.setRates(ChannelRates(
+                gecmis.setRates(ChannelRates(
                     from: Dates.today(),
                     commissionPct: c.commissionPct,
                     paymentPct: c.paymentPct,
@@ -163,6 +164,14 @@ public final class AppStore {
                     extras: bugunku.extras,
                     unknownFields: bugunku.unknownFields
                 ))
+                yeni.rateHistory = gecmis.rateHistory
+                yeni.commissionPct = gecmis.commissionPct
+                yeni.paymentPct = gecmis.paymentPct
+                yeni.shippingPerOrder = gecmis.shippingPerOrder
+                yeni.serviceFeePerOrder = gecmis.serviceFeePerOrder
+                yeni.platformFeeMonthly = gecmis.platformFeeMonthly
+                yeni.otherDeductionPct = gecmis.otherDeductionPct
+                yeni.otherDeductionMonthly = gecmis.otherDeductionMonthly
             }
             s.channels[i] = yeni
         }

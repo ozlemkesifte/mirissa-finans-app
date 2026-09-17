@@ -63,19 +63,34 @@ struct ReklamHedefiBolumu: View {
         let eksik = e.missingForTarget(month: month)
             .filter { [.fiyat, .urunMaliyeti, .kanalKesintisi].contains($0.kind) }
 
+        let maliyetsiz = Array(Set(liste.flatMap(\.missingCostProducts) + (karisik?.missingCostProducts ?? []))).sorted()
+        let kesintisiz = Array(Set(liste.flatMap { t in t.missingFees.map { "\(t.channelName) \($0)" } })).sorted()
+
         VStack(alignment: .leading, spacing: 14) {
-            if !eksik.isEmpty {
-                uyari("Bazı fiyat, maliyet ya da kesinti bilgileri eksik. Eksik kalemler hesaba giremediği için "
-                      + "aşağıdaki hedefler olduğundan kolay görünebilir. Önce eksikleri tamamlaman iyi olur.",
+            if !maliyetsiz.isEmpty {
+                uyari("Maliyeti girilmemiş: \(maliyetsiz.joined(separator: ", ")). Bu ürünlerin reklam hedefi "
+                      + "hesaplanamaz; maliyet sıfır sayılsaydı hedef olduğundan kolay görünürdü. Önce maliyeti gir.",
+                      renk: Palette.zarar, zemin: Palette.zararYumusak)
+            }
+            if !kesintisiz.isEmpty {
+                uyari("Bilinmeyen kesinti: \(kesintisiz.joined(separator: ", ")). Bu kanalların hedefi yaklaşıktır; "
+                      + "gerçek kesinti eklenince hedef zorlaşabilir.",
+                      renk: Palette.uyari, zemin: Palette.uyariYumusak)
+            } else if !eksik.isEmpty, maliyetsiz.isEmpty {
+                uyari("Bazı fiyat bilgileri eksik. Fiyatı olmayan ürünler ortak hedefe katılmadı.",
                       renk: Palette.uyari, zemin: Palette.uyariYumusak)
             }
 
             birakSorusu
 
             if let k = karisik ?? (liste.count == 1 ? liste.first : nil) {
-                anaHedef(k, tek: karisik == nil)
-                butceBolumu(e, hedef: k)
-                gerceklesen(e, hedef: k)
+                if k.missingCostProducts.isEmpty {
+                    anaHedef(k, tek: karisik == nil)
+                    butceBolumu(e, hedef: k)
+                    gerceklesen(e, hedef: k)
+                } else {
+                    cumle("Ortak hedef, maliyeti girilmemiş ürünler yüzünden şu an hesaplanamıyor.")
+                }
             } else {
                 Text("Hangi üründen ne kadar sattığın belli olmadığı için tek bir ortak hedef çıkaramıyorum. "
                      + "Aşağıda her ürünün kendi hedefi var.")
@@ -86,8 +101,9 @@ struct ReklamHedefiBolumu: View {
 
             urunBazinda(liste)
 
-            Text("Nasıl hesaplandı: Sipariş değeri müşterinin ödediği KDV dahil fiyattır (Meta böyle raporlar). "
-                 + "Bundan KDV, komisyon, kargo, ürün ve ambalaj maliyeti düşülünce reklama kalan tutar bulunur. "
+            Text("Nasıl hesaplandı: Sipariş değeri müşterinin ödediği KDV dahil tutardır (reklam panelleri böyle raporlar). "
+                 + "Siparişte birden çok ürün varsa hepsi sayılır; kargo ve hizmet bedeli siparişte bir kez düşülür. "
+                 + "Bundan KDV, komisyon, kargo, hizmet bedeli, ürün ve ambalaj maliyeti düşülünce reklama kalan tutar bulunur. "
                  + "ROAS = sipariş değeri ÷ bir siparişe harcanan reklam. Reklam harcaması KDV hariç alınır. "
                  + "Sabit giderler (kira, maaş) burada yok; onlar yukarıdaki kargo hedefinde.")
                 .font(.caption2)
@@ -153,20 +169,21 @@ struct ReklamHedefiBolumu: View {
                       + "Önce fiyatı ya da maliyetleri düzeltmek gerekir.",
                       renk: Palette.zarar, zemin: Palette.zararYumusak)
             } else if let bb = k.breakevenROAS {
-                cumle("Bir sipariş ortalama \(Money.format(k.orderValue)). Kesintiler ve maliyetler düşünce "
-                      + "reklama \(Money.format(k.beforeAds)) kalıyor.")
+                cumle("Bir sipariş ortalama \(Money.format(k.orderValue)) (KDV dahil). Kesintiler, KDV ve maliyetler "
+                      + "düşünce reklama \(Money.format(k.beforeAds)) kalıyor.")
+                cumle(adetCumlesi(k))
 
                 buyukSatir("Zarar sınırı", "ROAS \(RoasFormat.format(bb))", renk: Palette.zarar)
-                cumle("Meta'da ROAS \(RoasFormat.format(bb))'in altına düşerse reklamla gelen her satış zarar ettirir. "
-                      + "Bir siparişe \(Money.format(k.beforeAds))'den fazla reklam harcanırsa zarar başlar.")
+                cumle("\(panel(k, tek: tek)) ROAS \(RoasFormat.format(bb)) altına düşerse reklamla gelen her satış zarar ettirir. "
+                      + "Bir siparişe \(Money.format(k.beforeAds)) üstünde reklam harcanırsa zarar başlar.")
 
                 if let birak, birak > 0 {
                     if let hedef = k.targetROAS {
                         buyukSatir("Hedef", "ROAS \(RoasFormat.format(hedef))", renk: Palette.kar)
                         buyukSatir("Sipariş başı en fazla", Money.format(k.maxCPA), renk: Palette.kar)
-                        cumle("Her siparişte \(Money.format(birak)) kalması için Meta'da ROAS en az "
-                              + "\(RoasFormat.format(hedef)) olmalı. Başka bir deyişle Meta'daki "
-                              + "\"satın alma başına maliyet\" \(Money.format(k.maxCPA))'yi geçmemeli.")
+                        cumle("Her siparişte \(Money.format(birak)) kalması için \(panel(k, tek: tek)) ROAS en az "
+                              + "\(RoasFormat.format(hedef)) olmalı. Başka bir deyişle sipariş (satın alma) başına "
+                              + "reklam maliyeti \(Money.format(k.maxCPA)) tutarını geçmemeli.")
                     } else {
                         uyari("Seçtiğin \(Money.format(birak)) bu siparişlerde kalamaz: reklamdan önce "
                               + "zaten \(Money.format(k.beforeAds)) kalıyor. Daha düşük bir tutar seç "
@@ -264,9 +281,10 @@ struct ReklamHedefiBolumu: View {
                 if let cpa = p.cpa {
                     cumle("Sipariş başına ortalama \(Money.format(cpa)) reklam düştü (tüm siparişler dahil).")
                 }
-                Text("Bu oran tüm satışlara bakar; Meta'nın kendi gösterdiği ROAS genelde daha yüksektir çünkü "
-                     + "reklamsız gelecek satışları da kendine yazar. Kararı bu orana göre vermek daha güvenli. "
-                     + "Trendyol satışları da dahil olduğu için Meta'da gördüğünle birebir aynı olmaz.")
+                Text("Bu oran tüm satışlara ve tüm reklam giderlerine bakar. Reklam panellerinin kendi gösterdiği ROAS "
+                     + "genelde daha yüksektir çünkü reklamsız gelecek satışları da kendine yazar. Kararı bu orana göre "
+                     + "vermek daha güvenli."
+                     + (pazaryeriSatisiVar(e) ? " Pazaryeri satışları da dahil olduğu için panelde gördüğünle birebir aynı olmaz." : ""))
                     .font(.caption2)
                     .foregroundStyle(Palette.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
@@ -300,10 +318,15 @@ struct ReklamHedefiBolumu: View {
     }
 
     private func satirMetni(_ t: AdTarget) -> String {
+        if !t.missingCostProducts.isEmpty {
+            return "Maliyeti girilmediği için hesaplanamıyor: \(t.missingCostProducts.joined(separator: ", "))"
+        }
         guard let bb = t.breakevenROAS else {
             return "Reklamsız bile siparişte \(Money.format(-t.beforeAds)) zarar. Reklam verme."
         }
-        var s = "Zarar sınırı ROAS \(RoasFormat.format(bb))"
+        var s = "Sipariş \(Money.format(t.orderValue))"
+        if t.unitsPerOrder > 1.001 { s += " (ort. \(adetMetni(t.unitsPerOrder)) ürün)" }
+        s += " · zarar sınırı ROAS \(RoasFormat.format(bb))"
         if let h = t.targetROAS, let birak, birak > 0 {
             s += " · hedef ROAS \(RoasFormat.format(h)) · siparişe en fazla \(Money.format(t.maxCPA)) reklam"
         } else if t.hedefiKaldirmiyor {
@@ -315,6 +338,36 @@ struct ReklamHedefiBolumu: View {
     }
 
     // MARK: Parçalar
+
+    /// Hangi reklam panelinden söz edildiği: pazaryeri kendi panelidir, Meta değil.
+    private func panel(_ k: AdTarget, tek: Bool) -> String {
+        if tek { return k.isMarketplace ? "\(k.channelName) reklamlarında" : "Meta / Google reklamlarında" }
+        return k.isMarketplace ? "Pazaryeri reklamlarında" : "Reklam panelinde (Meta vb.)"
+    }
+
+    private func adetMetni(_ v: Double) -> String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "tr_TR")
+        f.decimalSeparator = ","
+        f.maximumFractionDigits = 1
+        f.minimumFractionDigits = 0
+        return f.string(from: NSNumber(value: v)) ?? "1"
+    }
+
+    private func adetCumlesi(_ k: AdTarget) -> String {
+        if k.unitsPerOrderKnown {
+            return "Girdiğin sipariş sayılarına göre bir siparişte ortalama \(adetMetni(k.unitsPerOrder)) ürün var; "
+                + "hesap buna göre yapıldı."
+        }
+        return "Sipariş sayısı girilmediği için her siparişte 1 ürün olduğu kabul edildi. "
+            + "Satış girerken sipariş sayısını da yazarsan hesap gerçek sepete göre yapılır."
+    }
+
+    private func pazaryeriSatisiVar(_ e: Engine) -> Bool {
+        e.companyMonth(month).channels.contains { c in
+            c.netSales > 0 && store.state.channel(c.channelId)?.kind == .marketplace
+        }
+    }
 
     private func cumle(_ s: String) -> some View {
         Text(s)

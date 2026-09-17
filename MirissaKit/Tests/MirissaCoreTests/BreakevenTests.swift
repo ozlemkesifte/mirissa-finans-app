@@ -199,9 +199,12 @@ struct BreakevenTests {
         let p = Engine(s).plan(month: "2026-09", today: "2026-09-03")
         #expect(p.basis == .beklenenDagilim)
         #expect(p.isApproximate)
-        // 700 − 140 komisyon − 60 kargo − 100 ürün = 400 TL
-        #expect(approx(p.contributionPerOrder, Double(tl(400))))
-        #expect(p.targets.first { $0.isBreakeven }?.orders == 125)
+        // Ortalama sepet müşterinin ödediği tutardır (KDV dahil):
+        // 700 ÷ 1,20 = 583,33 net − 140 komisyon (%20 × 700) − 60 kargo − 100 ürün = 283,33 TL
+        // (Önceki sürüm KDV'yi düşmüyor ve 400 TL diyordu — yanlıştı.)
+        #expect(abs(p.contributionPerOrder - 28_333) <= 1)
+        // 50.000 ÷ 283,33 = 176,5 → 177 kargo
+        #expect(p.targets.first { $0.isBreakeven }?.orders == 177)
     }
 
     /// Gerçek geçmiş veri, beklenen profilden önce gelir

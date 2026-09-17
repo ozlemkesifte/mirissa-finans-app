@@ -416,7 +416,7 @@ public extension Engine {
                 basis: .beklenenDagilim,
                 contributionPerOrder: p.katki,
                 revenuePerOrder: p.ciro,
-                unitsPerOrder: 1,
+                unitsPerOrder: p.adet,
                 urunMaliyetiEksik: false
             )
         }
@@ -467,15 +467,16 @@ public extension Engine {
               state.product(mix.productId) != nil,
               mix.averageOrderValue > 0 else { return nil }
 
-        let net = Double(mix.averageOrderValue)
+        // Ortalama sepet müşterinin ödediği tutardır: KDV dahil.
+        let gun = Dates.today()
+        let fiyat = mix.averageOrderValue
+        let oran = state.settings.vatEnabled ? state.settings.defaultVatRate : .yok
+        let net = Double(Vat.net(fiyat, rate: oran, included: true))
+        let kesinti = Double(siparisKesintisi(ch, siparisDegeri: fiyat, on: gun).toplam)
         let b = cost(of: mix.productId)
-        let komisyon = net * (ch.commissionPct + ch.paymentPct) / 100
-        let digerOran = net * ch.otherDeductionPct / 100
         let urun = Double(b.intrinsic) * mix.unitsPerOrder
         let ambalaj = Double(b.packaging) * mix.unitsPerOrder
-        let katki = net - komisyon - digerOran
-            - Double(ch.shippingPerOrder) - Double(ch.serviceFeePerOrder)
-            - urun - ambalaj
+        let katki = net - kesinti - urun - ambalaj
 
         return TargetBasisResult(
             basis: .beklenenDagilim,
@@ -502,14 +503,17 @@ public extension Engine {
         // bırakmamışsa gerçekleşen hesapta yoktur ama hedefte olmalıdır).
         // Tarihçedeki güncel oran ve aylık sabit ek kesintiler de dahil.
         for ch in state.activeChannels {
-            let sonuc = r.channels.first { $0.channelId == ch.id }
-            let alindi = (sonuc?.fixedDeduction ?? 0) > 0
-            guard !alindi else { continue }
+            // Ücret bu ay işliyorsa ay sonucunda zaten var (elle 0 girildiyse de
+            // gerçek tutar odur; geri eklenmez).
+            guard aylikSabitKanalUcreti(ch, month: month) == 0 else { continue }
+            // Kanal daha sonraki bir ayda başladıysa bu ay ücreti yoktur.
+            guard kanalBaslangicAyi(ch) == nil else { continue }
+            // Hiç iz bırakmamış kanal: planlanan ücret, gerçekleşen hesaptaki gibi KDV'siz.
             let o = ch.rates(on: Dates.monthEnd(month))
             let ek = o.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
                 .reduce(0.0) { $0 + $1.value }
-            toplam += o.platformFeeMonthly + o.otherDeductionMonthly
-                + Money.roundHalfAwayFromZero(ek)
+            let ham = o.platformFeeMonthly + o.otherDeductionMonthly + Money.roundHalfAwayFromZero(ek)
+            toplam += Vat.net(ham, rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat)
         }
         return toplam
     }

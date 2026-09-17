@@ -64,7 +64,12 @@ struct ReferenceCalculatorTests {
             b.netSatis += net(sat.grossSales, sat.vatRate, sat.vatIncluded)
                 - net(sat.discount, sat.vatRate, sat.vatIncluded)
                 - net(sat.returnsAmount, sat.vatRate, sat.vatIncluded)
-            kdvDahilNet += sat.grossSales - sat.discount - sat.returnsAmount
+            // Kesinti tabanı müşterinin ödediği tutardır: KDV hariç girilmişse KDV eklenir
+            let girilen = sat.grossSales - sat.discount - sat.returnsAmount
+            let oranYuzde = Double((sat.vatRate ?? .yok).rawValue)
+            kdvDahilNet += (sat.vatIncluded ?? true) || oranYuzde == 0
+                ? girilen
+                : girilen + yuvarla(Double(girilen) * oranYuzde / 100)
             adet += sat.qty
             iadeAdet += sat.returnsQty
             let m = e.cost(of: sat.productId, asOf: gun)
@@ -91,10 +96,17 @@ struct ReferenceCalculatorTests {
             case .elleAylik: break
             }
         }
+        // Aylık sabit ücret kanal başladığı aydan itibaren işler:
+        // ilk satış ayı ya da 1970 sonrası tarihli ilk oran kaydının ayı.
+        let ilkSatis = s.sales.filter { $0.channelId == kanalId }.map(\.month).min()
+        let ilkKayit = (ch.rateHistory ?? []).map(\.from).filter { $0 > "1970-01-01" }.min()
+            .map { String($0.prefix(7)) }
+        let baslangic = [ilkSatis, ilkKayit].compactMap { $0 }.min()
+        let sabit = (baslangic.map { ay >= $0 } ?? false)
+            ? Double(o.platformFeeMonthly) + Double(o.otherDeductionMonthly) + ekSabit
+            : 0
         b.diger = kesinti(cm?.otherDeductionActual,
-                          taban * o.otherDeductionPct / 100
-                          + Double(o.platformFeeMonthly) + Double(o.otherDeductionMonthly)
-                          + ekSabit + ekDegisken)
+                          taban * o.otherDeductionPct / 100 + sabit + ekDegisken)
 
         // Kanala ait giderler (KDV hariç)
         for g in s.expenses where g.scope.channelId == kanalId {

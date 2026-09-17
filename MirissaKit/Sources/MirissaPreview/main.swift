@@ -208,6 +208,12 @@ func run() {
         if render(s.view, to: url, size: size) { ok += 1; print("✓ \(s.title) → \(url.lastPathComponent)") }
         else { print("✗ \(s.title)") }
     }
+    // Ana sekmelerin tamamı: kaydırmadan bütün içerik tek görüntüde
+    let tamBoy = CGSize(width: 393, height: 4200)
+    for s in PreviewGallery.screens(store: AppStore.inMemory(demoState()), period: period).prefix(5) {
+        let url = outDir.appendingPathComponent("tam-\(s.name).png")
+        if render(s.view, to: url, size: tamBoy) { ok += 1; print("✓ \(s.title) (tam) → \(url.lastPathComponent)") }
+    }
     // Ekim: satış girilmemiş -> aylık hedef modu
     let hedefStore = AppStore.inMemory(demoState())
     if let ekran = PreviewGallery.screens(store: hedefStore, period: Period(month: "2026-10")).first {

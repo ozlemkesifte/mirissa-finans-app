@@ -11,17 +11,23 @@ public struct UnitContribution: Identifiable, Hashable, Sendable {
     public var price: Kurus
     /// KDV hariç satış geliri
     public var netRevenue: Kurus
-    /// Komisyon + kargo + hizmet + diğer kesintiler (KDV hariç)
+    /// Komisyon + kargo + hizmet + diğer kesintiler (KDV hariç), tek ürünlük bir sipariş için
     public var channelFees: Kurus
+    /// `channelFees` içindeki sipariş başına sabit kısım (kargo, hizmet bedeli, sipariş başı ek kesinti).
+    /// Siparişte kaç ürün olursa olsun bir kez kesilir.
+    public var perOrderFees: Kurus = 0
     public var productCost: Kurus
     public var packagingCost: Kurus
 
     public var id: String { "\(channelId)#\(productId)" }
 
-    /// Bir satışın şirkete bıraktığı tutar
+    /// Tek ürünlük bir siparişin şirkete bıraktığı tutar
     public var contribution: Kurus {
         netRevenue - channelFees - productCost - packagingCost
     }
+
+    /// Siparişteki her ürünün bıraktığı tutar, sipariş başı kesintiler hariç
+    public var perUnitBeforeOrderFees: Kurus { contribution + perOrderFees }
 
     public var marginPct: Double {
         netRevenue > 0 ? Double(contribution) / Double(netRevenue) * 100 : 0
@@ -70,29 +76,95 @@ public extension Engine {
         let oran = state.settings.vatEnabled ? state.settings.defaultVatRate : .yok
         let net = Vat.net(fiyat, rate: oran, included: true)
 
-        // Kesintiler KDV dahil tutar üzerinden hesaplanır, gidere net kısmı girer.
-        let r = ch.rates(on: date)
-        var kesintiHam = Double(fiyat) * (r.commissionPct + r.paymentPct + r.otherDeductionPct) / 100
-        kesintiHam += Double(r.shippingPerOrder) + Double(r.serviceFeePerOrder)
-        for f in r.extras where !f.unknown {
-            switch f.basis {
-            case .yuzde: kesintiHam += Double(fiyat) * f.value / 100
-            case .siparisBasi: kesintiHam += f.value
-            case .aylikSabit, .elleAylik: break   // sipariş başına değil
-            }
-        }
-        let kesintiNet = Vat.net(Money.roundHalfAwayFromZero(kesintiHam),
-                                 rate: ch.resolvedFeeVatRate,
-                                 included: ch.resolvedFeesIncludeVat)
-
+        let k = siparisKesintisi(ch, siparisDegeri: fiyat, on: date)
         let b = cost(of: productId, asOf: date)
         return UnitContribution(
             productId: productId, productName: p.name,
             channelId: channelId, channelName: ch.name,
             price: fiyat, netRevenue: net,
-            channelFees: kesintiNet,
+            channelFees: k.toplam, perOrderFees: k.siparisBasi,
             productCost: b.intrinsic, packagingCost: b.packaging
         )
+    }
+
+    /// Bir siparişin kanal kesintileri (KDV hariç).
+    /// Yüzdeler KDV dahil sipariş değeri üzerinden, kargo ve hizmet bedeli sipariş başına bir kez.
+    func siparisKesintisi(_ ch: Channel, siparisDegeri: Kurus,
+                          on date: DateKey) -> (toplam: Kurus, siparisBasi: Kurus) {
+        let r = ch.rates(on: date)
+        var yuzde = Double(siparisDegeri) * (r.commissionPct + r.paymentPct + r.otherDeductionPct) / 100
+        var sabit = Double(r.shippingPerOrder) + Double(r.serviceFeePerOrder)
+        for f in r.extras where !f.unknown {
+            switch f.basis {
+            case .yuzde: yuzde += Double(siparisDegeri) * f.value / 100
+            case .siparisBasi: sabit += f.value
+            case .aylikSabit, .elleAylik: break   // sipariş başına değil
+            }
+        }
+        func net(_ v: Double) -> Kurus {
+            Vat.net(Money.roundHalfAwayFromZero(v), rate: ch.resolvedFeeVatRate,
+                    included: ch.resolvedFeesIncludeVat)
+        }
+        return (net(yuzde + sabit), net(sabit))
+    }
+
+    /// Bu kanalda bir siparişte ortalama kaç ürün çıkıyor.
+    /// Yalnızca sipariş sayısı gerçekten girilmiş aylardan hesaplanır; yoksa `nil`
+    /// (adetten tahmin edilen sipariş sayısı zaten "1 sipariş = 1 ürün" demektir).
+    func unitsPerOrder(channelId: Id, month: MonthKey) -> Double? {
+        let aylar = (1...12).map { Dates.addMonths(month, -$0) } + [month]
+        for ay in aylar {
+            guard let c = companyMonth(ay).channels.first(where: { $0.channelId == channelId }),
+                  !c.ordersIsEstimate, c.orders > 0, c.units > 0 else { continue }
+            return max(c.units / Double(c.orders), 1)
+        }
+        return nil
+    }
+
+    /// Siparişte ortalama U ürün varsa o siparişin değeri ve bıraktığı tutar.
+    func siparisBasina(_ u: UnitContribution, urunAdedi adet: Double)
+    -> (deger: Double, kalan: Double, ciro: Double) {
+        (Double(u.price) * adet,
+         Double(u.perUnitBeforeOrderFees) * adet - Double(u.perOrderFees),
+         Double(u.netRevenue) * adet)
+    }
+
+    /// Satış karışımına göre ortalama bir sipariş.
+    /// Ağırlıklar ürün adedi payıdır; her kanalın sipariş başına ürün adedi ve
+    /// sipariş başı kesintisi ayrı hesaba katılır.
+    func karisikSiparis(month: MonthKey, today: DateKey = Dates.today())
+    -> (deger: Double, kalan: Double, ciro: Double, adet: Double, gecmisten: Bool,
+        kalemler: [UnitContribution])? {
+        let gun = max(today, Dates.monthStart(month))
+        let (agirliklar, gecmisten) = targetMix(month: month)
+        guard !agirliklar.isEmpty else { return nil }
+
+        var deger = 0.0, kalanUrun = 0.0, ciro = 0.0, adetPay = 0.0
+        var kanalAdet: [Id: Double] = [:]
+        var kanalSiparisKesintisi: [Id: Kurus] = [:]
+        var kalemler: [UnitContribution] = []
+        for a in agirliklar {
+            guard let u = unitContribution(productId: a.productId,
+                                           channelId: a.channelId, on: gun) else { continue }
+            deger += Double(u.price) * a.pay
+            kalanUrun += Double(u.perUnitBeforeOrderFees) * a.pay
+            ciro += Double(u.netRevenue) * a.pay
+            adetPay += a.pay
+            kanalAdet[a.channelId, default: 0] += a.pay
+            kanalSiparisKesintisi[a.channelId] = u.perOrderFees
+            kalemler.append(u)
+        }
+        guard adetPay > 0 else { return nil }
+        // Karışımdaki adet payının kaç siparişe denk geldiği
+        var siparisPay = 0.0, siparisKesintisi = 0.0
+        for (kanal, adet) in kanalAdet {
+            let u = unitsPerOrder(channelId: kanal, month: month) ?? 1
+            siparisPay += adet / u
+            siparisKesintisi += adet / u * Double(kanalSiparisKesintisi[kanal] ?? 0)
+        }
+        guard siparisPay > 0 else { return nil }
+        return (deger / siparisPay, (kalanUrun - siparisKesintisi) / siparisPay,
+                ciro / siparisPay, adetPay / siparisPay, gecmisten, kalemler)
     }
 
     /// Fiyatı tanımlı bütün SKU + kanal ikilileri
@@ -114,17 +186,32 @@ public extension Engine {
     /// Geçmiş ay varsa gerçek dağılım, yoksa kullanıcının onayladığı yaklaşık dağılım.
     func targetMix(month: MonthKey) -> (agirliklar: [(channelId: Id, productId: Id, pay: Double)],
                                         gecmisten: Bool) {
-        /// Adet girilmişse adede, girilmemişse satış tutarına göre ağırlık.
-        /// Eski kayıtlarda adet boş bırakılmış olabilir; dağılım yine de bulunur.
-        func agirlik(_ e: SalesEntry) -> Double {
-            e.netQty > 0 ? e.netQty : Double(max(e.netSales, 0))
-        }
+        /// Ağırlık ürün adedidir. Eski kayıtlarda adet boş bırakılmış olabilir:
+        /// o satırın adedi tutar ÷ o ayki fiyattan tahmin edilir. Fiyat da yoksa
+        /// o ayın bütün satırları tutara göre tartılır — adet ile kuruş asla toplanmaz.
         func dagilim(_ ay: MonthKey) -> [(channelId: Id, productId: Id, pay: Double)]? {
-            let satislar = state.sales.filter { $0.month == ay && agirlik($0) > 0 }
-            let toplam = satislar.reduce(0.0) { $0 + agirlik($1) }
+            let satislar = state.sales.filter { $0.month == ay && ($0.netQty > 0 || $0.netSales > 0) }
+            guard !satislar.isEmpty else { return nil }
+            let gun = Dates.monthEnd(ay)
+            func kdvDahil(_ e: SalesEntry) -> Double {
+                let b = e.vatSplit
+                return Double(max(b.net + b.vat, 0))
+            }
+            var adetler: [Double]? = []
+            for e in satislar {
+                if e.netQty > 0 { adetler?.append(e.netQty); continue }
+                if let f = productsById[e.productId]?.price(for: e.channelId, on: gun), f > 0 {
+                    adetler?.append(kdvDahil(e) / Double(f))
+                } else {
+                    adetler = nil
+                    break
+                }
+            }
+            let agirliklar = adetler ?? satislar.map(kdvDahil)
+            let toplam = agirliklar.reduce(0, +)
             guard toplam > 0 else { return nil }
-            return satislar.map {
-                (channelId: $0.channelId, productId: $0.productId, pay: agirlik($0) / toplam)
+            return zip(satislar, agirliklar).compactMap { e, w in
+                w > 0 ? (channelId: e.channelId, productId: e.productId, pay: w / toplam) : nil
             }
         }
 
@@ -247,7 +334,7 @@ public extension Engine {
 
     /// Maliyeti girilmemiş ürünler. Set verilirse bileşenlerine iner:
     /// setin maliyeti bileşenlerden hesaplandığı için "set maliyeti" sorulmaz.
-    private func maliyetiEksikUrunler(_ productId: Id, asOf: DateKey) -> [Id] {
+    func maliyetiEksikUrunler(_ productId: Id, asOf: DateKey) -> [Id] {
         guard let p = productsById[productId] else { return [] }
         if p.isBundle {
             let bilesenler = p.components.flatMap { maliyetiEksikUrunler($0.productId, asOf: asOf) }
@@ -266,23 +353,9 @@ public extension Engine {
     /// Ağırlıklar dağılımdan gelir; fiyatı olmayan ikililer hesaba katılmaz.
     func plannedContributionPerOrder(month: MonthKey,
                                      today: DateKey = Dates.today())
-    -> (katki: Double, ciro: Double, gecmisten: Bool)? {
-        let gun = max(today, Dates.monthStart(month))
-        let (agirliklar, gecmisten) = targetMix(month: month)
-        guard !agirliklar.isEmpty else { return nil }
-
-        var toplamKatki = 0.0
-        var toplamCiro = 0.0
-        var toplamPay = 0.0
-        for a in agirliklar {
-            guard let u = unitContribution(productId: a.productId,
-                                           channelId: a.channelId, on: gun) else { continue }
-            toplamKatki += Double(u.contribution) * a.pay
-            toplamCiro += Double(u.netRevenue) * a.pay
-            toplamPay += a.pay
-        }
-        guard toplamPay > 0 else { return nil }
+    -> (katki: Double, ciro: Double, adet: Double, gecmisten: Bool)? {
         // Fiyatı olmayan ikililer düşülünce kalan paylar yeniden ölçeklenir
-        return (toplamKatki / toplamPay, toplamCiro / toplamPay, gecmisten)
+        guard let k = karisikSiparis(month: month, today: today) else { return nil }
+        return (k.kalan, k.ciro, k.adet, k.gecmisten)
     }
 }
