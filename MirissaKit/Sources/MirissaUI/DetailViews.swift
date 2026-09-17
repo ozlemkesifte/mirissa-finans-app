@@ -81,13 +81,25 @@ struct ProductDetail: View {
                     ForEach(p.costLines(on: nil)) { line in
                         LabeledRow(line.label.isEmpty ? "Kalem" : line.label, line.amount.tl)
                     }
+                    if c.ownFromPurchases {
+                        LabeledRow("Ürün (alımların ortalaması)", c.ownLines.tl)
+                        Text("Maliyet girilmediği için stok alımlarında ödediğin tutarların ortalaması kullanılıyor.")
+                            .font(.caption2).foregroundStyle(Palette.inkFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if p.isBundle, c.components != 0 {
                         LabeledRow("İçindeki ürünler", c.components.tl)
                     }
                     if c.packaging != 0 {
-                        LabeledRow("Paketleme malzemeleri", c.packaging.tl)
+                        LabeledRow("Paketleme malzemeleri (her satışta)", c.packaging.tl)
+                    } else if p.recipe.isEmpty {
+                        Text("Ambalaj reçetesi yok: koli, patpat, dolgu gibi malzemeler bu ürünün maliyetine eklenmiyor.")
+                            .font(.caption).foregroundStyle(Palette.uyari)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if p.costLines(on: nil).isEmpty && c.components == 0 && c.packaging == 0 {
+                    if p.costLines(on: nil).isEmpty && !c.ownFromPurchases && c.components == 0 && c.packaging == 0 {
                         Text("Henüz maliyet kalemi girilmedi.")
                             .font(.footnote).foregroundStyle(Palette.inkFaint)
                             .frame(maxWidth: .infinity, alignment: .leading)

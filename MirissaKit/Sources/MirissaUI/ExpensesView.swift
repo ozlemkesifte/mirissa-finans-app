@@ -72,6 +72,7 @@ struct ExpensesView: View {
                                 category: cat,
                                 total: total,
                                 items: instances.filter { $0.category == cat && !$0.capitalized },
+                                stoktan: store.engine.stoktanGider(from: period.from, to: period.to, category: cat),
                                 onTap: { sheet = .editExpense($0.templateId ?? $0.id, $0.month) }
                             )
                         }
@@ -137,6 +138,8 @@ private struct CategoryCard: View {
     var category: ExpenseCategory
     var total: Kurus
     var items: [ExpenseInstance]
+    /// Stok düzeltme ve sayımlarından gelen tutar (kırık, fire, numune, sayım farkı)
+    var stoktan: Kurus = 0
     var onTap: (ExpenseInstance) -> Void
 
     /// Kategorinin, elle girilmiş satırlarla açıklanamayan kısmı
@@ -144,7 +147,7 @@ private struct CategoryCard: View {
     /// Kategori toplamı KDV hariç olduğu için satırlar da KDV hariç sayılır —
     /// aksi halde satırların toplamı başlıktaki rakamı tutmazdı.
     private var otomatik: Kurus {
-        max(total - items.reduce(0) { $0 + $1.expenseAmount }, 0)
+        max(total - stoktan - items.reduce(0) { $0 + $1.expenseAmount }, 0)
     }
 
     var body: some View {
@@ -168,7 +171,12 @@ private struct CategoryCard: View {
                         .minimumScaleFactor(0.7)
                 }
             } content: {
-                if items.isEmpty {
+                if items.isEmpty, stoktan != 0 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Divider().overlay(Palette.separator)
+                        stoktanSatiri
+                    }
+                } else if items.isEmpty {
                     Text("Bu kalem satışlardan otomatik hesaplanıyor.")
                         .font(.caption)
                         .foregroundStyle(Palette.inkFaint)
@@ -179,6 +187,7 @@ private struct CategoryCard: View {
                         if otomatik > 0 {
                             LabeledRow("Satışlardan hesaplanan", otomatik.tl, tone: Palette.inkSoft)
                         }
+                        if stoktan != 0 { stoktanSatiri }
                         ForEach(items) { i in
                             Button { onTap(i) } label: {
                                 HStack(spacing: 8) {
@@ -222,6 +231,22 @@ private struct CategoryCard: View {
                     }
                 }
             }
+        }
+    }
+}
+
+private extension CategoryCard {
+    var stoktanSatiri: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            LabeledRow(category == .influencer ? "Stoktan verilen ürün (numune, PR)" : "Stoktan çıkan mal",
+                       stoktan.tl, tone: Palette.inkSoft)
+            Text(category == .influencer
+                 ? "Stok düzeltmesinde numune, influencer ya da PR seçilen ürün ve malzemelerin maliyeti."
+                 : "Kırık, hasarlı, fire, kayıp düzeltmeleri ve sayım farklarının maliyeti. Sayımda fazla çıkan mal bu tutarı azaltır.")
+                .font(.caption2)
+                .foregroundStyle(Palette.inkFaint)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

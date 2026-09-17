@@ -26,6 +26,46 @@ public final class Engine {
         return out
     }()
 
+    /// Ay → kategori → satış dışında stoktan çıkan malın maliyeti (KDV hariç).
+    ///
+    /// Alınan mal alım anında gider yazılmaz, stoğa girer; satıldıkça ürün ve
+    /// ambalaj maliyeti olarak kâra düşer. Kırılan, kaybolan, numune verilen ya da
+    /// sayımda eksik çıkan malın maliyeti de kâra düşmeli — yoksa bu para hiçbir
+    /// yerde gider olarak görünmez ve kâr olduğundan yüksek çıkar.
+    ///  - Numune, influencer, PR → "Influencer" (pazarlama gideri)
+    ///  - Kırık, hasarlı, fire, kayıp, iç kullanım, sayım farkı, diğer → "Fire, kayıp ve sayım farkı"
+    ///  - Sayımda fazla çıkan mal bu gideri azaltır.
+    ///  - Stok eksideyken yapılan sayım gider/gelir yazmaz: eksi stok kaydı eksik
+    ///    bir alım ya da açılış stoğu demektir, gerçek bir kazanç değildir.
+    private(set) lazy var stoktanGiderler: [MonthKey: [ExpenseCategory: Kurus]] = {
+        var sonDeger: [Id: Kurus] = [:]
+        var sonMiktar: [Id: BaseQty] = [:]
+        var out: [MonthKey: [ExpenseCategory: Kurus]] = [:]
+        for r in ledger.rows {
+            let key = r.item.id
+            let oncekiDeger = sonDeger[key] ?? 0
+            let oncekiMiktar = sonMiktar[key] ?? 0
+            sonDeger[key] = r.valueAfter
+            sonMiktar[key] = r.balanceAfter
+            guard r.kind == .duzeltme || r.kind == .sayim else { continue }
+            if r.kind == .sayim, oncekiMiktar < 0 { continue }
+            let tutar = oncekiDeger - r.valueAfter
+            guard tutar != 0 else { continue }
+            let kategori: ExpenseCategory
+            switch r.movement.reason {
+            case .numune, .influencer, .pr: kategori = .influencer
+            default: kategori = .stokKaybi
+            }
+            out[Dates.month(of: r.date), default: [:]][kategori, default: 0] += tutar
+        }
+        return out
+    }()
+
+    /// Dönemde satış dışında stoktan çıkan malın bir kategoriye düşen maliyeti
+    public func stoktanGider(from: MonthKey, to: MonthKey, category: ExpenseCategory) -> Kurus {
+        Dates.monthRange(from: from, to: to).reduce(0) { $0 + (stoktanGiderler[$1]?[category] ?? 0) }
+    }
+
     private var costCache: [String: CostBreakdown] = [:]
     private var companyCache: [MonthKey: CompanyMonthResult] = [:]
     private var expenseCache: [MonthKey: [ExpenseInstance]] = [:]
@@ -79,9 +119,15 @@ public final class Engine {
             let ref = ItemRef.material(matId)
             return asOf.map { self.unitCost(ref, asOf: $0) } ?? self.unitCost(ref)
         }
+        let urunAlimi: (Id) -> Double = { [weak self] urunId in
+            guard let self else { return 0 }
+            let ref = ItemRef.product(urunId)
+            return asOf.map { self.unitCost(ref, asOf: $0) } ?? self.unitCost(ref)
+        }
         let b = Costing.breakdown(
             products: productsById, materials: materialsById,
-            productId: productId, asOf: asOf, unitCostOf: lookup
+            productId: productId, asOf: asOf, unitCostOf: lookup,
+            purchasedUnitCostOf: urunAlimi
         )
         costCache[key] = b
         return b
@@ -148,6 +194,11 @@ public final class Engine {
                 ortakByCat[i.category, default: 0] += i.expenseAmount
                 if i.behavior == .satisaBagli { ortakDegisken += i.expenseAmount }
             }
+        }
+
+        // Satış dışında stoktan çıkan malın maliyeti (nakit çıkışı değildir: parası alımda ödendi)
+        for (kategori, tutar) in stoktanGiderler[month] ?? [:] {
+            ortakByCat[kategori, default: 0] += tutar
         }
 
         var results: [ChannelMonthResult] = []

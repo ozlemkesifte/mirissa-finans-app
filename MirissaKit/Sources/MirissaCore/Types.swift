@@ -764,6 +764,8 @@ public struct SalesEntry: Codable, Identifiable, Hashable, Sendable {
 
 public enum ExpenseCategory: String, Codable, Sendable, CaseIterable, Identifiable {
     case reklam, kargo, urunUretimi, influencer, sabit, ambalaj, komisyon, diger
+    /// Kırık, fire, kayıp, sayım eksiği: stoktan çıkan malın maliyeti. Elle girilmez.
+    case stokKaybi
 
     public var id: String { rawValue }
 
@@ -777,6 +779,7 @@ public enum ExpenseCategory: String, Codable, Sendable, CaseIterable, Identifiab
         case .ambalaj: return "Ambalaj / sarf"
         case .komisyon: return "Komisyon"
         case .diger: return "Diğer"
+        case .stokKaybi: return "Fire, kayıp ve sayım farkı"
         }
     }
 
@@ -790,6 +793,7 @@ public enum ExpenseCategory: String, Codable, Sendable, CaseIterable, Identifiab
         case .ambalaj: return "cube.box"
         case .komisyon: return "percent"
         case .diger: return "ellipsis.circle"
+        case .stokKaybi: return "exclamationmark.triangle"
         }
     }
 
@@ -833,7 +837,7 @@ public extension ExpenseCategory {
     var defaultBehavior: CostBehavior {
         switch self {
         case .reklam, .kargo, .ambalaj, .urunUretimi, .komisyon: return .satisaBagli
-        case .influencer, .sabit, .diger: return .sabit
+        case .influencer, .sabit, .diger, .stokKaybi: return .sabit
         }
     }
 }

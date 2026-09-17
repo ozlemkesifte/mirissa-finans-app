@@ -110,7 +110,9 @@ struct ScenarioTests {
         #expect(r.gercekKar == r.toplamKanaldaKalan - r.ortakGider)
 
         // Kanal reklamları ortak gidere eklenmemiş: ortak = 5000+20000+2000+8000
-        #expect(r.ortakGider == tl(35_000))
+        // + 10 hasarlı koli × 11 TL = 110 TL fire (stoktan çıkan malın maliyeti kâra düşer)
+        #expect(r.ortakGider == tl(35_110))
+        #expect(r.expenseBreakdown[.stokKaybi] == tl(110))
 
         // --- Kanal hesapları ---
         let ty = r.channels.first { $0.channelId == ChannelIds.trendyol }!

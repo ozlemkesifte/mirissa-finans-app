@@ -57,6 +57,7 @@ struct AskOnlyWhatIsNeededTests {
         // Şampuan'ın maliyeti silinsin
         let i = s.products.firstIndex { $0.id == G.sampuan }!
         s.products[i].costLines = []
+        s.products[i].openingUnitCost = nil
         let j = s.channels.firstIndex { $0.id == G.trendyol }!
         s.channels[j].soldProductIds = [G.set]
         s.channels.removeAll { $0.id != G.trendyol }
@@ -91,6 +92,7 @@ struct AskOnlyWhatIsNeededTests {
         var s = Golden.senaryo()
         s.sales = []
         for i in s.products.indices { s.products[i].costLines = [] }
+        for i in s.products.indices { s.products[i].openingUnitCost = nil }
         let j = s.channels.firstIndex { $0.id == G.trendyol }!
         s.channels[j].soldProductIds = [G.sampuan, G.set, G.ikili]
         s.channels.removeAll { $0.id != G.trendyol }
@@ -188,6 +190,7 @@ struct ChannelCatalogTests {
         var s = Golden.senaryo()
         let i = s.products.firstIndex { $0.id == G.sampuan }!
         s.products[i].costLines = []          // üretim maliyeti yok, reçete duruyor
+        s.products[i].openingUnitCost = nil   // açılış stoğundan da bilinmiyor
         let e = Engine(s)
         // Toplam maliyet sıfır değil (ambalaj var) ama üretim maliyeti sıfır
         #expect(e.cost(of: G.sampuan, asOf: "2026-09-30").total > 0)

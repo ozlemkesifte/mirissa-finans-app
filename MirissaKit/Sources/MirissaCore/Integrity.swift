@@ -307,6 +307,45 @@ public enum Integrity {
                         + "ambalaj maliyeti eksik hesaplanır", recordId: m.id))
             }
         }
+
+        // Girilen ürün maliyeti ile gerçek alım ortalaması birbirini tutmuyor:
+        // kâr hesabı girilen rakamı kullanır, ama ödenen para farklıysa kâr yanlış çıkar.
+        for p in s.products where p.tracksOwnStock && !p.isBundle && !p.archived {
+            let girilen = p.costLines(on: nil).reduce(0) { $0 + $1.amount }
+            let alim = e.unitCost(.product(p.id))
+            guard girilen > 0, alim > 0 else { continue }
+            let fark = abs(Double(girilen) - alim) / alim
+            guard fark > 0.02 else { continue }
+            out.append(IntegrityIssue(.supheli, "Maliyet",
+                "\(p.name) maliyeti \(Money.format(girilen)) girilmiş ama alımlardan ortalama "
+                    + "\(Money.format(Money.roundHalfAwayFromZero(alim))) çıkıyor. Kâr hesabında "
+                    + "\(Money.format(girilen)) kullanılıyor; gerçek maliyet farklıysa ürün maliyetini güncelle",
+                recordId: p.id))
+        }
+
+        // Ambalaj: satılan her ürün koli, patpat, dolgu gibi malzemeler harcar.
+        // Reçete yoksa ya da malzemenin maliyeti bilinmiyorsa ambalaj maliyeti
+        // sessizce 0 sayılır ve kâr olduğundan yüksek çıkar.
+        let satilanlar = Set(s.sales.filter { $0.qty > 0 }.map(\.productId))
+        var maliyetsizMalzeme = Set<Id>()
+        for p in s.products where satilanlar.contains(p.id) && !p.archived {
+            let maliyetliSatirlar = p.recipe.filter { $0.resolvedAddsCost || $0.resolvedConsumesStock }
+            if maliyetliSatirlar.isEmpty {
+                out.append(IntegrityIssue(.supheli, "Ambalaj",
+                    "\(p.name) satılıyor ama ambalaj reçetesi yok; koli, patpat, dolgu gibi "
+                        + "malzemeler bu ürünün maliyetine eklenmiyor", recordId: p.id))
+                continue
+            }
+            for line in maliyetliSatirlar where line.resolvedAddsCost {
+                guard let m = s.material(line.materialId),
+                      e.qty(.material(m.id)) <= 0,       // stokta varsa yukarıda uyarıldı
+                      e.unitCost(.material(m.id)) == 0,
+                      maliyetsizMalzeme.insert(m.id).inserted else { continue }
+                out.append(IntegrityIssue(.supheli, "Ambalaj",
+                    "\(m.name) \(p.name) paketlemesinde kullanılıyor ama maliyeti bilinmiyor "
+                        + "(hiç alım girilmemiş); ambalaj maliyeti 0 sayılıyor", recordId: m.id))
+            }
+        }
         return out
     }
 
