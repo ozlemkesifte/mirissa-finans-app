@@ -434,6 +434,10 @@ public final class AppStore {
         mutate { $0.settings.salesMix = mix }
     }
 
+    public func setAdKeepPerOrder(_ tutar: Kurus?) {
+        mutate { $0.settings.adKeepPerOrder = tutar }
+    }
+
     public func setPriceCheckInterval(_ i: PriceCheckInterval) {
         mutate { $0.settings.priceCheckInterval = i }
     }

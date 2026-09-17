@@ -324,6 +324,22 @@ func run() {
     if render(PreviewGallery.productDetail(store: store, period: period, productId: SeedData.P.set),
               to: udetay, size: size) { ok += 1; print("✓ Ürün detayı → \(udetay.lastPathComponent)") }
 
+    // Reklam hedefi: satışsız ay ve satış girilmiş ay
+    let uzun = CGSize(width: 393, height: 2000)
+    var r1 = s1
+    r1.settings.adKeepPerOrder = Money.fromTL(150)
+    let ra = outDir.appendingPathComponent("r1-reklam-satissiz.png")
+    if render(PreviewGallery.adTargets(store: AppStore.inMemory(r1), month: "2026-09"),
+              to: ra, size: uzun) { ok += 1; print("✓ Reklam (satışsız) → \(ra.lastPathComponent)") }
+    var r2 = golden()
+    r2.settings.adKeepPerOrder = Money.fromTL(150)
+    let rb = outDir.appendingPathComponent("r2-reklam-gerceklesen.png")
+    if render(PreviewGallery.adTargets(store: AppStore.inMemory(r2), month: "2026-09"),
+              to: rb, size: uzun) { ok += 1; print("✓ Reklam (gerçekleşen) → \(rb.lastPathComponent)") }
+    let rc = outDir.appendingPathComponent("r3-reklam-secilmemis.png")
+    if render(PreviewGallery.adTargets(store: AppStore.inMemory(golden()), month: "2026-09"),
+              to: rc, size: uzun) { ok += 1; print("✓ Reklam (seçilmemiş) → \(rc.lastPathComponent)") }
+
     print("\n\(ok) ekran üretildi: \(outDir.path)")
 }
 

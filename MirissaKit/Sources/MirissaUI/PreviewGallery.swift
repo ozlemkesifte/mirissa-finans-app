@@ -103,6 +103,20 @@ public enum PreviewGallery {
         )
     }
 
+    /// Reklam hedefi bölümü açık hali — görsel doğrulama için
+    @MainActor
+    public static func adTargets(store: AppStore, month: MonthKey) -> AnyView {
+        AnyView(
+            ScrollView {
+                Card { ReklamHedefiBolumu(month: month, acik: true) }
+                    .padding(16)
+            }
+            .background(Palette.bg)
+            .environment(store)
+            .environment(Period(month: month))
+        )
+    }
+
     /// Kurulumun belirli bir adımı — görsel doğrulama için
     @MainActor
     public static func setupStep(store: AppStore, _ adim: SetupPreviewStep) -> AnyView {

@@ -29,6 +29,7 @@ struct HedefKarti: View {
                     }
                     notlar(p)
                     katkiOzeti
+                    ReklamHedefiBolumu(month: month)
                 } else {
                     eksikBolumu(p)
                 }

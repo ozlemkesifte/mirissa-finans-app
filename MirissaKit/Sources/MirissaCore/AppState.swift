@@ -105,6 +105,9 @@ public struct AppSettings: Hashable, Sendable {
 
     /// Yıllık kâr hedefi (yıl → kuruş)
     public var yearlyProfitGoals: [String: Kurus] = [:]
+    /// Reklamlı bir siparişte, reklamdan sonra en az kalması istenen tutar.
+    /// nil = kullanıcı henüz seçmedi; sessizce varsayılan kullanılmaz.
+    public var adKeepPerOrder: Kurus?
 
     public func yearlyProfitGoal(for year: Int) -> Kurus? {
         yearlyProfitGoals["\(year)"].flatMap { $0 > 0 ? $0 : nil }
@@ -152,7 +155,7 @@ extension AppSettings: Codable {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
         case progressAsOf, expectedMix, salesMix
         case defaultVatRate, defaultVatIncluded, vatEnabled, setupCompleted
-        case priceCheckInterval, lastPriceCheck, yearlyProfitGoals
+        case priceCheckInterval, lastPriceCheck, yearlyProfitGoals, adKeepPerOrder
     }
 
     public init(from decoder: Decoder) throws {
@@ -179,6 +182,7 @@ extension AppSettings: Codable {
         lastPriceCheck = try c.decodeIfPresent(DateKey.self, forKey: .lastPriceCheck)
         yearlyProfitGoals = try c.decodeIfPresent([String: Kurus].self,
                                                   forKey: .yearlyProfitGoals) ?? [:]
+        adKeepPerOrder = try c.decodeIfPresent(Kurus.self, forKey: .adKeepPerOrder)
     }
 }
 
