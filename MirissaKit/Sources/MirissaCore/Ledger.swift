@@ -70,8 +70,21 @@ public enum Ledger {
 
             switch mv.kind {
             case .opening, .purchase:
-                q += mv.delta
-                v += Double(mv.inCost ?? 0)
+                let giris = Double(mv.inCost ?? 0)
+                if q < 0, mv.delta > 0 {
+                    // Stok eksideyken gelen alım: önce eksik kapanır. Kalan stok
+                    // (ya da hâlâ eksik olan kısım) bu alımın birim fiyatıyla
+                    // değerlenir. Eski eksi değere alım tutarını eklemek, bu
+                    // alımın parasını az sayıda adede bölüp birim maliyeti
+                    // şişiriyor, bazen de eksiye düşürüyordu.
+                    let fiyat = giris / mv.delta
+                    q += mv.delta
+                    v = q * fiyat
+                    if q <= 0 { lastCost[key] = fiyat }
+                } else {
+                    q += mv.delta
+                    v += giris
+                }
 
             case .satis, .duzeltme, .iade:
                 if mv.delta >= 0 {
@@ -96,7 +109,9 @@ public enum Ledger {
                 // Sıfıra bölmeyi ve NaN yayılmasını engelle: son geçerli maliyeti sakla.
                 // Değeri sıfıra kırpmak yerine miktarla orantılı tut — aksi halde
                 // eksiye düşmüş bir stoğa alım yapıldığında birim maliyet şişer.
-                let c = currentCost > 0 ? currentCost : (lastCost[key] ?? 0)
+                let alimFiyati = (mv.kind == .purchase || mv.kind == .opening) && mv.delta > 0
+                    ? lastCost[key] : nil
+                let c = alimFiyati ?? (currentCost > 0 ? currentCost : (lastCost[key] ?? 0))
                 lastCost[key] = c
                 v = q * c
             } else {
