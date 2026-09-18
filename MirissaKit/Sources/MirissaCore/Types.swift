@@ -681,6 +681,9 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
     public var note: String?
     /// 3 ve daha fazla ürünlü (2 koli giden) sipariş sayısı. Girilmemişse tahmin edilir.
     public var bigOrderCount: Int?
+    /// Bu ayın satışları için pazaryerinin hesaba yatırdığı gerçek tutar (hakediş).
+    /// Hesabı değiştirmez; beklenenle karşılaştırılır.
+    public var payoutActual: Kurus?
 
     public init(
         id: Id = Ids.make(.channelMonth),
@@ -693,9 +696,11 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
         otherDeductionActual: Kurus? = nil,
         adsActual: Kurus? = nil,
         note: String? = nil,
-        bigOrderCount: Int? = nil
+        bigOrderCount: Int? = nil,
+        payoutActual: Kurus? = nil
     ) {
         self.bigOrderCount = bigOrderCount
+        self.payoutActual = payoutActual
         self.id = id
         self.month = month
         self.channelId = channelId
@@ -711,7 +716,7 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
     public var isEmpty: Bool {
         orderCount == nil && commissionActual == nil && shippingActual == nil
             && serviceFeeActual == nil && otherDeductionActual == nil && adsActual == nil
-            && bigOrderCount == nil && (note?.isEmpty ?? true)
+            && bigOrderCount == nil && payoutActual == nil && (note?.isEmpty ?? true)
     }
 }
 

@@ -246,6 +246,11 @@ struct ChannelReport: View {
                         Divider().overlay(Palette.separator)
                         LabeledRow("KANALDA KALAN", r.kanaldaKalan.tl,
                                    tone: r.kanaldaKalan < 0 ? Palette.zarar : Palette.kar, strong: true)
+                        if period.scope == .month,
+                           let h = store.engine.hakedis(month: period.month, channelId: ch.id) {
+                            LabeledRow(h.fark > 0 ? "Hakediş beklenenden az" : (h.fark < 0 ? "Hakediş beklenenden fazla" : "Hakediş tuttu"),
+                                       abs(h.fark).tl, tone: h.onemli ? Palette.uyari : Palette.inkSoft)
+                        }
                         if period.scope == .month {
                             Button { onEdit(ch.id) } label: {
                                 Label("Gerçek kesintileri gir", systemImage: "pencil")

@@ -114,14 +114,37 @@ struct ChannelMonthForm: View {
     @State private var serviceFee: Kurus?
     @State private var other: Kurus?
     @State private var ads: Kurus?
+    @State private var payout: Kurus?
     @State private var note = ""
     @State private var loaded = false
 
     private var auto: ChannelMonthResult {
-        // Elle girilenler olmadan otomatik değerleri görmek için
+        // Elle girilen TUTARLAR olmadan otomatik değerler; sipariş sayısı korunur,
+        // yoksa kargo ve koli önerisi adetten tahmin edilir ve yanlış çıkar.
         var s = store.state
+        let mevcut = s.channelMonth(month: month, channelId: channelId)
         s.channelMonths.removeAll { $0.month == month && $0.channelId == channelId }
+        let siparis = orderCount.map { Int($0.rounded()) } ?? mevcut?.orderCount
+        let buyuk = bigOrderCount.map { Int($0.rounded()) } ?? mevcut?.bigOrderCount
+        if siparis != nil || buyuk != nil {
+            s.channelMonths.append(ChannelMonth(id: mevcut?.id ?? "auto", month: month,
+                                                channelId: channelId, orderCount: siparis,
+                                                bigOrderCount: buyuk))
+        }
         return Engine(s).channelResult(channelId: channelId, month: month)
+    }
+
+    /// Kesinti alanlarına faturadaki tutar yazılır: kanal ayarı "KDV dahil" ise
+    /// otomatik öneri de KDV dahil gösterilir, yoksa kullanıcı KDV hariç sanır.
+    private func brut(_ net: Kurus) -> Kurus {
+        store.engine.kesintiBrut(net, channelId: channelId)
+    }
+
+    /// Bu ay için beklenen hakediş (formdaki kesintilerle, KDV dahil)
+    private var beklenen: Kurus {
+        let giderler = [commission ?? brut(auto.commission.amount), shipping ?? brut(auto.shipping.amount),
+                        serviceFee ?? brut(auto.serviceFee.amount), other ?? brut(auto.otherDeduction.amount)]
+        return live.netSalesIncVat - giderler.reduce(0, +)
     }
 
     private var live: ChannelMonthResult {
@@ -149,15 +172,39 @@ struct ChannelMonthForm: View {
             }
 
             Section {
-                OptionalMoneyField("Komisyon", autoValue: auto.commission.amount, value: $commission)
-                OptionalMoneyField("Kargo", autoValue: auto.shipping.amount, value: $shipping)
-                OptionalMoneyField("Hizmet bedeli", autoValue: auto.serviceFee.amount, value: $serviceFee)
-                OptionalMoneyField("Diğer kesinti", autoValue: auto.otherDeduction.amount, value: $other)
-                OptionalMoneyField("Reklam", autoValue: auto.ads.amount, value: $ads)
+                OptionalMoneyField("Komisyon", autoValue: brut(auto.commission.amount), value: $commission)
+                OptionalMoneyField("Kargo", autoValue: brut(auto.shipping.amount), value: $shipping)
+                OptionalMoneyField("Hizmet bedeli", autoValue: brut(auto.serviceFee.amount), value: $serviceFee)
+                OptionalMoneyField("Diğer kesinti", autoValue: brut(auto.otherDeduction.amount), value: $other)
+                OptionalMoneyField("Reklam (KDV hariç)", autoValue: auto.ads.amount, value: $ads)
             } header: {
                 Text("Ay sonu gerçek tutarları")
             } footer: {
-                Text("Boş bıraktığın satırlar ayarlardaki oranlardan otomatik hesaplanır. Doldurduğun satırlar otomatik hesabın yerine geçer.")
+                Text("Boş bıraktığın satırlar ayarlardaki oranlardan otomatik hesaplanır. "
+                     + "Doldurduğun satırlar otomatik hesabın yerine geçer. "
+                     + "Kesintilere hakediş raporundaki tutarı yaz"
+                     + (brut(100) != 100 ? " (KDV dahil)" : "") + "; reklamı KDV hariç yaz.")
+            }
+
+            Section {
+                OptionalMoneyField("Hesabına yatan hakediş", autoValue: beklenen, value: $payout)
+                if let p = payout {
+                    let fark = beklenen - p
+                    LabeledRow("Uygulamanın beklediği", beklenen.tl)
+                    LabeledRow(fark > 0 ? "Beklenenden az yattı" : (fark < 0 ? "Beklenenden fazla yattı" : "Fark yok"),
+                               abs(fark).tl, tone: abs(fark) > 10_000 ? Palette.uyari : Palette.inkSoft)
+                    if abs(fark) > 10_000 {
+                        Button("Farkı \"diğer kesinti\" olarak ekle") {
+                            other = max((other ?? brut(auto.otherDeduction.amount)) + fark, 0)
+                        }
+                    }
+                }
+            } header: {
+                Text("Hakediş kontrolü")
+            } footer: {
+                Text("Pazaryerinin bu ayın satışları için yatırdığı toplamı yaz. Az yattıysa kesintiler tahminden "
+                     + "fazladır (kampanya katkısı, desi farkı, iade kargosu, ceza). Farkı eklersen kâr gerçeğe yaklaşır; "
+                     + "eklemek senin kararın, uygulama kendiliğinden değiştirmez.")
             }
 
             Section {
@@ -187,6 +234,7 @@ struct ChannelMonthForm: View {
         serviceFee = cm.serviceFeeActual
         other = cm.otherDeductionActual
         ads = cm.adsActual
+        payout = cm.payoutActual
         note = cm.note ?? ""
     }
 
@@ -202,7 +250,8 @@ struct ChannelMonthForm: View {
             otherDeductionActual: other,
             adsActual: ads,
             note: note.isEmpty ? nil : note,
-            bigOrderCount: bigOrderCount.map { Int($0.rounded()) }
+            bigOrderCount: bigOrderCount.map { Int($0.rounded()) },
+            payoutActual: payout
         ))
     }
 }

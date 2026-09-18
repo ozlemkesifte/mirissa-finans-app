@@ -302,6 +302,17 @@ public final class AppStore {
         }
     }
 
+    /// Hakediş farkını "diğer kesinti" olarak kaydeder: beklenen yatan tutara eşitlenir
+    public func hakedisFarkiniKesintiyeYaz(month: MonthKey, channelId: Id) {
+        guard let k = engine.hakedis(month: month, channelId: channelId), k.fark != 0 else { return }
+        let r = engine.channelResult(channelId: channelId, month: month)
+        var cm = state.channelMonth(month: month, channelId: channelId)
+            ?? ChannelMonth(month: month, channelId: channelId)
+        let mevcut = cm.otherDeductionActual ?? engine.kesintiBrut(r.otherDeduction.amount, channelId: channelId)
+        cm.otherDeductionActual = max(mevcut + k.fark, 0)
+        upsertChannelMonth(cm)
+    }
+
     public func upsertChannelMonth(_ cm: ChannelMonth) {
         mutate { s in
             if let i = s.channelMonths.firstIndex(where: {
