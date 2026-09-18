@@ -47,6 +47,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                VergiAyari()
                 Section {
                     ForEach(store.state.channels.filter { !$0.archived }) { c in
                         Button { sheet = .channelWizard(c.id) } label: {

@@ -219,7 +219,7 @@ struct BreakevenCard: View {
             LabeledRow("Gerçek ciro", a.revenue.tl)
             LabeledRow("Gerçek gider", a.expenses.tl, tone: Palette.gider)
             HStack(alignment: .firstTextBaseline) {
-                Text(a.profit < 0 ? "GERÇEK ZARAR" : "GERÇEK KÂR")
+                Text(a.profit < 0 ? "GERÇEK ZARAR" : "GERÇEK KÂR (VERGİ ÖNCESİ)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.ink)
                 Spacer(minLength: 8)

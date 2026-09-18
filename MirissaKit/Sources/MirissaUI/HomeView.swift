@@ -57,6 +57,9 @@ struct HomeView: View {
                         headline
                     }
                     EksikBilgiNotu(uyari: result.yaklasikUyarisi)
+                    if !satisGirilmedi || period.scope == .year {
+                        VergiKarti(month: period.scope == .month ? period.month : min(period.to, Dates.currentMonth()))
+                    }
                     islemler
                     YarimIslemKarti(sheet: $sheet)
                     PriceCheckCard(sheet: $sheet)

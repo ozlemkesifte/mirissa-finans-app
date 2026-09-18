@@ -71,6 +71,7 @@ struct MonthlyReport: View {
                 marj: result.karMarjiPct
             )
             ExpenseBreakdownCard(breakdown: result.expenseBreakdown, total: result.toplamGider)
+            VergiKarti(month: period.month)
             VatCard(month: period.month)
             BalanceCard(month: period.month, sheet: $sheet)
             if result.units > 0 {
@@ -312,7 +313,7 @@ struct ResultSummary: View {
                 LabeledRow("Toplam gider", gider.tl, tone: Palette.gider)
                 Divider().overlay(Palette.separator)
                 HStack(alignment: .firstTextBaseline) {
-                    Text(kar < 0 ? "GERÇEK ZARAR" : "GERÇEK KÂR")
+                    Text(kar < 0 ? "GERÇEK ZARAR" : "GERÇEK KÂR (VERGİ ÖNCESİ)")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Palette.ink)
                     Spacer()

@@ -484,6 +484,11 @@ public final class AppStore {
     public func completeSetup() { mutate { $0.settings.setupCompleted = true } }
 
     /// Sihirbazı yeniden çalıştırmak için (Ayarlar'dan)
+    /// Sonradan eklenen ayarları değiştirir (vergi, nakit, kilit, hatırlatma…)
+    public func ekAyarla(_ block: (inout EkAyarlar) -> Void) {
+        mutate { block(&$0.settings.ek) }
+    }
+
     public func restartSetup() { mutate { $0.settings.setupCompleted = false } }
 
     /// "Değişiklik yok" — fiyatlara dokunmaz, yalnızca son kontrol gününü işaretler.
