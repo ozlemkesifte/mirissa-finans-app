@@ -2,13 +2,15 @@ import SwiftUI
 import MirissaCore
 
 enum ReportTab: String, CaseIterable, Identifiable {
-    case aylik, yillik, kanallar
+    case aylik, yillik, kanallar, urunler, nakit
     var id: String { rawValue }
     var label: String {
         switch self {
         case .aylik: return "Aylık"
         case .yillik: return "Yıllık"
         case .kanallar: return "Kanallar"
+        case .urunler: return "Ürünler"
+        case .nakit: return "Nakit"
         }
     }
 }
@@ -33,6 +35,8 @@ struct ReportsView: View {
                     case .aylik: MonthlyReport(sheet: $sheet)
                     case .yillik: YearlyReport()
                     case .kanallar: ChannelReport(onEdit: { id in sheet = .channelMonth(id, period.month) })
+                    case .urunler: UrunRaporu()
+                    case .nakit: NakitRaporu()
                     }
                     Color.clear.frame(height: 24)
                 }
