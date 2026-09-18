@@ -58,6 +58,73 @@ public final class AppStore {
     public func mutate(_ block: (inout AppState) -> Void) {
         var s = state
         block(&s)
+        guard s != state else { return }
+        // KDV beyanı verilip kilitlenen aya dokunan değişiklik yapılmaz
+        if let engel = AyKilidi.ihlal(eski: state, yeni: s) {
+            sonHata = engel
+            return
+        }
+        sonHata = nil
+        let kayit = DegisiklikGunlugu.fark(eski: state, yeni: s)
+        if !kayit.isEmpty {
+            s.changeLog = Array((s.changeLog + kayit).suffix(DegisiklikGunlugu.enFazla))
+        }
+        apply(s)
+    }
+
+    /// Son değişiklik neden yapılamadı (ör. kilitli ay). Ekranda gösterilir.
+    public var sonHata: String?
+    public func hatayiKapat() { sonHata = nil }
+
+    // MARK: - Yedek
+
+    private var yedekKlasoru: URL {
+        ekKlasoru.map { $0.appendingPathComponent("Yedekler", isDirectory: true) } ?? Backup.varsayilanKlasor()
+    }
+
+    private func ekURL(_ ad: String) -> URL {
+        ekKlasoru.map { $0.appendingPathComponent("ekler").appendingPathComponent(ad) } ?? AttachmentStore.url(ad)
+    }
+
+    /// Bütün kayıtlar ve fatura ekleri tek dosyada
+    public func yedekPaketi() throws -> Data { try Backup.paket(state, ekURL: ekURL) }
+
+    /// Yedek dosyası telefon dışına kaydedildi (paylaşıldı)
+    public func yedekPaylasildi(_ gun: DateKey = Dates.today()) {
+        mutate { $0.settings.ek.sonYedekPaylasim = gun }
+    }
+
+    /// Günde bir otomatik yedek. Veri dosyası açılamadıysa alınmaz (boş veriyi yedeklemesin).
+    public func otomatikYedekGerekirse(_ gun: DateKey = Dates.today()) {
+        guard acilisHatasiYok, state.settings.ek.sonOtomatikYedek != gun else { return }
+        guard (try? Backup.otomatikYedekAl(state, ekURL: ekURL, klasor: yedekKlasoru, gun: gun)) != nil else { return }
+        var s = state
+        s.settings.ek.sonOtomatikYedek = gun
+        apply(s)
+    }
+
+    public var otomatikYedekler: [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: yedekKlasoru, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.hasPrefix("mirissa-") }
+            .sorted { $0.lastPathComponent > $1.lastPathComponent }
+    }
+
+    public func yedegiOku(_ data: Data) throws -> BackupPreview { try Backup.oku(data) }
+
+    /// Yedeği geri yükler. Önce şu anki verinin bir kopyası alınır; geri alınabilsin.
+    public func geriYukle(_ p: BackupPreview, gun: DateKey = Dates.today()) throws {
+        try Backup.otomatikYedekAl(state, ekURL: ekURL, klasor: yedekKlasoru, gun: gun,
+                                   onEk: "geri-yukleme-oncesi", sakla: 5)
+        let hedef = ekKlasoru.map { $0.appendingPathComponent("ekler", isDirectory: true) }
+            ?? AttachmentStore.directory()
+        try FileManager.default.createDirectory(at: hedef, withIntermediateDirectories: true)
+        for (ad, veri) in p.ekler {
+            try veri.write(to: hedef.appendingPathComponent(ad), options: .atomic)
+        }
+        var s = p.state
+        s.changeLog = Array((s.changeLog + [ChangeLogEntry(
+            zaman: ISO8601DateFormatter().string(from: Date()), tur: .geriYuklendi, alan: "Yedek",
+            aciklama: "Yedekten geri yüklendi (\(p.gun ?? "tarihsiz"))")]).suffix(DegisiklikGunlugu.enFazla))
         apply(s)
     }
 

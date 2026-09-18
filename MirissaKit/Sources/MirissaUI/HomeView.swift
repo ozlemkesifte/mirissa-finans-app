@@ -34,6 +34,7 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    YedekHatirlatmaKarti()
                     ButunlukKarti()
 
                     // 1) HEDEF — satış girilmemiş olsa bile çalışır.

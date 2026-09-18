@@ -23,7 +23,18 @@ public struct RootView: View {
         .environment(store)
         .environment(period)
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { store.flush() }
+            if phase != .active {
+                store.otomatikYedekGerekirse()
+                store.flush()
+            }
+        }
+        .onAppear { store.otomatikYedekGerekirse() }
+        .alert("Değişiklik yapılamadı", isPresented: Binding(
+            get: { store.sonHata != nil }, set: { if !$0 { store.hatayiKapat() } })
+        ) {
+            Button("Tamam") { store.hatayiKapat() }
+        } message: {
+            Text(store.sonHata ?? "")
         }
     }
 

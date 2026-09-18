@@ -43,6 +43,26 @@ public enum Persistence {
 
     /// Sürüm göçlerini sırayla uygular. Bilinmeyen ileri sürüm reddedilir —
     /// veriyi bozarak açmaktansa açmamak daha güvenli.
+    /// Göç uygulanmış ama temizlenmemiş hali: geri yüklemede hangi satırların
+    /// atlanacağını kullanıcıya göstermek için.
+    public static func decodeUnvalidated(_ data: Data) throws -> AppState {
+        let blob: PersistedBlob
+        do {
+            blob = try JSONDecoder().decode(PersistedBlob.self, from: data)
+        } catch {
+            throw PersistenceError.corrupt(String(describing: error))
+        }
+        guard blob.schemaVersion <= currentVersion else {
+            throw PersistenceError.futureVersion(blob.schemaVersion)
+        }
+        var state = blob.state
+        for v in blob.schemaVersion..<currentVersion { state = migrate(state, from: v) }
+        return state
+    }
+
+    /// Kaydedilmiş veriyi temizleyip döndürür (bozuk satırlar atlanır)
+    public static func temizle(_ s: AppState) -> AppState { validate(s) }
+
     public static func decode(_ data: Data) throws -> AppState {
         let decoder = JSONDecoder()
         let blob: PersistedBlob

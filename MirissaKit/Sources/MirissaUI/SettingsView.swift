@@ -150,33 +150,15 @@ struct SettingsView: View {
                     Text("Satışlar, giderler, ürünler, stoklar, stok hareketleri ve aylık özet ayrı dosyalar olarak çıkar. Excel'de Türkçe ayarlarla doğru açılır.")
                 }
 
-                Section {
-                    Button {
-                        backupURL = (try? store.exportJSON()).flatMap(ExportService.writeBackup)
-                    } label: {
-                        Label("Yedek dosyası oluştur", systemImage: "arrow.down.doc")
-                    }
-                    if let backupURL {
-                        ShareLink(item: backupURL) {
-                            Label("Yedeği paylaş / kaydet", systemImage: "square.and.arrow.up")
-                        }
-                        .foregroundStyle(Palette.accent)
-                    }
-                    if !faturalar.isEmpty {
+                YedeklemeBolumu()
+
+                if !faturalar.isEmpty {
+                    Section {
                         ShareLink(items: faturalar) {
-                            Label("Fatura eklerini paylaş (\(faturalar.count))", systemImage: "paperclip")
+                            Label("Fatura eklerini ayrıca paylaş (\(faturalar.count))", systemImage: "paperclip")
                         }
                         .foregroundStyle(Palette.accent)
                     }
-                    Button {
-                        showImporter = true
-                    } label: {
-                        Label("Yedekten geri yükle", systemImage: "arrow.up.doc")
-                    }
-                } header: {
-                    Text("Yedekleme")
-                } footer: {
-                    Text("Yedek dosyası bütün kayıtlarını içerir. Fatura fotoğrafları ayrı dosyalar olduğu için onları ayrıca paylaşman gerekir.")
                 }
 
                 Section {
@@ -226,21 +208,6 @@ struct SettingsView: View {
                 }
             }
             .appSheets($sheet)
-            .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
-                switch result {
-                case let .success(url):
-                    let needsStop = url.startAccessingSecurityScopedResource()
-                    defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
-                    do {
-                        try store.importJSON(try Data(contentsOf: url))
-                        message = "Yedek geri yüklendi."
-                    } catch {
-                        message = "Yedek okunamadı: \(error)"
-                    }
-                case let .failure(e):
-                    message = "Dosya seçilemedi: \(e.localizedDescription)"
-                }
-            }
             .confirmationDialog("Satış, gider, alım ve stok hareketlerinin tamamı silinecek. Ürünler ve malzemeler kalır.",
                                 isPresented: $showEraseConfirm, titleVisibility: .visible) {
                 Button("Sil", role: .destructive) { store.eraseAllData(); message = "Kayıtlar silindi." }

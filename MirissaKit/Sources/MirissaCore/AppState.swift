@@ -108,6 +108,9 @@ public struct AppSettings: Hashable, Sendable {
     /// Reklamlı bir siparişte, reklamdan sonra en az kalması istenen tutar.
     /// nil = kullanıcı henüz seçmedi; sessizce varsayılan kullanılmaz.
     public var adKeepPerOrder: Kurus?
+    /// Sonradan eklenen ayarlar (yedek, vergi, nakit, kilit, hatırlatma).
+    /// Hepsi isteğe bağlıdır: eski dosyalar okunur, hesaplar değişmez.
+    public var ek: EkAyarlar = EkAyarlar()
 
     public func yearlyProfitGoal(for year: Int) -> Kurus? {
         yearlyProfitGoals["\(year)"].flatMap { $0 > 0 ? $0 : nil }
@@ -155,7 +158,7 @@ extension AppSettings: Codable {
         case consumptionWindowMonths, capitalizePurchases, companyName, profitGoals
         case progressAsOf, expectedMix, salesMix
         case defaultVatRate, defaultVatIncluded, vatEnabled, setupCompleted
-        case priceCheckInterval, lastPriceCheck, yearlyProfitGoals, adKeepPerOrder
+        case priceCheckInterval, lastPriceCheck, yearlyProfitGoals, adKeepPerOrder, ek
     }
 
     public init(from decoder: Decoder) throws {
@@ -183,6 +186,7 @@ extension AppSettings: Codable {
         yearlyProfitGoals = try c.decodeIfPresent([String: Kurus].self,
                                                   forKey: .yearlyProfitGoals) ?? [:]
         adKeepPerOrder = try c.decodeIfPresent(Kurus.self, forKey: .adKeepPerOrder)
+        ek = (try? c.decodeIfPresent(EkAyarlar.self, forKey: .ek)) ?? EkAyarlar()
     }
 }
 
@@ -226,6 +230,8 @@ public struct AppState: Hashable, Sendable {
     /// kapansa bile cevaplar kaybolmaz.
     public var drafts: [WizardDraft]
     public var settings: AppSettings
+    /// Kayıtlarda yapılan değişikliklerin günlüğü (en yeni sonda, en fazla 1.000)
+    public var changeLog: [ChangeLogEntry] = []
 
     public init(
         materials: [StockMaterial] = [],
@@ -263,7 +269,7 @@ public struct AppState: Hashable, Sendable {
 extension AppState: Codable {
     enum CodingKeys: String, CodingKey {
         case materials, products, channels, channelMonths, sales
-        case expenses, purchases, adjustments, counts, balances, drafts, settings
+        case expenses, purchases, adjustments, counts, balances, drafts, settings, changeLog
     }
 
     public init(from decoder: Decoder) throws {
@@ -282,6 +288,7 @@ extension AppState: Codable {
         // Kayıtlı dosyası olan kullanıcı kurulumu zaten yapmıştır
         settings = try c.decodeIfPresent(AppSettings.self, forKey: .settings)
             ?? AppSettings(setupCompleted: true)
+        changeLog = (try? c.decodeIfPresent([ChangeLogEntry].self, forKey: .changeLog)) ?? []
     }
 }
 
