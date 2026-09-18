@@ -114,6 +114,20 @@ func demoState() -> AppState {
         Expense(id: "e6", date: "2026-09-15", name: "Influencer iş birliği",
                 amount: Money.fromTL(8000), category: .influencer),
     ]
+    // Yeni özellikler: vergi, kasa, vadeli alım, tedarik süresi, hakediş
+    s.settings.ek.vergiOrani = 25
+    s.settings.ek.kasaBakiye = Money.fromTL(185_000)
+    s.settings.ek.kasaTarih = "2026-09-15"
+    var vadeli = StockPurchase(id: "pv", date: "2026-09-12", item: .product(SeedData.P.sampuan), qty: 200,
+                               unit: .adet, totalPaid: Money.fromTL(28_800), vendor: "Fason A")
+    vadeli.odeme = OdemePlani.esit(toplam: Money.fromTL(28_800), pesinat: Money.fromTL(8_800),
+                                   taksitSayisi: 2, ilkVade: "2026-10-15")
+    s.purchases.append(vadeli)
+    for i in s.materials.indices { s.materials[i].tedarikSuresiGun = 10 }
+    for i in s.products.indices { s.products[i].tedarikSuresiGun = 45 }
+    if let i = s.channelMonths.firstIndex(where: { $0.month == "2026-09" && $0.channelId == ChannelIds.trendyol }) {
+        s.channelMonths[i].payoutActual = Money.fromTL(52_000)
+    }
     s.adjustments = [
         StockAdjustment(id: "a1", date: "2026-09-18", item: .material(SeedData.M.koli),
                         qty: 10, unit: .adet, reason: .hasarli)
@@ -345,6 +359,16 @@ func run() {
     let rc = outDir.appendingPathComponent("r3-reklam-secilmemis.png")
     if render(PreviewGallery.adTargets(store: AppStore.inMemory(golden()), month: "2026-09"),
               to: rc, size: uzun) { ok += 1; print("✓ Reklam (seçilmemiş) → \(rc.lastPathComponent)") }
+
+    // Raporlar: yeni sekmeler
+    for sekme in ["urunler", "nakit", "aylik"] {
+        UserDefaults.standard.set(sekme, forKey: "raporSekmesi")
+        let st = AppStore.inMemory(demoState())
+        if let ekran = PreviewGallery.screens(store: st, period: period).first(where: { $0.name.contains("rapor") }) {
+            let u = outDir.appendingPathComponent("yeni-rapor-\(sekme).png")
+            if render(ekran.view, to: u, size: tamBoy) { ok += 1; print("✓ Rapor \(sekme) → \(u.lastPathComponent)") }
+        }
+    }
 
     print("\n\(ok) ekran üretildi: \(outDir.path)")
 }
