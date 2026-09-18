@@ -55,6 +55,10 @@ struct SaleForm: View {
                     Text("Seç").tag("")
                     ForEach(store.state.activeProducts) { p in Text(p.name).tag(p.id) }
                 }
+                .onChange(of: productId) { _, yeni in
+                    // Yeni kayıtta KDV oranı ürünün kendi oranından gelir
+                    if editingId == nil { vatRate = store.state.satisKdvOrani(yeni) ?? .yok }
+                }
             }
 
             Section {
@@ -122,6 +126,7 @@ struct SaleForm: View {
             vatRate = store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : .yok
             vatIncluded = store.state.settings.defaultVatIncluded
             productId = store.state.activeProducts.first?.id ?? ""
+            vatRate = store.state.satisKdvOrani(productId) ?? vatRate
             channelId = store.state.activeChannels.first?.id ?? ChannelIds.trendyol
         }
     }

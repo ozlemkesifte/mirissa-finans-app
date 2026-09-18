@@ -68,7 +68,8 @@ public extension Engine {
         let yeniFiyat = Money.roundHalfAwayFromZero(Double(u.price) * (1 - indirimPct / 100))
         let oran = u.price > 0 ? Double(u.netRevenue) / Double(u.price) : 1
         let yeniNet = Money.roundHalfAwayFromZero(Double(yeniFiyat) * oran)
-        let kesinti = kanalKesintisi(ch, siparisDegeri: yeniFiyat, on: date).0.toplam
+        let kesinti = kanalKesintisi(ch, siparisDegeri: yeniFiyat, on: date,
+                                     satisKdv: satisKdvOrani(productId: productId, channelId: channelId, on: date)).0.toplam
         let yeniKatki = yeniNet - kesinti - u.productCost - u.packagingCost - u.orderPackagingCost
         let ay = Dates.month(of: date)
         let sabit = Double(plannedFixedCosts(month: ay))

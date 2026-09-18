@@ -297,6 +297,11 @@ extension AppState: Codable {
 public extension AppState {
     func material(_ id: Id) -> StockMaterial? { materials.first { $0.id == id } }
     func product(_ id: Id) -> Product? { products.first { $0.id == id } }
+    /// Ürünün satış KDV oranı: ürüne özel oran, yoksa ayarlardaki varsayılan. KDV kapalıysa nil.
+    func satisKdvOrani(_ productId: Id) -> VatRate? {
+        guard settings.vatEnabled else { return nil }
+        return product(productId)?.kdvOrani ?? settings.defaultVatRate
+    }
     func channel(_ id: Id) -> Channel? { channels.first { $0.id == id } }
 
     var activeMaterials: [StockMaterial] { materials.filter { !$0.archived } }

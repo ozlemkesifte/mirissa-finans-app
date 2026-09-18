@@ -251,10 +251,32 @@ public final class AppStore {
             guard let i = s.channels.firstIndex(where: { $0.id == c.id }) else { return }
             let eski = s.channels[i]
             var yeni = c
+            if (eski.komisyonKdvHaric ?? false) != (c.komisyonKdvHaric ?? false) {
+                // Komisyon tabanı değişikliği bugünden başlar: eski kayıtlara eski değer yazılır
+                var gecmis = eski
+                var bugunku = eski.currentRates
+                bugunku.id = Ids.make(.channelRate)
+                bugunku.from = Dates.today()
+                bugunku.komisyonKdvHaric = c.komisyonKdvHaric ?? false
+                gecmis.setRates(bugunku)
+                // Önceki kayıtlar kanalın eski ayarını kalıcı olarak taşır; yoksa yeni ayarı devralırlardı
+                gecmis.rateHistory = gecmis.rateHistory?.map { r in
+                    var r = r
+                    if r.komisyonKdvHaric == nil { r.komisyonKdvHaric = eski.komisyonKdvHaric ?? false }
+                    return r
+                }
+                gecmis.rateHistory = gecmis.rateHistory?.map { r in
+                    var r = r
+                    if r.komisyonKdvHaric == nil { r.komisyonKdvHaric = eski.komisyonKdvHaric ?? false }
+                    return r
+                }
+                yeni.rateHistory = gecmis.rateHistory
+            }
             if Self.oranlarDegisti(eski, c) {
                 // Tarihçeyi koru, değişikliği bugünden başlat. Tarihçe hiç yoksa
                 // eski oranlar başlangıç kaydı olarak saklanır; geçmiş aylar değişmez.
                 var gecmis = eski
+                gecmis.rateHistory = yeni.rateHistory
                 let bugunku = eski.currentRates
                 gecmis.setRates(ChannelRates(
                     from: Dates.today(),

@@ -470,9 +470,9 @@ public extension Engine {
         // Ortalama sepet müşterinin ödediği tutardır: KDV dahil.
         let gun = Dates.today()
         let fiyat = mix.averageOrderValue
-        let oran = state.settings.vatEnabled ? state.settings.defaultVatRate : .yok
+        let oran = state.satisKdvOrani(mix.productId) ?? .yok
         let net = Double(Vat.net(fiyat, rate: oran, included: true))
-        let kesinti = Double(siparisKesintisi(ch, siparisDegeri: fiyat, on: gun).toplam)
+        let kesinti = Double(kanalKesintisi(ch, siparisDegeri: fiyat, on: gun, satisKdv: oran).0.toplam)
         let b = cost(of: mix.productId)
         let urun = Double(b.intrinsic) * mix.unitsPerOrder
         let koli = mix.unitsPerOrder >= Double(OrderPackaging.ikinciKoliUrunSayisi) ? 2.0 : 1.0

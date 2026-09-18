@@ -19,7 +19,7 @@ public extension Engine {
     /// Kanalın bir aydaki beklenen hakedişi (KDV dahil)
     func beklenenHakedis(month: MonthKey, channelId: Id) -> Kurus {
         let r = channelResult(channelId: channelId, month: month)
-        return r.netSalesIncVat - r.channelFees - r.feeVat
+        return r.netSalesIncVat - r.channelFees - r.feeVat - r.stopaj
     }
 
     func hakedis(month: MonthKey, channelId: Id) -> HakedisKarsilastirma? {

@@ -53,6 +53,9 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var packagingCost: Kurus
     /// Gönderilen koli sayısı (sipariş başı malzemeler) ve tahmini olup olmadığı
     public var koliSayisi: Double = 0
+    /// Pazaryerinin kestiği e-ticaret stopajı: gider değil, peşin ödenen vergi.
+    /// Hesaba yatan parayı azaltır, vergi karşılığından düşülür.
+    public var stopaj: Kurus = 0
     public var koliTahmini: Bool = false
     /// Kurulumda "bilmiyorum" denen ve hesaba katılamayan kalemler
     public var eksikBilgiler: [String] = []
@@ -143,6 +146,8 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
     public var units: Double { channels.reduce(0) { $0 + $1.units } }
     public var orders: Int { channels.reduce(0) { $0 + $1.orders } }
     public var toplamKanaldaKalan: Kurus { channels.reduce(0) { $0 + $1.kanaldaKalan } }
+    /// Pazaryerlerinin kestiği e-ticaret stopajı (gider değil; vergiden mahsup edilir)
+    public var stopaj: Kurus { channels.reduce(0) { $0 + $1.stopaj } }
 
     /// TOPLAM GİDER = kanal giderleri + ortak şirket giderleri
     public var toplamGider: Kurus {
@@ -274,6 +279,7 @@ public extension Array where Element == ChannelMonthResult {
             r.productCost += c.productCost
             r.packagingCost += c.packagingCost
             r.koliSayisi += c.koliSayisi
+            r.stopaj += c.stopaj
             for e in c.eksikBilgiler where !r.eksikBilgiler.contains(e) { r.eksikBilgiler.append(e) }
             r.koliTahmini = r.koliTahmini || c.koliTahmini
             for (k, v) in c.otherChannelExpenses { r.otherChannelExpenses[k, default: 0] += v }

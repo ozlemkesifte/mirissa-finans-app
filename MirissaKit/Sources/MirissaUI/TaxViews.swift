@@ -14,7 +14,14 @@ struct VergiKarti: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Palette.ink)
                     LabeledRow("\(v.yil) başından bu yana vergi öncesi kâr", v.yilBasindanKar.tl)
-                    LabeledRow("Kenara ayırman gereken (%\(Money.formatPercent(v.oranPct).dropFirst()))",
+                    if v.yilBasindanStopaj > 0 {
+                        LabeledRow("Hesaplanan vergi (%\(Money.formatPercent(v.oranPct).dropFirst()))",
+                                   v.yilBasindanVergi.tl, tone: Palette.inkSoft)
+                        LabeledRow("Pazaryerlerinin kestiği stopaj (vergiden düşülür)",
+                                   (-v.yilBasindanStopaj).tl, tone: Palette.inkSoft)
+                    }
+                    LabeledRow(v.yilBasindanStopaj > 0 ? "Kenara ayırman gereken kalan"
+                               : "Kenara ayırman gereken (%\(Money.formatPercent(v.oranPct).dropFirst()))",
                                v.yilBasindanKarsilik.tl, tone: Palette.uyari, strong: true)
                     if v.ayinPayi > 0 {
                         LabeledRow("Bu ayın payı", v.ayinPayi.tl, tone: Palette.inkSoft)

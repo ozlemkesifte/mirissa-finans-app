@@ -461,7 +461,7 @@ struct SaleFlow: View {
                 returnsAmount: Money.roundHalfAwayFromZero(Double(iadeTutar) * pay),
                 returnsQty: satirlar.count == 1 ? iadeAdet : (iadeAdet * pay).rounded(),
                 returnsRestock: iadeSatilabilir,
-                vatRate: store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : nil,
+                vatRate: store.state.satisKdvOrani(satir.urunId),
                 vatIncluded: store.state.settings.defaultVatIncluded
             )
         }

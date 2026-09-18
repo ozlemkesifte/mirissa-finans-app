@@ -240,7 +240,7 @@ public final class Engine {
 
         // Platformun kestiği tutarlar da nakit çıkışıdır
         // Platformun kestiği tutar KDV dahildir: net kısmı gider, KDV'si indirilecek KDV
-        nakit += results.reduce(0) { $0 + $1.channelFees + $1.feeVat }
+        nakit += results.reduce(0) { $0 + $1.channelFees + $1.feeVat + $1.stopaj }
         // Elle girilen aylık reklam tutarının, gider kayıtlarını aşan kısmı da ödenmiştir
         for c in results where c.ads.isManual {
             nakit += max(c.ads.amount - (kanalReklamNakit[c.channelId] ?? 0), 0)
@@ -341,8 +341,17 @@ public final class Engine {
         // O ayda geçerli oranlar kullanılır: komisyon sonradan değişse bile
         // geçmiş ayın raporu değişmez.
         let oranlar = ch.rates(on: asOf ?? Dates.monthEnd(month))
+        // Komisyon tabanı: bazı pazaryerleri KDV hariç fiyattan hesaplayıp üstüne KDV ekler
+        let komisyonTabani = ch.komisyonKdvHaric(on: asOf ?? Dates.monthEnd(month))
+            ? Double(max(r.netSales, 0)) * (ch.resolvedFeesIncludeVat
+                ? 1 + Double(ch.resolvedFeeVatRate.rawValue) / 100 : 1)
+            : taban
         r.commission = kesinti(cm?.commissionActual,
-                               auto: taban * (oranlar.commissionPct + oranlar.paymentPct) / 100)
+                               auto: komisyonTabani * oranlar.commissionPct / 100 + taban * oranlar.paymentPct / 100)
+        // E-ticaret stopajı: KDV hariç satış tutarının yüzdesi (komisyon, kargo düşülmez)
+        if let oran = ch.stopajPct, oran > 0, month >= Dates.month(of: ch.stopajBaslangic ?? "2025-01-01") {
+            r.stopaj = Money.roundHalfAwayFromZero(Double(max(r.netSales, 0)) * oran / 100)
+        }
         r.shipping = kesinti(cm?.shippingActual,
                              auto: Double(oranlar.shippingPerOrder) * Double(r.orders))
         r.serviceFee = kesinti(cm?.serviceFeeActual,

@@ -91,15 +91,10 @@ public extension Engine {
         // Pazaryeri fiyatı müşterinin ödediği tutardır: KDV dahildir.
         // Oran, bu ürünün o kanaldaki son satışından alınır (ör. %10 KDV'li ürün);
         // hiç satış yoksa ayarlardaki varsayılan kullanılır.
-        let ay = Dates.month(of: date)
-        let sonSatis = state.sales
-            .filter { $0.productId == productId && $0.channelId == channelId && $0.month <= ay }
-            .max { $0.month < $1.month }
-        let oran = sonSatis?.vatRate
-            ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok)
+        let oran = satisKdvOrani(productId: productId, channelId: channelId, on: date)
         let net = Vat.net(fiyat, rate: oran, included: true)
 
-        let kk = kanalKesintisi(ch, siparisDegeri: fiyat, on: date)
+        let kk = kanalKesintisi(ch, siparisDegeri: fiyat, on: date, satisKdv: oran)
         let k = kk.0
         let b = cost(of: productId, asOf: date)
         return UnitContribution(
@@ -121,14 +116,24 @@ public extension Engine {
     }
 
     /// Sipariş kesintisi + "aylık gireceğim" denenlerin tahmini ve eksikleri
-    func kanalKesintisi(_ ch: Channel, siparisDegeri: Kurus, on date: DateKey)
+    func kanalKesintisi(_ ch: Channel, siparisDegeri: Kurus, on date: DateKey,
+                        satisKdv: VatRate? = nil)
     -> ((toplam: Kurus, siparisBasi: Kurus), tahmin: [String], eksik: [String]) {
         let r = ch.rates(on: date)
         let ek = elleAylikTahmin(ch, on: date)
         // Tahmin edilen alan ayardaki aynı alanın yerine geçer (ayın gerçek tutarı gibi)
-        let komisyon = ek.komisyonYuzde ?? (r.commissionPct + r.paymentPct)
+        let komisyonOrani: Double
+        if let t = ek.komisyonYuzde {
+            komisyonOrani = t
+        } else {
+            // Komisyon KDV hariç fiyattan alınıyorsa taban, motordaki gibi
+            // KDV hariç satış (kesinti tutarları KDV dahil giriliyorsa üstüne kesinti KDV'si)
+            let carpan = komisyonTabanCarpani(ch, on: date, satisKdv: satisKdv
+                ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok))
+            komisyonOrani = r.commissionPct * carpan + r.paymentPct
+        }
         let diger = ek.digerYuzde ?? r.otherDeductionPct
-        var yuzde = Double(siparisDegeri) * (komisyon + diger) / 100
+        var yuzde = Double(siparisDegeri) * (komisyonOrani + diger) / 100
         var sabit = (ek.kargoSiparisBasi ?? Double(r.shippingPerOrder))
             + (ek.hizmetSiparisBasi ?? Double(r.serviceFeePerOrder))
         for f in r.extras where !f.unknown && !ek.degistirir(AylikKesinti.alan(f)) {
@@ -143,6 +148,27 @@ public extension Engine {
                     included: ch.resolvedFeesIncludeVat)
         }
         return ((net(yuzde + sabit), net(sabit)), ek.tahmin, ek.eksik)
+    }
+
+    /// Bir ürünün satış KDV oranı: ürüne özel oran; yoksa o kanaldaki son satışının oranı;
+    /// o da yoksa ayarlardaki varsayılan.
+    func satisKdvOrani(productId: Id, channelId: Id, on date: DateKey) -> VatRate {
+        if let o = productsById[productId]?.kdvOrani { return o }
+        let ay = Dates.month(of: date)
+        let sonSatis = state.sales
+            .filter { $0.productId == productId && $0.channelId == channelId && $0.month <= ay }
+            .max { $0.month < $1.month }
+        return sonSatis?.vatRate
+            ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok)
+    }
+
+    /// KDV dahil sipariş değerinin kaç katı komisyon tabanıdır.
+    /// Varsayılan 1; "komisyon KDV hariç fiyattan" seçiliyse (1 + kesinti KDV'si) / (1 + satış KDV'si).
+    func komisyonTabanCarpani(_ ch: Channel, on date: DateKey, satisKdv: VatRate) -> Double {
+        guard ch.komisyonKdvHaric(on: date) else { return 1 }
+        let satis = 1 + Double(satisKdv.rawValue) / 100
+        let kesinti = ch.resolvedFeesIncludeVat ? 1 + Double(ch.resolvedFeeVatRate.rawValue) / 100 : 1
+        return kesinti / satis
     }
 
     /// Bu kanalda bir siparişte ortalama kaç ürün çıkıyor.

@@ -26,6 +26,7 @@ struct ProductDetail: View {
                     summary(p)
                     fiyatKarti(p)
                     costCard(p)
+                    SatisHakedisKarti(productId: productId)
 
                     if p.isBundle { componentsCard(p) }
                     recipeCard(p)

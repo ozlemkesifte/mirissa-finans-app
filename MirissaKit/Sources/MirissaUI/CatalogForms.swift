@@ -183,6 +183,8 @@ struct ProductForm: View {
     @State private var tedarikGun: Double?
     @State private var minSiparis: Double?
     @State private var listeFiyat: Kurus = 0
+    /// nil = ayarlardaki varsayılan KDV
+    @State private var kdvOrani: VatRate?
     @State private var kanalFiyat: [Id: Kurus] = [:]
     @State private var loaded = false
     @State private var showDelete = false
@@ -244,6 +246,24 @@ struct ProductForm: View {
                 Text("Kâr her zaman girdiğin gerçek satış tutarından hesaplanır. "
                      + "Buradaki fiyat satış girişinde tutarı önden doldurur. "
                      + "Boş bıraktığın kanalda etiket fiyatı geçerli olur.")
+            }
+
+            if store.state.settings.vatEnabled {
+                Section {
+                    Picker("Satış KDV oranı", selection: Binding(
+                        get: { kdvOrani ?? store.state.settings.defaultVatRate },
+                        set: { kdvOrani = $0 == store.state.settings.defaultVatRate ? nil : $0 }
+                    )) {
+                        ForEach(VatRate.allCases) { r in Text(r.displayName).tag(r) }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Bu ürünün KDV'si")
+                } footer: {
+                    Text("Fiyatın içindeki KDV devlete gider; kâr KDV hariç tutardan hesaplanır. "
+                         + "Kozmetikte genellikle %20'dir; farklıysa muhasebecine sorup seç. "
+                         + "Yeni satış girişleri bu oranla açılır; geçmiş satışlar kendi oranıyla kalır.")
+                }
             }
 
             Section {
@@ -340,6 +360,7 @@ struct ProductForm: View {
         costLines = p.costLines(on: nil); recipe = p.recipe
         minQty = p.minQty; criticalQty = p.criticalQty
         tedarikGun = p.tedarikSuresiGun.map(Double.init); minSiparis = p.minSiparis
+        kdvOrani = p.kdvOrani
     }
 
     private var taslak: Product {
@@ -376,6 +397,7 @@ struct ProductForm: View {
             p.recipe = recipe
             p.minQty = minQty; p.criticalQty = criticalQty
             p.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }; p.minSiparis = minSiparis
+            p.kdvOrani = kdvOrani
             let bugun = Dates.today()
             p.applyCurrentPrice(listeFiyat, channelId: nil, today: bugun)
             for (kanal, tutar) in kanalFiyat.sorted(by: { $0.key < $1.key }) {
@@ -392,6 +414,7 @@ struct ProductForm: View {
             )
             yeni.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }
             yeni.minSiparis = minSiparis
+            yeni.kdvOrani = kdvOrani
             store.addProduct(yeni)
         }
     }

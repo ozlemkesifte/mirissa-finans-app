@@ -226,6 +226,8 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var id: Id
     public var name: String
     public var sku: String?
+    /// Ürünün satış KDV oranı (kozmetik %20, bazı ürünler %10/%1). nil = ayarlardaki varsayılan
+    public var kdvOrani: VatRate? = nil
     public var isBundle: Bool
     public var components: [BundleComponent]
     /// Ürünün kendi maliyet kalemleri (üretim, kutu, etiket...)
@@ -423,6 +425,14 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public var feeVatRate: VatRate?
     /// Kesinti tutarları KDV'yi içeriyor mu
     public var feesIncludeVat: Bool?
+    /// Komisyon KDV hariç satış fiyatı üzerinden mi hesaplanıyor (Trendyol böyle yapar,
+    /// üstüne KDV ekler). nil/false = KDV dahil fiyatın yüzdesi. %20 KDV'li üründe ikisi aynı sonucu verir.
+    public var komisyonKdvHaric: Bool? = nil
+    /// E-ticaret stopajı oranı (%). Pazaryeri KDV hariç satış tutarından keser; gider değil,
+    /// gelir/kurumlar vergisinden mahsup edilen peşin vergidir. nil = kesilmiyor.
+    public var stopajPct: Double? = nil
+    /// Stopajın kesilmeye başladığı gün (yasal başlangıç 2025-01-01)
+    public var stopajBaslangic: DateKey? = nil
     /// Tarihli kesinti ayarları. Boşsa yukarıdaki düz alanlar kullanılır.
     /// Komisyon değişince eski kayıt silinmez; geçmiş dönemler bozulmaz.
     public var rateHistory: [ChannelRates]?
@@ -535,6 +545,11 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
             otherDeductionMonthly: otherDeductionMonthly
         )
     }
+
+    /// O gün komisyonun KDV hariç fiyattan alınıp alınmadığı (tarihli)
+    public func komisyonKdvHaric(on date: DateKey) -> Bool {
+        rates(on: date).komisyonKdvHaric ?? komisyonKdvHaric ?? false
+    }
 }
 
 public enum ChannelKind: String, Codable, Sendable {
@@ -636,6 +651,8 @@ public struct ChannelRates: Codable, Identifiable, Hashable, Sendable {
     public var extras: [ChannelExtraFee]
     /// Kurulumda "bilmiyorum" denen alanların adları
     public var unknownFields: [String]
+    /// Bu tarihten itibaren komisyon KDV hariç fiyattan mı. nil = kanalın ayarı
+    public var komisyonKdvHaric: Bool? = nil
 
     public init(
         id: Id = Ids.make(.channelRate),

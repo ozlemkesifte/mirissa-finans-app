@@ -68,6 +68,48 @@ struct ChannelForm: View {
                     }
                 }
 
+                if store.state.settings.vatEnabled {
+                    Section {
+                        Toggle("Komisyon KDV hariç fiyattan", isOn: Binding(
+                            get: { draft?.komisyonKdvHaric ?? false },
+                            set: { draft?.komisyonKdvHaric = $0 }
+                        ))
+                    } header: {
+                        Text("Komisyon neyin yüzdesi?")
+                    } footer: {
+                        Text("Trendyol komisyonu KDV hariç satış fiyatından hesaplar, faturada üstüne KDV ekler. "
+                             + "Ürünün KDV'si ile kesinti KDV'si aynıysa (ikisi de %20) iki seçenek aynı sonucu verir; "
+                             + "%10 veya %1 KDV'li ürün satıyorsan bunu açık tut. Değişiklik bugünden başlar, geçmiş aylar değişmez.")
+                    }
+                }
+
+                Section {
+                    Toggle("Bu kanal e-ticaret stopajı kesiyor", isOn: Binding(
+                        get: { (draft?.stopajPct ?? 0) > 0 },
+                        set: { acik in
+                            draft?.stopajPct = acik ? 1 : nil
+                            if acik, draft?.stopajBaslangic == nil { draft?.stopajBaslangic = "2025-01-01" }
+                        }
+                    ))
+                    if (draft?.stopajPct ?? 0) > 0 {
+                        PercentField("Stopaj oranı", value: Binding(
+                            get: { draft?.stopajPct ?? 0 },
+                            set: { draft?.stopajPct = $0 }
+                        ))
+                        DateRow(label: "Kesilmeye başladığı gün", dateKey: Binding(
+                            get: { draft?.stopajBaslangic ?? "2025-01-01" },
+                            set: { draft?.stopajBaslangic = $0 }
+                        ))
+                    }
+                } header: {
+                    Text("E-ticaret stopajı")
+                } footer: {
+                    Text("1 Ocak 2025'ten beri pazaryerleri KDV hariç satış tutarının %1'ini keserek vergi dairesine yatırır "
+                         + "(komisyon ve kargo düşülmeden). Bu bir gider değildir: hesabına yatan parayı azaltır ama "
+                         + "yıllık gelir/kurumlar vergisinden ve geçici vergiden düşülür. Kârın değişmez; vergi karşılığın azalır. "
+                         + "Kendi siten (Shopify) kesmez; bunu kapalı bırak. Oranı hesap özetinden kontrol et.")
+                }
+
                 if store.state.channels.count > 1 {
                     Section {
                         Button {
@@ -144,7 +186,8 @@ struct ChannelMonthForm: View {
     private var beklenen: Kurus {
         let giderler = [commission ?? brut(auto.commission.amount), shipping ?? brut(auto.shipping.amount),
                         serviceFee ?? brut(auto.serviceFee.amount), other ?? brut(auto.otherDeduction.amount)]
-        return live.netSalesIncVat - giderler.reduce(0, +)
+        // Stopaj pazaryerince kesilir: hesaba yatan paradan düşer (kârdan değil)
+        return live.netSalesIncVat - giderler.reduce(0, +) - live.stopaj
     }
 
     private var live: ChannelMonthResult {
@@ -188,6 +231,9 @@ struct ChannelMonthForm: View {
 
             Section {
                 OptionalMoneyField("Hesabına yatan hakediş", autoValue: beklenen, value: $payout)
+                if live.stopaj > 0 {
+                    LabeledRow("Kesilen stopaj (vergiden düşülür)", live.stopaj.tl, tone: Palette.inkSoft)
+                }
                 if let p = payout {
                     let fark = beklenen - p
                     LabeledRow("Uygulamanın beklediği", beklenen.tl)
