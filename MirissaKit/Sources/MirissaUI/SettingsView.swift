@@ -73,6 +73,11 @@ struct SettingsView: View {
                                     .foregroundStyle(Palette.inkFaint)
                             }
                         }
+                        Button { sheet = .channelSetup(c.id) } label: {
+                            Label("\(c.name): stopaj, KDV ve tüm kesinti ayarları", systemImage: "slider.horizontal.3")
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(Palette.accent)
                     }
                     Button { sheet = .channelAdd } label: {
                         Label("Satış kanalı ekle", systemImage: "plus.circle")
@@ -82,7 +87,9 @@ struct SettingsView: View {
                     Text("Satış kanalları")
                 } footer: {
                     Text("Bir kanala dokununca fiyatları ve kesintileri tek tek yeniden sorulur. "
-                         + "Değişen komisyon bugünden geçerli olur; geçmiş aylar eski oranla kalır.")
+                         + "\"Stopaj, KDV ve tüm kesinti ayarları\" satırında e-ticaret stopajı, komisyonun KDV hariç "
+                         + "fiyattan alınması ve kesintilerin KDV'si ayarlanır. "
+                         + "Değişen ayarlar bugünden geçerli olur; geçmiş aylar eski ayarla kalır.")
                 }
 
                 Section {

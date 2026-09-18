@@ -184,13 +184,8 @@ struct PurchaseForm: View {
             vatIncluded: store.state.settings.vatEnabled ? vatIncluded : mevcutKayit?.vatIncluded
         )
         // Düzenlerken vadeli ödeme planı korunur; tutar değiştiyse kalan taksitlere yansıtılır
-        if var plan = mevcutKayit?.odeme {
-            let brut = p.landedSplit.net + p.landedSplit.vat
-            let fark = brut - plan.toplam
-            if fark != 0, let j = plan.taksitler.lastIndex(where: { !$0.odendi }) {
-                plan.taksitler[j].tutar = max(plan.taksitler[j].tutar + fark, 0)
-            }
-            p.odeme = plan
+        if let plan = mevcutKayit?.odeme {
+            p.odeme = plan.tutariDuzelt(p.landedSplit.net + p.landedSplit.vat, bugun: Dates.today())
         }
         editingId == nil ? store.addPurchase(p) : store.updatePurchase(p)
         if let f = picked {

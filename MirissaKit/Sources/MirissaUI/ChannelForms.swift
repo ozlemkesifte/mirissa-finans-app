@@ -88,14 +88,11 @@ struct ChannelForm: View {
                         get: { draft?.stopajAcik ?? false },
                         set: { acik in
                             if acik {
-                                if draft?.stopajBitis != nil {
-                                    // Yeniden açılıyor: aradaki aylar kesilmemiş sayılmasın diye bitiş kaldırılır
-                                    draft?.stopajBitis = nil
-                                } else {
-                                    draft?.stopajPct = 1
-                                    // Varsayılan başlangıç bu ay: açmak geçmiş ayların hakedişini değiştirmez
-                                    draft?.stopajBaslangic = Dates.monthStart(Dates.currentMonth())
-                                }
+                                // Açınca (yeniden açınca da) bu aydan başlar: geçmiş aylar değişmez,
+                                // kapalı kaldığı aylar kesilmiş sayılmaz
+                                draft?.stopajBitis = nil
+                                if (draft?.stopajPct ?? 0) <= 0 { draft?.stopajPct = 1 }
+                                draft?.stopajBaslangic = Dates.monthStart(Dates.currentMonth())
                             } else if (draft?.stopajPct ?? 0) > 0 {
                                 // Kapatmak geçmişi silmez: geçen aya kadar kesilmiş sayılır
                                 draft?.stopajBitis = Dates.addMonths(Dates.currentMonth(), -1)
@@ -192,7 +189,7 @@ struct ChannelMonthForm: View {
     /// Kesinti alanlarına faturadaki tutar yazılır: kanal ayarı "KDV dahil" ise
     /// otomatik öneri de KDV dahil gösterilir, yoksa kullanıcı KDV hariç sanır.
     private func brut(_ net: Kurus) -> Kurus {
-        store.engine.kesintiBrut(net, channelId: channelId)
+        store.engine.kesintiBrut(net, channelId: channelId, month: month)
     }
 
     /// Bu ay için beklenen hakediş (formdaki kesintilerle, KDV dahil)
@@ -298,19 +295,18 @@ struct ChannelMonthForm: View {
     }
 
     private func save() {
-        let existing = store.state.channelMonth(month: month, channelId: channelId)
-        store.upsertChannelMonth(ChannelMonth(
-            id: existing?.id ?? Ids.make(.channelMonth),
-            month: month, channelId: channelId,
-            orderCount: orderCount.map { Int($0.rounded()) },
-            commissionActual: commission,
-            shippingActual: shipping,
-            serviceFeeActual: serviceFee,
-            otherDeductionActual: other,
-            adsActual: ads,
-            note: note.isEmpty ? nil : note,
-            bigOrderCount: bigOrderCount.map { Int($0.rounded()) },
-            payoutActual: payout
-        ))
+        // Mevcut kayıttan başlanır: formda olmayan alanlar (içe aktarılan sipariş listesi gibi) korunur
+        var cm = store.state.channelMonth(month: month, channelId: channelId)
+            ?? ChannelMonth(month: month, channelId: channelId)
+        cm.orderCount = orderCount.map { Int($0.rounded()) }
+        cm.commissionActual = commission
+        cm.shippingActual = shipping
+        cm.serviceFeeActual = serviceFee
+        cm.otherDeductionActual = other
+        cm.adsActual = ads
+        cm.note = note.isEmpty ? nil : note
+        cm.bigOrderCount = bigOrderCount.map { Int($0.rounded()) }
+        cm.payoutActual = payout
+        store.upsertChannelMonth(cm)
     }
 }

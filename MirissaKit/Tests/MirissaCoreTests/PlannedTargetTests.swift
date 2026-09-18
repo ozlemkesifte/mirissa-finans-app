@@ -167,7 +167,7 @@ struct PlannedTargetTests {
         let plan = Engine(Golden.senaryo()).plan(month: "2026-09", today: "2026-09-30")
         #expect(plan.mode == .gerceklesen)
         #expect(plan.actual?.revenue == tl(190_000))
-        #expect(plan.actual?.profit == tl(76_150))
+        #expect(plan.actual?.profit == tl(75_150))
     }
 
     // MARK: Senaryo 4 — eksik bilgi

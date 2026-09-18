@@ -78,7 +78,8 @@ struct ReferenceCalculatorTests {
             b.ambalaj += yuvarla(Double(m.packaging) * sat.qty)
         }
         if let oc = cm?.orderCount, oc > 0 { b.siparis = oc }
-        else { b.siparis = Int(max(adet - iadeAdet, 0).rounded()) }
+        // İade edilen siparişin de gidiş kargosu ödendi: gönderilen adet sayılır
+        else { b.siparis = Int(max(adet, 0).rounded()) }
 
         let o = ch.rates(on: gun)
         let taban = Double(max(kdvDahilNet, 0))

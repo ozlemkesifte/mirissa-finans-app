@@ -98,7 +98,9 @@ public extension Engine {
         }
         // 4) Geçici vergi (oran girildiyse)
         for ceyrekSonu in [3, 6, 9].map({ Dates.monthKey(Dates.year(of: Dates.month(of: bas)), $0) }) {
-            if let v = vergiKarsiligi(month: ceyrekSonu, today: bugun), pencerede(v.ceyrekSonOdeme),
+            // Henüz gelmemiş çeyrek sonu bugünün çeyreğine düşer; aynı vergi iki kez yazılmasın
+            if let v = vergiKarsiligi(month: ceyrekSonu, today: bugun),
+               v.ceyrek == Dates.monthNumber(of: ceyrekSonu) / 3, pencerede(v.ceyrekSonOdeme),
                v.ceyrekGeciciVergi > 0 {
                 kalemler.append(NakitKalemi(id: "vergi:\(ceyrekSonu)", gun: v.ceyrekSonOdeme,
                                             ad: "\(v.ceyrek). çeyrek geçici vergi",

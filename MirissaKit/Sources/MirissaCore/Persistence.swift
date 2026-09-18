@@ -127,6 +127,13 @@ public enum Persistence {
             let selfId = s.products[i].id
             s.products[i].recipe.removeAll { !materialIds.contains($0.materialId) }
             s.products[i].components.removeAll { !productIds.contains($0.productId) || $0.productId == selfId }
+            if var surumler = s.products[i].eskiReceteler {
+                for j in surumler.indices {
+                    surumler[j].recipe.removeAll { !materialIds.contains($0.materialId) }
+                    surumler[j].components.removeAll { !productIds.contains($0.productId) || $0.productId == selfId }
+                }
+                s.products[i].eskiReceteler = surumler
+            }
         }
         // Kargo kolisi siparişe göre gider (1–2 ürün 1 koli, 3+ ürün 2 koli).
         // Kullanıcı hiç seçmemişse adında "koli" geçen malzemeler buna ayarlanır;

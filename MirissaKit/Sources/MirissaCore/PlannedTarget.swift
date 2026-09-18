@@ -144,8 +144,8 @@ public extension Engine {
             }
         }
         func net(_ v: Double) -> Kurus {
-            Vat.net(Money.roundHalfAwayFromZero(v), rate: ch.resolvedFeeVatRate,
-                    included: ch.resolvedFeesIncludeVat)
+            let k = ch.kesintiKdv(on: date)
+            return Vat.net(Money.roundHalfAwayFromZero(v), rate: k.oran, included: k.dahil)
         }
         return ((net(yuzde + sabit), net(sabit)), ek.tahmin, ek.eksik)
     }
@@ -173,7 +173,8 @@ public extension Engine {
     func komisyonTabanCarpani(_ ch: Channel, on date: DateKey, satisKdv: VatRate) -> Double {
         guard ch.komisyonKdvHaric(on: date) else { return 1 }
         let satis = 1 + Double(satisKdv.rawValue) / 100
-        let kesinti = ch.resolvedFeesIncludeVat ? 1 + Double(ch.resolvedFeeVatRate.rawValue) / 100 : 1
+        let k = ch.kesintiKdv(on: date)
+        let kesinti = k.dahil ? 1 + Double(k.oran.rawValue) / 100 : 1
         return kesinti / satis
     }
 
@@ -380,7 +381,13 @@ public extension Engine {
     func digerDegiskenGiderSiparisBasi(month: MonthKey) -> Double {
         let r = companyMonth(month)
         guard r.orders > 0 else { return 0 }
-        let toplam = r.ortakGiderDegisken
+        // Kanalı seçilmeden girilen satışa bağlı reklam da ortak değişken giderdedir;
+        // reklam hedefi reklamı ayrıca düştüğü için burada sayılmaz (iki kez düşülmesin)
+        let ortakReklam = expenseInstances(from: month, to: month)
+            .filter { !$0.capitalized && $0.scope.channelId == nil
+                && $0.category == .reklam && $0.behavior == .satisaBagli }
+            .reduce(0) { $0 + $1.expenseAmount }
+        let toplam = r.ortakGiderDegisken - ortakReklam
             + r.channels.reduce(0) { $0 + $1.otherChannelExpensesVariable }
         return Double(max(toplam, 0)) / Double(r.orders)
     }

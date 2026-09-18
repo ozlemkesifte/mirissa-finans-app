@@ -686,15 +686,26 @@ struct ChannelSetupFlow: View {
         }
 
         // Yeni oranlar bugünden geçerli: geçmiş aylar eski oranlarla kalır.
-        return ChannelRates(
+        // Bu akışta sorulmayan ayarlar (hizmet bedeli, aylık ücretler, KDV, komisyon tabanı)
+        // mevcut halleriyle korunur; yoksa akışı tekrar çalıştırmak onları sıfırlardı.
+        let mevcut = kanal?.rates(on: bugun)
+        var r = ChannelRates(
             from: baslangicTarihi,
             commissionPct: kendiSitesi ? 0 : yuzde,
             paymentPct: kendiSitesi ? yuzde : 0,
             shippingPerOrder: (kargoVar == true && !kargoBilinmiyor && kargoBasis != .elleAylik)
                 ? Kurus(kargoDeger) : 0,
+            serviceFeePerOrder: mevcut?.serviceFeePerOrder ?? 0,
+            platformFeeMonthly: mevcut?.platformFeeMonthly ?? 0,
+            otherDeductionPct: mevcut?.otherDeductionPct ?? 0,
+            otherDeductionMonthly: mevcut?.otherDeductionMonthly ?? 0,
             extras: extras,
             unknownFields: bilinmeyen
         )
+        r.komisyonKdvHaric = mevcut?.komisyonKdvHaric
+        r.feeVatRate = mevcut?.feeVatRate
+        r.feesIncludeVat = mevcut?.feesIncludeVat
+        return r
     }
 
     /// Kanal ilk kez kuruluyorsa oranlar baştan geçerli sayılır;
@@ -728,11 +739,19 @@ struct ChannelSetupFlow: View {
             komisyonVar = true
             komisyonBasis = .yuzde
             komisyonDeger = oran
+        } else if let k = r.extras.first(where: { $0.label == "Komisyon" && !$0.unknown }) {
+            // Sipariş başı ya da aylık elle girilen komisyon da yeniden sorulurken korunur
+            komisyonVar = true
+            komisyonBasis = k.basis
+            komisyonDeger = k.value
         }
         if r.shippingPerOrder > 0 {
             kargoVar = true
             kargoBasis = .siparisBasi
             kargoDeger = Double(r.shippingPerOrder)
+        } else if r.extras.contains(where: { $0.label == "Kargo" && $0.basis == .elleAylik && !$0.unknown }) {
+            kargoVar = true
+            kargoBasis = .elleAylik
         }
         ekler = r.extras.filter { $0.label != "Komisyon" && $0.label != "Kargo" }
     }

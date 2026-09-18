@@ -86,8 +86,8 @@ struct MonthlyReport: View {
                                        Money.roundHalfAwayFromZero(Double(result.gercekKar) / result.units).tl,
                                        tone: result.gercekKar < 0 ? Palette.zarar : Palette.kar)
                         }
-                        if result.stokAlimi != 0 {
-                            LabeledRow("Stok alımı (nakit)", result.stokAlimi.tl, tone: Palette.inkSoft)
+                        if result.stokAlimiNakit != 0 {
+                            LabeledRow("Stok alımı (nakit)", result.stokAlimiNakit.tl, tone: Palette.inkSoft)
                         }
                     }
                 }

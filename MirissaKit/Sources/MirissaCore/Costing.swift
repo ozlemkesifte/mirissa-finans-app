@@ -94,7 +94,8 @@ public enum OrderPackaging {
         let adet = satirlar.reduce(0.0) { $0 + $1.qty }
         guard adet > 0 else { return .bos }
         let malzemeler = Dictionary(s.materials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let urunler = Dictionary(s.products.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // O ayda geçerli reçetelerle
+        let urunler = s.urunlerTarihli(Dates.monthEnd(month))
 
         // Her sipariş-başı malzeme için: bu malzemeyi kullanan ürün adedi × satırdaki miktar
         var agirlik: [Id: Double] = [:]

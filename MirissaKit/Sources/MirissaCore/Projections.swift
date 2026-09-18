@@ -116,16 +116,23 @@ public extension Engine {
 
     /// Son aylardaki gerçek satış tüketiminden ortalama çıkarır.
     /// Fire / numune / sayım farkı bu orana katılmaz — yoksa oran şişer.
-    func consumptionRate(_ item: ItemRef, endingAt month: MonthKey? = nil) -> ConsumptionRate {
-        let end = month ?? Dates.currentMonth()
-        let key = "\(item.id)|\(end)"
-        if let c = consumptionCache[key] { return c }
-
-        var result = ConsumptionRate.none
+    func consumptionRate(_ item: ItemRef, endingAt month: MonthKey? = nil,
+                         bugun: DateKey? = nil) -> ConsumptionRate {
+        let buAy = Dates.month(of: bugun ?? Dates.today())
+        let istenen = month ?? buAy
         let satirlar = ledger.rows(for: item)
         // Kalem ilk kez ne zaman göründü: yeni ürünün oranı, henüz yokken geçen
         // aylarla sulandırılmasın
         let ilkAy = satirlar.map { Dates.month(of: $0.date) }.min()
+        // Bitmemiş ay tam ay sayılmaz (ayın 1'inde oran 3'te 2'ye düşerdi): son biten aya kadar
+        // bakılır. Kalem bu ay ilk kez satıldıysa elde yalnızca bu ay vardır, o kullanılır.
+        let ilkSatisAy = satirlar.filter { $0.movement.source == .sales && $0.kind == .satis }
+            .map { Dates.month(of: $0.date) }.min()
+        let end = istenen >= buAy && (ilkSatisAy ?? istenen) < buAy ? Dates.addMonths(buAy, -1) : istenen
+        let key = "\(item.id)|\(end)"
+        if let c = consumptionCache[key] { return c }
+
+        var result = ConsumptionRate.none
         for window in [state.settings.consumptionWindowMonths, 6, 12] where window > 0 {
             let start = max(Dates.addMonths(end, -(window - 1)), ilkAy ?? end)
             guard start <= end else { continue }

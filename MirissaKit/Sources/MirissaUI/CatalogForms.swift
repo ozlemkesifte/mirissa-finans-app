@@ -400,8 +400,9 @@ struct ProductForm: View {
             p.kdvOrani = kdvOrani
             let bugun = Dates.today()
             p.applyCurrentPrice(listeFiyat, channelId: nil, today: bugun)
-            for (kanal, tutar) in kanalFiyat.sorted(by: { $0.key < $1.key }) {
-                p.applyCurrentPrice(tutar, channelId: kanal, today: bugun)
+            // Boş bırakılan kanal fiyatı da işlenir: o kanalda etiket fiyatına döner
+            for c in store.state.activeChannels {
+                p.applyCurrentPrice(kanalFiyat[c.id] ?? 0, channelId: c.id, today: bugun)
             }
             store.updateProduct(p)
         } else {

@@ -449,17 +449,23 @@ struct SaleFlow: View {
     // MARK: Taslaklar
 
     private func taslaklar() -> [SalesEntry] {
-        let toplamTutar = satirlar.reduce(0) { $0 + $1.tutar }
-        return satirlar.filter { $0.adet > 0 }.map { satir in
-            // İndirim ve iade satırlara tutarlarıyla orantılı dağıtılır
-            let pay = toplamTutar > 0 ? Double(satir.tutar) / Double(toplamTutar) : 0
+        let gecerli = satirlar.filter { $0.adet > 0 }
+        // İndirim ve iade tutarı satırlara tutarlarıyla orantılı, iade adedi satılan adetle orantılı
+        // dağıtılır; en büyük kalan yöntemiyle parçaların toplamı girilen toplama birebir eşittir.
+        let tutarlar = gecerli.map { Double($0.tutar) }
+        let indirimler = Engine.dagit(indirim, tutarlar)
+        let iadeTutarlari = Engine.dagit(iadeTutar, tutarlar)
+        let iadeAdetleri: [Double] = gecerli.count == 1
+            ? [iadeAdet]
+            : SaleSplit.iadeAdetleri(iadeAdet, adetler: gecerli.map(\.adet))
+        return gecerli.enumerated().map { i, satir in
             return SalesEntry(
                 id: satir.id,
                 month: ay, channelId: kanalId, productId: satir.urunId,
                 qty: satir.adet, grossSales: satir.tutar,
-                discount: Money.roundHalfAwayFromZero(Double(indirim) * pay),
-                returnsAmount: Money.roundHalfAwayFromZero(Double(iadeTutar) * pay),
-                returnsQty: satirlar.count == 1 ? iadeAdet : (iadeAdet * pay).rounded(),
+                discount: indirimler[i],
+                returnsAmount: iadeTutarlari[i],
+                returnsQty: iadeAdetleri[i],
                 returnsRestock: iadeSatilabilir,
                 vatRate: store.state.satisKdvOrani(satir.urunId),
                 vatIncluded: store.state.settings.defaultVatIncluded

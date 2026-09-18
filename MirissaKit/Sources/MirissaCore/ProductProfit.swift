@@ -144,3 +144,27 @@ public extension Engine {
         return sira.compactMap { toplam[$0] }.sorted { $0.kalan > $1.kalan }
     }
 }
+
+/// Çok ürünlü satış girişinde toplam iade adedinin ürünlere bölünmesi
+public enum SaleSplit {
+    /// Toplam iade adedi, satılan adetle orantılı ve tam adet olarak bölünür (toplam korunur);
+    /// hiçbir satıra sattığından fazla iade yazılmaz.
+    public static func iadeAdetleri(_ toplam: Double, adetler: [Double]) -> [Double] {
+        guard !adetler.isEmpty else { return [] }
+        let hedef = Int(min(toplam, adetler.reduce(0, +)).rounded())
+        var parca = Engine.dagit(hedef, adetler).map(Double.init)
+        // Sınırı aşan satırın fazlası, yeri olan satırlara kaydırılır
+        var fazla = 0.0
+        for i in parca.indices where parca[i] > adetler[i] {
+            fazla += parca[i] - adetler[i]
+            parca[i] = adetler[i]
+        }
+        for i in parca.indices where fazla > 0 {
+            let yer = adetler[i] - parca[i]
+            let ek = min(yer.rounded(.down), fazla)
+            parca[i] += ek
+            fazla -= ek
+        }
+        return parca
+    }
+}

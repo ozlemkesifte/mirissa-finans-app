@@ -29,7 +29,7 @@ public extension Engine {
     /// `channelId` verilirse o kanalın komisyon ve kargosu da eklenir (fiyat biliniyorsa).
     func birimMaliyetDokumu(productId: Id, channelId: Id? = nil,
                             on date: DateKey = Dates.today()) -> BirimMaliyetDokumu? {
-        guard let p = productsById[productId] else { return nil }
+        guard let p = productsById[productId]?.tarihli(date) else { return nil }
         var out: [BirimMaliyetKalemi] = []
         let b = cost(of: productId, asOf: date)
 

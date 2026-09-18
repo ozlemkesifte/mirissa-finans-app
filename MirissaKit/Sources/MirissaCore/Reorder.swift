@@ -35,7 +35,7 @@ public extension Engine {
             (sure, moq, ad, birim) = (p.tedarikSuresiGun, p.minSiparis, p.name, .adet)
         }
         guard let s = sure, s >= 0 else { return nil }
-        let hiz = consumptionRate(item, endingAt: Dates.month(of: bugun)).perMonth / 30
+        let hiz = consumptionRate(item, endingAt: Dates.month(of: bugun), bugun: bugun).perMonth / 30
         guard hiz > 0 else { return nil }
         let q = max(qty(item), 0)
         let kalan = Int((q / hiz).rounded(.down))

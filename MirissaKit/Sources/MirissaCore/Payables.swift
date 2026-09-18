@@ -15,6 +15,25 @@ public struct OdemePlani: Codable, Hashable, Sendable {
 
     public var toplam: Kurus { pesinat + taksitler.reduce(0) { $0 + $1.tutar } }
 
+    /// Alımın tutarı düzeltildiğinde plan yeni toplamı birebir tutsun.
+    /// Fark önce ödenmemiş taksitlere (sondan başa) yansır; hiç ödenmemiş taksit kalmadıysa
+    /// ya da azalış taksitleri aşıyorsa kalan fark bugün vadeli ayrı bir taksit olur
+    /// (artışta ödenecek fark, azalışta tedarikçiden alacak — eksi tutar).
+    public func tutariDuzelt(_ yeniToplam: Kurus, bugun: DateKey) -> OdemePlani {
+        var plan = self
+        var fark = yeniToplam - toplam
+        guard fark != 0 else { return plan }
+        for j in plan.taksitler.indices.reversed() where !plan.taksitler[j].odendi && fark != 0 {
+            let yeni = max(plan.taksitler[j].tutar + fark, 0)
+            fark -= yeni - plan.taksitler[j].tutar
+            plan.taksitler[j].tutar = yeni
+        }
+        if fark != 0 {
+            plan.taksitler.append(Taksit(vade: bugun, tutar: fark))
+        }
+        return plan
+    }
+
     /// Kalan tutarı eşit taksitlere böler; kuruş farkı son taksite eklenir
     public static func esit(toplam: Kurus, pesinat: Kurus, taksitSayisi: Int,
                             ilkVade: DateKey, aralikAy: Int = 1) -> OdemePlani {

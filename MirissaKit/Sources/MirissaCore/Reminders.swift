@@ -55,7 +55,9 @@ public extension Engine {
         }
         let yil = Dates.year(of: Dates.month(of: bugun))
         for c in [3, 6, 9] {
-            if let v = vergiKarsiligi(month: Dates.monthKey(yil, c), today: bugun), v.ceyrekGeciciVergi > 0 {
+            // Henüz gelmemiş çeyrek bugünün çeyreğine düşer; aynı hatırlatma tekrar etmesin
+            if let v = vergiKarsiligi(month: Dates.monthKey(yil, c), today: bugun), v.ceyrek == c / 3,
+               v.ceyrekGeciciVergi > 0 {
                 ekle("vergi-\(yil)-\(c)", Dates.addDays(v.ceyrekSonOdeme, -3), "Geçici vergi",
                      "\(v.ceyrek). çeyrek geçici vergi yaklaşık \(Money.format(v.ceyrekGeciciVergi)), son gün \(Dates.displayDateShort(v.ceyrekSonOdeme)).")
             }

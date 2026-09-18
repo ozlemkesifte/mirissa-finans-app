@@ -229,11 +229,14 @@ public enum Movements {
     /// malzemeler, o ayın satışları değerlenmeden önce ortalama maliyete girer.
     static func fromSales(_ s: AppState) -> [Movement] {
         var out: [Movement] = []
-        let byId = Dictionary(uniqueKeysWithValues: s.products.map { ($0.id, $0) })
+        // Her ay, o ayda geçerli reçete ve set içeriğiyle açılır
+        var aylik: [MonthKey: [Id: Product]] = [:]
 
         for e in s.sales {
-            guard let sold = byId[e.productId], e.qty != 0 || e.returnsQty != 0 else { continue }
             let date = Dates.monthEnd(e.month)
+            let byId: [Id: Product]
+            if let c = aylik[e.month] { byId = c } else { byId = s.urunlerTarihli(date); aylik[e.month] = byId }
+            guard let sold = byId[e.productId], e.qty != 0 || e.returnsQty != 0 else { continue }
             let channelName = s.channel(e.channelId)?.name ?? "Satış"
 
             // 1) Ürün stoğu: set ise bileşenlerine iner

@@ -184,7 +184,7 @@ struct IsolationTests {
         #expect(Engine(s).channelResult(channelId: G.trendyol, month: "2026-09")
             .kanaldaKalan == once)
         // Ama şirket kârını düşürür
-        #expect(Engine(s).companyMonth("2026-09").gercekKar == tl(46_150))
+        #expect(Engine(s).companyMonth("2026-09").gercekKar == tl(45_150))
     }
 
     // MARK: Satış

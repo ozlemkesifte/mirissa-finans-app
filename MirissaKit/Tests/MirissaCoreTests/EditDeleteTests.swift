@@ -96,7 +96,7 @@ struct EditDeleteTests {
         e.amount = tl(24_000)                                 // net 20.000
         st.updateExpense(e)
         #expect(st.engine.companyMonth("2026-09").ortakGider == tl(20_000))
-        #expect(st.engine.companyMonth("2026-09").gercekKar == tl(66_150))
+        #expect(st.engine.companyMonth("2026-09").gercekKar == tl(65_150))
     }
 
     @Test func giderSilinincaKarVeKdvDuzelir() {
@@ -104,7 +104,7 @@ struct EditDeleteTests {
         st.deleteExpense("exp_g2")                            // Trendyol reklamı
         let r = st.engine.companyMonth("2026-09")
         #expect(r.channels.first { $0.channelId == G.trendyol }?.ads.amount == 0)
-        #expect(r.gercekKar == tl(96_150))                    // 76.150 + 20.000
+        #expect(r.gercekKar == tl(95_150))                    // 75.150 + 20.000
         #expect(st.engine.vatStatus("2026-09").indirilecek == tl(3_000))
     }
 

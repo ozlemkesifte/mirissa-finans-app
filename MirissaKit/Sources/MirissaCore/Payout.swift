@@ -30,9 +30,10 @@ public extension Engine {
     }
 
     /// Net bir kesinti tutarının faturadaki (KDV dahil) karşılığı — kanal ayarına göre
-    func kesintiBrut(_ net: Kurus, channelId: Id) -> Kurus {
-        guard let ch = state.channel(channelId), ch.resolvedFeesIncludeVat,
-              ch.resolvedFeeVatRate != .yok else { return net }
-        return net + Money.roundHalfAwayFromZero(Double(net) * Double(ch.resolvedFeeVatRate.rawValue) / 100)
+    func kesintiBrut(_ net: Kurus, channelId: Id, month: MonthKey? = nil) -> Kurus {
+        guard let ch = state.channel(channelId) else { return net }
+        let k = ch.kesintiKdv(on: month.map(Dates.monthEnd) ?? Dates.today())
+        guard k.dahil, k.oran != .yok else { return net }
+        return net + Money.roundHalfAwayFromZero(Double(net) * Double(k.oran.rawValue) / 100)
     }
 }

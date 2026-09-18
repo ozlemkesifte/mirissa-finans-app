@@ -72,7 +72,7 @@ public extension Engine {
         let ek = elleAylikTahmin(ch, on: date)
         let fiyat = Double(u.price)
         let satisOrani = satisKdvOrani(productId: productId, channelId: channelId, on: date)
-        let feeRate = ch.resolvedFeeVatRate, dahil = ch.resolvedFeesIncludeVat
+        let (feeRate, dahil) = ch.kesintiKdv(on: date)
 
         func yuzde(_ v: Double) -> String { "%" + RoasFormat.format(v).replacingOccurrences(of: ",00", with: "") }
         var kalemler: [HakedisKalemi] = []

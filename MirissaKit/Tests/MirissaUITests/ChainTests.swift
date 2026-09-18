@@ -47,7 +47,7 @@ struct ChainTests {
         // Kapat/aç
         let yeni = yenidenAc(st, f)
         #expect(yeni.engine.cost(of: G.sampuan, asOf: "2026-10-05").intrinsic == tl(110))
-        #expect(yeni.engine.companyMonth("2026-09").gercekKar == tl(76_150))
+        #expect(yeni.engine.companyMonth("2026-09").gercekKar == tl(75_150))
     }
 
     // MARK: Stok alımı akışı
@@ -88,11 +88,11 @@ struct ChainTests {
 
         // Net 5.000 kâra, 1.000 indirilecek KDV'ye, 6.000 kasadan
         #expect(st.engine.companyMonth("2026-09").ortakGider == tl(15_000))
-        #expect(st.engine.companyMonth("2026-09").gercekKar == tl(71_150))
+        #expect(st.engine.companyMonth("2026-09").gercekKar == tl(70_150))
         #expect(st.engine.vatStatus("2026-09").indirilecek == tl(8_000))
 
         let yeni = yenidenAc(st, f)
-        #expect(yeni.engine.companyMonth("2026-09").gercekKar == tl(71_150))
+        #expect(yeni.engine.companyMonth("2026-09").gercekKar == tl(70_150))
     }
 
     // MARK: Satış akışı (elle kesinti otomatiğin yerine geçer)

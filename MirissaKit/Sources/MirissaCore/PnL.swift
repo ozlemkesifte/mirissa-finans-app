@@ -130,8 +130,10 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
     public var ortakGider: Kurus
     /// Ortak giderlerin satışa bağlı kısmı
     public var ortakGiderDegisken: Kurus
-    /// Stoğa giren alımlar — kasadan çıktı ama kâra satıldıkça yansır
+    /// Stoğa giren alımlar (KDV dahil tutar) — kâra satıldıkça yansır
     public var stokAlimi: Kurus
+    /// Stok alımları için bu ay kasadan gerçekten çıkan (peşinat, taksit dahil)
+    public var stokAlimiNakit: Kurus = 0
     /// Kasadan bu ay çıkan toplam
     public var nakitCikisi: Kurus
     /// Gider ve alımlardan indirilebilecek KDV (kanal kesintileri hariç)
@@ -253,6 +255,8 @@ public extension Array where Element == ChannelMonthResult {
     /// Aynı kanalın birden çok ayını tek sonuçta toplar
     func aggregated(channelId: Id, channelName: String, label: MonthKey) -> ChannelMonthResult {
         var r = ChannelMonthResult.empty(channelId: channelId, channelName: channelName, month: label)
+        // Yalnızca siparişi tahmin edilen bir ay varsa "tahmini" (hepsi girilmişse değil)
+        r.ordersIsEstimate = !contains { $0.orders > 0 }
         var manualCommission = false, manualShipping = false, manualService = false
         var manualOther = false, manualAds = false
         for c in self {

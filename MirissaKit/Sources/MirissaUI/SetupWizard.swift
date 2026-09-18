@@ -1195,6 +1195,11 @@ public struct SetupWizard: View {
             yeniUrunler += s.products.filter { p in
                 p.isBundle && !yeniUrunler.contains { $0.id == p.id }
             }
+            // Kurulumda çıkarılan eski ürünler silinmez, arşivlenir: geçmiş satışları ve raporlar korunur
+            for var p in s.products where !yeniUrunler.contains(where: { $0.id == p.id }) {
+                p.archived = true
+                yeniUrunler.append(p)
+            }
             s.products = yeniUrunler
 
             // --- Malzemeler ---
@@ -1215,6 +1220,11 @@ public struct SetupWizard: View {
                         openingDate: ay
                     ))
                 }
+            }
+            // Listeden çıkarılan eski malzemeler de silinmez, arşivlenir (alım ve stok geçmişi korunur)
+            for var m in s.materials where !yeniMalzemeler.contains(where: { $0.id == m.id }) {
+                m.archived = true
+                yeniMalzemeler.append(m)
             }
             s.materials = yeniMalzemeler
 

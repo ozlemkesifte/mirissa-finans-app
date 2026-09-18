@@ -132,7 +132,15 @@ public enum Expenses {
     /// boş kalmasın, başa baş hedefi doğru çıksın). Para ve KDV ödeme ayındadır.
     private static func yillikAylaraBol(_ e: Expense, from: MonthKey, to: MonthKey) -> [ExpenseInstance] {
         let start = e.startMonth
-        let hardEnd = e.endMonth.map { min($0, to) } ?? to
+        // Durdurulan yıllık giderde son ödenen yılın payları yılın sonuna kadar yazılır:
+        // para ödendi, kalan 11/12 kârdan hiç düşmeden kaybolmasın. Yeni ödeme olmaz.
+        let payBitisi = e.endMonth.map { son -> MonthKey in
+            // Başlamadan durdurulduysa hiç ödenmedi
+            if son < start { return Dates.addMonths(start, -1) }
+            let sonOdeme = Dates.addMonths(start, (max(Dates.monthsBetween(start, son), 0) / 12) * 12)
+            return Dates.addMonths(sonOdeme, 11)
+        }
+        let hardEnd = payBitisi.map { min($0, to) } ?? to
         guard from <= hardEnd else { return [] }
         let anchorDay = Dates.day(of: e.date)
         var out: [ExpenseInstance] = []

@@ -72,8 +72,23 @@ public extension Engine {
                                      satisKdv: satisKdvOrani(productId: productId, channelId: channelId, on: date)).0.toplam
         let yeniKatki = yeniNet - kesinti - u.productCost - u.packagingCost - u.orderPackagingCost
         let ay = Dates.month(of: date)
-        let sabit = Double(plannedFixedCosts(month: ay))
-        func basaBas(_ k: Kurus) -> Int? { k > 0 && sabit > 0 ? Int((sabit / Double(k)).rounded(.up)) : nil }
+        // Ana başa baş kartıyla aynı temel: satışa bağlı giderler (değişken reklam, influencer…)
+        // son satışlı ayda sipariş başına ne düştüyse o kadar düşülür; satış yoksa aylık tutar sabite eklenir.
+        let temelAy = (1...12).map { Dates.addMonths(ay, -$0) }.first { companyMonth($0).orders > 0 }
+        var sabit = Double(plannedFixedCosts(month: ay))
+        var degiskenSiparisBasi = 0.0
+        if let m = temelAy {
+            let r = companyMonth(m)
+            let toplam = r.ortakGiderDegisken
+                + r.channels.reduce(0) { $0 + $1.adsVariable + $1.otherChannelExpensesVariable }
+            degiskenSiparisBasi = Double(max(toplam, 0)) / Double(r.orders)
+        } else {
+            sabit += Double(satisaBagliAylikGiderler(month: ay))
+        }
+        func basaBas(_ k: Kurus) -> Int? {
+            let net = Double(k) - degiskenSiparisBasi
+            return net > 0 && sabit > 0 ? Int((sabit / net).rounded(.up)) : nil
+        }
         return KampanyaSonucu(
             indirimPct: indirimPct, eskiFiyat: u.price, yeniFiyat: yeniFiyat,
             eskiKatki: u.contribution, yeniKatki: yeniKatki,

@@ -61,7 +61,9 @@ struct ReferenceLedgerTests {
                 for e in s.expenses {
                     let bas = String(e.date.prefix(7))
                     guard ay >= bas else { continue }
-                    if let bitis = e.endMonth, ay > bitis { continue }
+                    // Yıllık gider durdurulsa da ödenmiş yılın payları yıl sonuna kadar yazılır
+                    // (bu senaryoda bitiş hep ilk ödeme ayında ya da sonrasında, tek yıl içinde)
+                    if let bitis = e.endMonth, ay > bitis, e.recurrence != .yillik { continue }
                     let aySayisi = (Int(ay.suffix(2))! - Int(bas.suffix(2))!)
                     if e.recurrence == .yillik {
                         // Yıllık: ödeme ayından itibaren her aya 1/12 (artan kuruş ilk aylara),

@@ -552,7 +552,9 @@ public extension Validation {
     }
 
     static func saleSummary(_ draft: SalesEntry, state: AppState) -> SaveSummary {
-        guard let p = state.product(draft.productId) else { return SaveSummary(lines: []) }
+        // Satışın ayında geçerli reçete ve set içeriğiyle (stok defterine yazılanla aynı)
+        let tarihli = state.urunlerTarihli(Dates.monthEnd(draft.month))
+        guard let p = tarihli[draft.productId] else { return SaveSummary(lines: []) }
         let e = Engine(state)
         let maliyet = e.cost(of: draft.productId, asOf: Dates.monthEnd(draft.month))
         let bolum = draft.vatSplit
@@ -562,11 +564,11 @@ public extension Validation {
         if bolum.vat > 0 { lines.append("\(Money.format(bolum.vat)) hesaplanan KDV") }
 
         let leaves = Costing.explodeToLeafProducts(
-            products: Dictionary(state.products.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }),
+            products: tarihli,
             productId: draft.productId, qty: draft.qty
         )
         let urunler = leaves.compactMap { id, adet -> String? in
-            guard let l = state.product(id), l.tracksOwnStock else { return nil }
+            guard let l = tarihli[id], l.tracksOwnStock else { return nil }
             return "\(l.name) −\(Int(adet))"
         }.sorted()
         if !urunler.isEmpty { lines.append("Stoktan: " + urunler.joined(separator: ", ")) }

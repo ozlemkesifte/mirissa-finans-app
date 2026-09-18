@@ -33,7 +33,7 @@ struct RaporIceAktarmaAkisi: View {
 
     private var sonuc: RaporIceAktarma.Sonuc {
         RaporIceAktarma.donustur(cozum.kalemler, kanalId: kanalId, eslesme: eslesme,
-                                 mevcutAylar: store.state.channelMonths,
+                                 mevcutAylar: RaporIceAktarma.satisiOlanAylar(store.state, kanalId: kanalId),
                                  urunKdvOrani: { [state = store.state] in state.satisKdvOrani($0) })
     }
 
@@ -160,7 +160,9 @@ struct RaporIceAktarmaAkisi: View {
 
     private var ozetAdimi: some View {
         let r = sonuc
-        let degisecek = store.state.sales.filter { $0.channelId == kanalId && r.aylarListesi.contains($0.month) }.count
+        let degisecek = store.state.sales.filter {
+            $0.channelId == kanalId && r.aylarListesi.contains($0.month) && !r.eklenenAylar.contains($0.month)
+        }.count
         return Group {
             ForEach(r.aylarListesi, id: \.self) { ay in
                 let s = r.satislar.filter { $0.month == ay }
@@ -175,6 +177,18 @@ struct RaporIceAktarmaAkisi: View {
             Section {
                 if r.iptalSiparis > 0 { LabeledRow("İptal edilen sipariş (alınmadı)", "\(r.iptalSiparis)") }
                 if r.atlananKalem > 0 { LabeledRow("Eşleşmediği için atlanan kalem", "\(r.atlananKalem)", tone: Palette.uyari) }
+                if !r.eklenenAylar.isEmpty {
+                    Text(r.eklenenAylar.map(Dates.displayMonth).joined(separator: ", ")
+                         + " için daha önce rapor aktarılmış: eski satışlar silinmez, bu rapordaki yeni siparişler üstüne eklenir.")
+                        .font(.footnote).foregroundStyle(Palette.inkSoft)
+                }
+                if r.sonradanIptal > 0 {
+                    LabeledRow("Daha önce alınıp sonradan iptal edilen sipariş (satıştan düşülecek)", "\(r.sonradanIptal)",
+                               tone: Palette.uyari)
+                }
+                if r.tekrarAtlanan > 0 {
+                    LabeledRow("Daha önce aktarıldığı için atlanan sipariş", "\(r.tekrarAtlanan)")
+                }
                 if degisecek > 0 {
                     Text("Bu aylardaki \(degisecek) eski satış kaydı raporla değiştirilecek.")
                         .font(.footnote).foregroundStyle(Palette.uyari)
@@ -191,7 +205,9 @@ struct RaporIceAktarmaAkisi: View {
         // Barkod sütunu varsa eşleşmeyi ürüne kaydet: bir dahaki sefere kendiliğinden bulunur
         if sutun[.sku] != nil {
             for (anahtar, urunId) in eslesme {
-                if var p = store.state.product(urunId), (p.sku ?? "").isEmpty {
+                // Barkod hücresi boş satırda anahtar ürün adıdır; ad barkod diye kaydedilmez
+                let addanMi = cozum.kalemler.contains { $0.urunAnahtari == anahtar && $0.urunAdi == anahtar }
+                if !addanMi, var p = store.state.product(urunId), (p.sku ?? "").isEmpty {
                     p.sku = anahtar
                     store.updateProduct(p)
                 }

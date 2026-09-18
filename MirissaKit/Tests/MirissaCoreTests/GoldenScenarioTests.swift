@@ -88,9 +88,10 @@ struct GoldenScenarioTests {
         #expect(r.netSalesIncVat == tl(198_000))
         #expect(r.units == 150)
         #expect(r.returnedUnits == 10)
-        #expect(r.orders == 140)                        // 150 − 10
+        // Sipariş sayısı girilmedi: gönderilen 150 adet (iade edilenin de gidiş kargosu ödendi)
+        #expect(r.orders == 150)
         #expect(r.commission.amount == tl(39_600))      // 198.000 × %20
-        #expect(r.shipping.amount == tl(14_000))        // 140 sipariş × 100 TL
+        #expect(r.shipping.amount == tl(15_000))        // 150 sipariş × 100 TL
         #expect(r.serviceFee.amount == 0)
         #expect(r.otherDeduction.amount == 0)
         // Ürün maliyeti net adet üzerinden: 90×100 + 50×240
@@ -101,10 +102,10 @@ struct GoldenScenarioTests {
         #expect(r.ads.amount == tl(20_000))
         #expect(r.adsFixed == 0)
         // Toplam gider ve kanalda kalan
-        #expect(r.channelFees == tl(53_600))            // 39.600 + 14.000
-        #expect(r.totalCost == tl(97_350))              // 53.600 + 20.000 + 21.000 + 2.750
-        #expect(r.kanaldaKalan == tl(67_650))           // 165.000 − 97.350
-        #expect(r.contribution == tl(67_650))           // sabit kalemi yok
+        #expect(r.channelFees == tl(54_600))            // 39.600 + 15.000
+        #expect(r.totalCost == tl(98_350))              // 54.600 + 20.000 + 21.000 + 2.750
+        #expect(r.kanaldaKalan == tl(66_650))           // 165.000 − 98.350
+        #expect(r.contribution == tl(66_650))           // sabit kalemi yok
         #expect(r.fixedCost == 0)
     }
 
@@ -141,11 +142,11 @@ struct GoldenScenarioTests {
         let r = Self.e.companyMonth("2026-09")
         #expect(r.gercekCiro == tl(190_000))            // 165.000 + 25.000
         #expect(r.ortakGider == tl(10_000))             // muhasebeci net
-        #expect(r.toplamKanaldaKalan == tl(86_150))     // 67.650 + 18.500
-        #expect(r.gercekKar == tl(76_150))              // 86.150 − 10.000
-        #expect(abs(r.karMarjiPct - 40.078947) < 0.001)
+        #expect(r.toplamKanaldaKalan == tl(85_150))     // 66.650 + 18.500
+        #expect(r.gercekKar == tl(75_150))              // 85.150 − 10.000
+        #expect(abs(r.karMarjiPct - 39.552632) < 0.001) // 75.150 / 190.000
         // Toplam gider = kanal giderleri + ortak gider
-        #expect(r.toplamGider == tl(113_850))           // 97.350 + 6.500 + 10.000
+        #expect(r.toplamGider == tl(114_850))           // 98.350 + 6.500 + 10.000
         // Ciro − gider = kâr
         #expect(r.gercekCiro - r.toplamGider == r.gercekKar)
     }
@@ -154,8 +155,8 @@ struct GoldenScenarioTests {
     @Test func nakitAkisiKardanAyri() {
         let r = Self.e.companyMonth("2026-09")
         // Nakit: muhasebeci 12.000 + reklam 24.000 + koli alımı 6.000
-        //        + kanal kesintileri (53.600 + 2.100)
-        #expect(r.nakitCikisi == tl(97_700))
+        //        + kanal kesintileri (54.600 + 2.100)
+        #expect(r.nakitCikisi == tl(98_700))
         // Stok alımı kasadan çıktı ama bu ayın gideri değil
         #expect(r.stokAlimi == tl(6_000))
         #expect(r.nakitCikisi != r.gercekKar)
@@ -180,21 +181,21 @@ struct GoldenScenarioTests {
         #expect(r.gercekCiro == tl(190_000))
         #expect(r.ortakGider == tl(10_000))
         // Nakit KDV dahil
-        #expect(r.nakitCikisi == tl(97_700))
+        #expect(r.nakitCikisi == tl(98_700))
     }
 
     // MARK: 7 — Başa baş ve hedefler
 
     @Test func aylikBasaBasElleHesaplananlaAyni() {
         let plan = Self.e.plan(month: "2026-10", today: "2026-10-01")
-        // Sipariş başına katkı = 86.150 / 160 sipariş = 538,4375 TL
-        #expect(abs(plan.contributionPerOrder - 53_843.75) < 0.01)
+        // Sipariş başına katkı = 85.150 / 170 sipariş = 500,882353 TL
+        #expect(abs(plan.contributionPerOrder - 8_515_000.0 / 170) < 0.01)
         // Ekim sabit gideri: muhasebeci aylık -> net 10.000
         #expect(plan.fixedCosts == tl(10_000))
-        // Gerekli sipariş = ceil(1.000.000 / 53.843,75) = 19
+        // Gerekli sipariş = ceil(1.000.000 / 50.088,2353) = ceil(19,96) = 20
         let basaBas = plan.targets.first { $0.isBreakeven }
-        #expect(basaBas?.orders == 19)
-        #expect(basaBas?.dailyOrders == 1)              // ceil(19/31)
+        #expect(basaBas?.orders == 20)
+        #expect(basaBas?.dailyOrders == 1)              // ceil(20/31)
         #expect(plan.basis == .gecmisAy("2026-09"))
         #expect(plan.isApproximate)
     }
@@ -204,10 +205,10 @@ struct GoldenScenarioTests {
         // Muhasebeci Eylül'de başlıyor: Eyl+Eki+Kas+Ara = 4 ay × 10.000 = 40.000
         #expect(plan.fixedCosts == tl(40_000))
         let basaBas = plan.targets.first { $0.isBreakeven }
-        // ceil(4.000.000 / 53.843,75) = 75
-        #expect(basaBas?.ordersPerYear == 75)
-        #expect(basaBas?.ordersPerMonth == 7)           // ceil(75/12)
-        #expect(basaBas?.ordersPerDay == 1)             // ceil(75/365)
+        // ceil(4.000.000 / 50.088,2353) = ceil(79,86) = 80
+        #expect(basaBas?.ordersPerYear == 80)
+        #expect(basaBas?.ordersPerMonth == 7)           // ceil(80/12)
+        #expect(basaBas?.ordersPerDay == 1)             // ceil(80/365)
     }
 
     /// Yıllık kâr hedefleri de aynı katkıyla hesaplanır
@@ -216,10 +217,10 @@ struct GoldenScenarioTests {
         s.settings.yearlyProfitGoals = ["2026": tl(500_000)]
         let plan = Engine(s).yearlyPlan(year: 2026, today: "2026-10-01")
         let ozel = plan.targets.first { $0.isCustom }
-        // ceil((4.000.000 + 50.000.000) / 53.843,75) = ceil(1002,90) = 1003
-        #expect(ozel?.ordersPerYear == 1003)
-        #expect(ozel?.ordersPerMonth == 84)             // ceil(1004/12)
-        #expect(ozel?.ordersPerDay == 3)                // ceil(1004/365)
+        // ceil((4.000.000 + 50.000.000) / 50.088,2353) = ceil(1078,10) = 1079
+        #expect(ozel?.ordersPerYear == 1079)
+        #expect(ozel?.ordersPerMonth == 90)             // ceil(1079/12)
+        #expect(ozel?.ordersPerDay == 3)                // ceil(1079/365)
     }
 
     // MARK: 8 — Grafik rapor motoruyla aynı

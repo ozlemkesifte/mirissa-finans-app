@@ -72,6 +72,18 @@ public final class Engine {
     }
 
     private var costCache: [String: CostBreakdown] = [:]
+    private var tarihliUrunCache: [DateKey: [Id: Product]] = [:]
+
+    /// O gün geçerli reçete ve set içerikleriyle ürünler (geçmiş ay eski reçeteyle hesaplanır)
+    func urunler(asOf: DateKey?) -> [Id: Product] {
+        guard let d = asOf, state.products.contains(where: { !($0.eskiReceteler ?? []).isEmpty }) else {
+            return productsById
+        }
+        if let c = tarihliUrunCache[d] { return c }
+        let u = state.urunlerTarihli(d)
+        tarihliUrunCache[d] = u
+        return u
+    }
     private var companyCache: [MonthKey: CompanyMonthResult] = [:]
     private var expenseCache: [MonthKey: [ExpenseInstance]] = [:]
     var consumptionCache: [String: ConsumptionRate] = [:]
@@ -128,7 +140,7 @@ public final class Engine {
             self?.unitCost(.product(urunId), asOf: gun) ?? 0
         }
         let b = Costing.breakdown(
-            products: productsById, materials: materialsById,
+            products: urunler(asOf: asOf), materials: materialsById,
             productId: productId, asOf: asOf, unitCostOf: lookup,
             purchasedUnitCostOf: urunAlimi
         )
@@ -181,13 +193,19 @@ public final class Engine {
         var channelDegiskenByCat: [Id: [ExpenseCategory: Kurus]] = [:]
         var kanalReklamNakit: [Id: Kurus] = [:]
         var stokAlimi: Kurus = 0
+        var stokAlimiNakit: Kurus = 0
         var nakit: Kurus = 0
         var giderKdv: Kurus = 0
 
         for i in instances {
             nakit += i.cashAmount
             giderKdv += i.inputVat
-            if i.capitalized { stokAlimi += i.amount; continue }
+            if i.capitalized {
+                // Alımın değeri (KDV dahil) ve bu ay ödenen kısmı ayrı tutulur
+                if i.sourceKind == .stokAlimi { stokAlimi += i.net + i.inputVat }
+                stokAlimiNakit += i.cashAmount
+                continue
+            }
             guard i.expenseAmount != 0 else { continue }
             if let ch = i.scope.channelId {
                 if i.category == .reklam { kanalReklamNakit[ch, default: 0] += i.cashAmount }
@@ -264,6 +282,7 @@ public final class Engine {
             ortakGider: ortakByCat.values.reduce(0, +),
             ortakGiderDegisken: ortakDegisken,
             stokAlimi: stokAlimi,
+            stokAlimiNakit: stokAlimiNakit,
             nakitCikisi: nakit,
             giderKdv: giderKdv,
             expenseBreakdown: breakdown
@@ -323,17 +342,19 @@ public final class Engine {
             r.orders = oc
             r.ordersIsEstimate = false
         } else {
-            r.orders = Int(max(r.units - r.returnedUnits, 0).rounded())
+            // İade edilen siparişin de gidiş kargosu ödendi: gönderilen adet sayılır (koli hesabıyla aynı)
+            r.orders = Int(max(r.units, 0).rounded())
             r.ordersIsEstimate = true
         }
 
         // Pazaryeri kesintileri satış fiyatının KDV DAHİL hali üzerinden alınır.
         // Kesinti tutarının kendi KDV'si indirilecek KDV'ye gider, net kısmı gidere.
         let taban = Double(max(r.netSalesIncVat, 0))
+        let kkdv = ch.kesintiKdv(on: Dates.monthEnd(month))
         var kesintiKdv: Kurus = 0
         func kesinti(_ manual: Kurus?, auto: Double) -> Figure {
             let ham = manual ?? Money.roundHalfAwayFromZero(auto)
-            let bolum = Vat.split(ham, rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat)
+            let bolum = Vat.split(ham, rate: kkdv.oran, included: kkdv.dahil)
             kesintiKdv += bolum.vat
             return Figure(bolum.net, manual: manual != nil)
         }
@@ -343,8 +364,8 @@ public final class Engine {
         let oranlar = ch.rates(on: asOf ?? Dates.monthEnd(month))
         // Komisyon tabanı: bazı pazaryerleri KDV hariç fiyattan hesaplayıp üstüne KDV ekler
         let komisyonTabani = ch.komisyonKdvHaric(on: asOf ?? Dates.monthEnd(month))
-            ? Double(max(r.netSales, 0)) * (ch.resolvedFeesIncludeVat
-                ? 1 + Double(ch.resolvedFeeVatRate.rawValue) / 100 : 1)
+            ? Double(max(r.netSales, 0)) * (kkdv.dahil
+                ? 1 + Double(kkdv.oran.rawValue) / 100 : 1)
             : taban
         r.commission = kesinti(cm?.commissionActual,
                                auto: komisyonTabani * oranlar.commissionPct / 100 + taban * oranlar.paymentPct / 100)
@@ -394,7 +415,7 @@ public final class Engine {
         // için değişken kısımdan ayrı tutulur.
         r.fixedDeduction = min(
             Vat.net(Money.roundHalfAwayFromZero(sabitToplam),
-                    rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat),
+                    rate: kkdv.oran, included: kkdv.dahil),
             r.otherDeduction.amount
         )
         let reklamToplam = channelExpenses[.reklam] ?? 0
@@ -464,7 +485,8 @@ public final class Engine {
                     let b = e.vatSplit
                     return toplam + b.net + b.vat
                 }
-                let adet = satirlar.reduce(0.0) { $0 + max($1.qty - $1.returnsQty, 0) }
+                // Gönderilen adet: iade edilenin de kargosu ödendi
+                let adet = satirlar.reduce(0.0) { $0 + max($1.qty, 0) }
                 let siparis = (cm.orderCount ?? 0) > 0 ? cm.orderCount! : Int(adet.rounded())
                 switch alan {
                 case .kargo, .hizmet:
@@ -559,6 +581,7 @@ public final class Engine {
             out.ortakGider += m.ortakGider
             out.ortakGiderDegisken += m.ortakGiderDegisken
             out.stokAlimi += m.stokAlimi
+            out.stokAlimiNakit += m.stokAlimiNakit
             out.nakitCikisi += m.nakitCikisi
             out.giderKdv += m.giderKdv
             for (k, v) in m.expenseBreakdown { out.expenseBreakdown[k, default: 0] += v }

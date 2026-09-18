@@ -80,7 +80,7 @@ public enum BreakevenIssue: String, Sendable, Hashable, Identifiable {
         case .araDurumIsaretli:
             return "Girilen satışlar ayın tamamı değil, ara durum olarak işaretlendi."
         case .fiyatGuncel:
-            return "Hedef, bu ayda geçerli olan güncel fiyatlarla hesaplandı. Geçmiş ayların raporu değişmedi."
+            return "Hedef, bu ayda geçerli olan güncel fiyat, komisyon ve maliyetlerle hesaplandı. Geçmiş ayların raporu değişmedi."
         case .eksikKanalBilgisi:
             return "Bir satış kanalında girilmemiş kesinti var. Bu hedef, o kalem sıfırmış gibi hesaplandı — gerçekte daha yüksek olabilir."
         }
@@ -397,7 +397,8 @@ public extension Engine {
             let m = Dates.addMonths(month, -geri)
             let ham = companyMonth(m)
             guard ham.orders > 0, ham.gercekCiro > 0 else { continue }
-            let guncel = fiyatlarlaYenidenDegerle(basisMonth: m, hedefAy: month)
+            let guncel = fiyatlarlaYenidenDegerle(basisMonth: m, hedefAy: month,
+                                                  gun: hedefGunu(month: month, today: today))
             let r = guncel ?? ham
             guard r.orders > 0 else { continue }
             return TargetBasisResult(
@@ -426,14 +427,48 @@ public extension Engine {
     /// Temel alınan ayın satışlarını, hedef ayda geçerli fiyatlarla yeniden hesaplar.
     /// Fiyatı tanımlı olmayan veya değişmemiş satırlar olduğu gibi kalır.
     /// Hiçbir fiyat değişmemişse `nil` döner ve hiçbir şey yeniden hesaplanmaz.
-    func fiyatlarlaYenidenDegerle(basisMonth: MonthKey, hedefAy: MonthKey) -> CompanyMonthResult? {
-        let anahtar = "\(basisMonth)|\(hedefAy)"
+    /// Fiyatla birlikte hedef günde geçerli kanal oranları, kesinti KDV'si, ürün maliyetleri ve
+    /// reçeteler de kullanılır; yoksa hedef, bu ay değişen komisyon veya maliyeti görmezdi.
+    func fiyatlarlaYenidenDegerle(basisMonth: MonthKey, hedefAy: MonthKey,
+                                  gun: DateKey? = nil) -> CompanyMonthResult? {
+        let eskiGun = Dates.monthEnd(basisMonth)
+        let yeniGun = gun ?? Dates.monthEnd(hedefAy)
+        let anahtar = "\(basisMonth)|\(yeniGun)"
         if let onbellek = fiyatGuncelCache[anahtar] { return onbellek }
 
-        let eskiGun = Dates.monthEnd(basisMonth)
-        let yeniGun = Dates.monthEnd(hedefAy)
         var kopya = state
         var degisti = false
+        // Kanal oranları ve kesinti ayarları hedef günün haliyle
+        for i in kopya.channels.indices {
+            let ch = kopya.channels[i]
+            var yeni = ch.rates(on: yeniGun)
+            var eski = ch.rates(on: eskiGun)
+            let yk = ch.kesintiKdv(on: yeniGun), ek = ch.kesintiKdv(on: eskiGun)
+            yeni.id = ""; yeni.from = ""; eski.id = ""; eski.from = ""
+            yeni.komisyonKdvHaric = ch.komisyonKdvHaric(on: yeniGun)
+            eski.komisyonKdvHaric = ch.komisyonKdvHaric(on: eskiGun)
+            yeni.feeVatRate = yk.oran; yeni.feesIncludeVat = yk.dahil
+            eski.feeVatRate = ek.oran; eski.feesIncludeVat = ek.dahil
+            guard yeni != eski else { continue }
+            yeni.id = "\(ch.id)_hedef"; yeni.from = "1970-01-01"
+            kopya.channels[i].rateHistory = [yeni]
+            degisti = true
+        }
+        // Ürün maliyeti ve reçete hedef günün haliyle
+        for i in kopya.products.indices {
+            let p = kopya.products[i]
+            let yeniMaliyet = p.costLines(on: yeniGun), eskiMaliyet = p.costLines(on: eskiGun)
+            let yeniRecete = p.tarihli(yeniGun), eskiRecete = p.tarihli(eskiGun)
+            guard yeniMaliyet != eskiMaliyet || yeniRecete.recipe != eskiRecete.recipe
+                    || yeniRecete.components != eskiRecete.components else { continue }
+            kopya.products[i].costLines = yeniMaliyet.map {
+                var l = $0; l.validFrom = nil; l.validTo = nil; return l
+            }
+            kopya.products[i].recipe = yeniRecete.recipe
+            kopya.products[i].components = yeniRecete.components
+            kopya.products[i].eskiReceteler = nil
+            degisti = true
+        }
         for i in kopya.sales.indices where kopya.sales[i].month == basisMonth {
             let satir = kopya.sales[i]
             guard let p = kopya.product(satir.productId),
@@ -519,7 +554,8 @@ public extension Engine {
             let ek = o.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
                 .reduce(0.0) { $0 + $1.value }
             let ham = o.platformFeeMonthly + o.otherDeductionMonthly + Money.roundHalfAwayFromZero(ek)
-            toplam += Vat.net(ham, rate: ch.resolvedFeeVatRate, included: ch.resolvedFeesIncludeVat)
+            let kkdv = ch.kesintiKdv(on: Dates.monthEnd(month))
+            toplam += Vat.net(ham, rate: kkdv.oran, included: kkdv.dahil)
         }
         return toplam
     }

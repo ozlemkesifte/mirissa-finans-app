@@ -189,6 +189,129 @@ public struct RecipeLine: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// Bir ürünün belli bir güne kadar geçerli olan reçetesi ve set içeriği
+public struct ReceteSurumu: Codable, Hashable, Sendable {
+    /// Bu sürümün geçerli olduğu son gün (dahil)
+    public var gecerliSon: DateKey
+    public var recipe: [RecipeLine]
+    public var components: [BundleComponent]
+    /// O dönem set miydi (nil: eski kayıt, bugünkü değer)
+    public var isBundle: Bool? = nil
+
+    public init(gecerliSon: DateKey, recipe: [RecipeLine], components: [BundleComponent],
+                isBundle: Bool? = nil) {
+        self.gecerliSon = gecerliSon
+        self.recipe = recipe
+        self.components = components
+        self.isBundle = isBundle
+    }
+}
+
+public extension Product {
+    /// O gün geçerli reçete ve set içeriğiyle ürün. Tarih yoksa bugünkü hali.
+    func tarihli(_ date: DateKey?) -> Product {
+        guard let d = date,
+              let v = (eskiReceteler ?? []).filter({ $0.gecerliSon >= d })
+                .min(by: { $0.gecerliSon < $1.gecerliSon }) else { return self }
+        var p = self
+        p.recipe = v.recipe
+        p.components = v.components
+        if let b = v.isBundle { p.isBundle = b }
+        return p
+    }
+}
+
+public extension AppState {
+    /// Ürünler, verilen günde geçerli reçete ve set içerikleriyle
+    func urunlerTarihli(_ date: DateKey?) -> [Id: Product] {
+        Dictionary(products.map { ($0.id, $0.tarihli(date)) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// Reçetesi ya da set içeriği değişen ürünün eski halini sürüm olarak saklar.
+    /// Yalnızca geçmiş (bitmiş) aylarda satışı olan ürünler için: satışı olmayan ürünün
+    /// reçetesi düzeltilince baştan geçerli olur.
+    mutating func receteGecmisiniKoru(eski: AppState, bugun: DateKey) {
+        let dun = Dates.addDays(bugun, -1)
+        let eskiler = Dictionary(eski.products.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        for i in products.indices {
+            let p = products[i]
+            guard let o = eskiler[p.id],
+                  o.recipe != p.recipe || o.components != p.components || o.isBundle != p.isBundle else { continue }
+            // Geçmişte bu ürünün (ya da onu içeren bir setin) satışı var mı
+            let gecmisSatis = sales.contains { e in
+                Dates.monthEnd(e.month) <= dun
+                    && (e.productId == p.id
+                        || (eskiler[e.productId]?.components.contains { $0.productId == p.id } ?? false))
+            }
+            guard gecmisSatis else { continue }
+            var surumler = o.eskiReceteler ?? []
+            // Bugün ikinci kez düzenleniyorsa dünkü sürüm zaten saklandı
+            if !surumler.contains(where: { $0.gecerliSon == dun }) {
+                surumler.append(ReceteSurumu(gecerliSon: dun, recipe: o.recipe, components: o.components,
+                                             isBundle: o.isBundle))
+            }
+            products[i].eskiReceteler = surumler.sorted { $0.gecerliSon < $1.gecerliSon }
+        }
+    }
+}
+
+/// Stopajın belli bir oranla kesildiği ay aralığı
+public struct StopajDonemi: Codable, Hashable, Sendable {
+    public var bas: MonthKey
+    /// Dahil son ay; nil = hâlâ kesiliyor
+    public var son: MonthKey?
+    public var oran: Double
+
+    public init(bas: MonthKey, son: MonthKey? = nil, oran: Double) {
+        self.bas = bas
+        self.son = son
+        self.oran = oran
+    }
+
+    /// Kanalın ekrandaki stopaj ayarını (düz alanlar) geçmişi bozmadan dönemlere işler.
+    /// Oran değişikliği ve kapatma bu aydan başlar; yeniden açmak aradaki ayları kesilmiş saymaz.
+    /// Açık dönemin başlangıcı kullanıcı isterse geriye alınabilir (önceki dönemle çakışmaz).
+    public static func guncelle(eski: Channel, yeni: Channel, buAy: MonthKey) -> [StopajDonemi]? {
+        var d = eski.stopajDonemleri ?? eskiAlanlardan(eski)
+        let oncekiAy = Dates.addMonths(buAy, -1)
+        let acikIndex = d.lastIndex { $0.son == nil }
+        let istenenBas = Dates.month(of: yeni.stopajBaslangic ?? "\(buAy)-01")
+        let oran = yeni.stopajPct ?? 0
+        func sonKapanan() -> MonthKey? { d.filter { $0.son != nil }.compactMap(\.son).max() }
+
+        if yeni.stopajAcik, oran > 0 {
+            if let i = acikIndex {
+                if d[i].oran != oran {
+                    if d[i].bas >= buAy {
+                        d[i].oran = oran
+                    } else {
+                        d[i].son = oncekiAy
+                        d.append(StopajDonemi(bas: buAy, oran: oran))
+                    }
+                } else if istenenBas != d[i].bas {
+                    // Başlangıç tarihi elle değiştirildi: önceki dönemle çakışmasın
+                    let alt = sonKapanan().map { Dates.addMonths($0, 1) } ?? istenenBas
+                    d[i].bas = max(istenenBas, alt)
+                }
+            } else {
+                let alt = sonKapanan().map { Dates.addMonths($0, 1) } ?? istenenBas
+                d.append(StopajDonemi(bas: max(istenenBas, alt), oran: oran))
+            }
+        } else if let i = acikIndex {
+            if d[i].bas > oncekiAy { d.remove(at: i) } else { d[i].son = oncekiAy }
+        }
+        return d.isEmpty && eski.stopajDonemleri == nil && (eski.stopajPct ?? 0) == 0 ? nil : d
+    }
+
+    /// Dönem kaydı olmayan (önceki sürümden kalan) ayarı döneme çevirir
+    static func eskiAlanlardan(_ c: Channel) -> [StopajDonemi] {
+        guard let oran = c.stopajPct, oran > 0 else { return [] }
+        let bas = Dates.month(of: c.stopajBaslangic ?? "2025-01-01")
+        if let son = c.stopajBitis, son < bas { return [] }
+        return [StopajDonemi(bas: bas, son: c.stopajBitis, oran: oran)]
+    }
+}
+
 public struct BundleComponent: Codable, Identifiable, Hashable, Sendable {
     public var id: Id { productId }
     public var productId: Id
@@ -228,6 +351,9 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var sku: String?
     /// Ürünün satış KDV oranı (kozmetik %20, bazı ürünler %10/%1). nil = ayarlardaki varsayılan
     public var kdvOrani: VatRate? = nil
+    /// Eski reçete ve set içerikleri: reçete değişince önceki hali "şu güne kadar geçerli" diye
+    /// saklanır, geçmiş ayların ambalaj maliyeti ve stok tüketimi değişmez.
+    public var eskiReceteler: [ReceteSurumu]? = nil
     public var isBundle: Bool
     public var components: [BundleComponent]
     /// Ürünün kendi maliyet kalemleri (üretim, kutu, etiket...)
@@ -293,7 +419,11 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         let mevcut = price(for: channelId, on: today)
         let kanalKaydiVar = (priceHistory ?? []).contains { $0.channelId == channelId }
         guard amount > 0 else {
-            // Sıfır girildi: yalnızca hiç kayıt yoksa bir şey yapma.
+            // Kanal fiyatı silindi: bugünden itibaren etiket fiyatı geçerli olur (geçmiş korunur).
+            // Etiket fiyatı silinirse bir şey yapılmaz.
+            if let channelId, gecerliFiyat(channelId, today) != nil {
+                setPrice(0, channelId: channelId, from: today)
+            }
             return
         }
         if mevcut == amount { return }
@@ -436,8 +566,15 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     /// Stopaj kapatıldıysa son ay (dahil). Kapatmak geçmiş ayları değiştirmez.
     public var stopajBitis: MonthKey? = nil
 
+    /// Stopajın kesildiği dönemler (tarihli). Doluysa yukarıdaki düz alanların yerine geçer;
+    /// düz alanlar ekrandaki "şu anki ayar"dır.
+    public var stopajDonemleri: [StopajDonemi]? = nil
+
     /// O ay kesilen stopaj oranı (%); kesilmiyorsa nil
     public func stopajOrani(month: MonthKey) -> Double? {
+        if let d = stopajDonemleri {
+            return d.first { $0.bas <= month && ($0.son.map { month <= $0 } ?? true) && $0.oran > 0 }?.oran
+        }
         guard let oran = stopajPct, oran > 0,
               month >= Dates.month(of: stopajBaslangic ?? "2025-01-01") else { return nil }
         if let son = stopajBitis, month > son { return nil }
@@ -558,6 +695,13 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
         )
     }
 
+    /// O gün kesintilerin KDV oranı ve KDV dahil girilip girilmediği (tarihli):
+    /// ayar bugün değişirse geçmiş ayların kârı ve KDV'si değişmez.
+    public func kesintiKdv(on date: DateKey) -> (oran: VatRate, dahil: Bool) {
+        let r = rates(on: date)
+        return (r.feeVatRate ?? resolvedFeeVatRate, r.feesIncludeVat ?? resolvedFeesIncludeVat)
+    }
+
     /// O gün komisyonun KDV hariç fiyattan alınıp alınmadığı (tarihli)
     public func komisyonKdvHaric(on date: DateKey) -> Bool {
         rates(on: date).komisyonKdvHaric ?? komisyonKdvHaric ?? false
@@ -665,6 +809,9 @@ public struct ChannelRates: Codable, Identifiable, Hashable, Sendable {
     public var unknownFields: [String]
     /// Bu tarihten itibaren komisyon KDV hariç fiyattan mı. nil = kanalın ayarı
     public var komisyonKdvHaric: Bool? = nil
+    /// Bu tarihten itibaren kesintilerin KDV oranı / KDV dahil mi. nil = kanalın ayarı
+    public var feeVatRate: VatRate? = nil
+    public var feesIncludeVat: Bool? = nil
 
     public init(
         id: Id = Ids.make(.channelRate),
@@ -721,6 +868,9 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
     /// Bu ayın satışları için pazaryerinin hesaba yatırdığı gerçek tutar (hakediş).
     /// Hesabı değiştirmez; beklenenle karşılaştırılır.
     public var payoutActual: Kurus?
+    /// Rapordan içe aktarılmış sipariş numaraları: aynı rapor tekrar yüklenince iki kez sayılmaz,
+    /// ayın ikinci yarısı yüklenince ilk yarı silinmez
+    public var iceAktarilanSiparisler: [String]? = nil
 
     public init(
         id: Id = Ids.make(.channelMonth),
@@ -754,6 +904,7 @@ public struct ChannelMonth: Codable, Identifiable, Hashable, Sendable {
         orderCount == nil && commissionActual == nil && shippingActual == nil
             && serviceFeeActual == nil && otherDeductionActual == nil && adsActual == nil
             && bigOrderCount == nil && payoutActual == nil && (note?.isEmpty ?? true)
+            && (iceAktarilanSiparisler?.isEmpty ?? true)
     }
 }
 

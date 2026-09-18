@@ -59,6 +59,8 @@ public final class AppStore {
         var s = state
         block(&s)
         guard s != state else { return }
+        // Reçete / set içeriği değiştiyse geçmiş aylar eski haliyle hesaplanır
+        s.receteGecmisiniKoru(eski: state, bugun: Dates.today())
         // KDV beyanı verilip kilitlenen aya dokunan değişiklik yapılmaz
         if let engel = AyKilidi.ihlal(eski: state, yeni: s) {
             sonHata = engel
@@ -251,23 +253,37 @@ public final class AppStore {
             guard let i = s.channels.firstIndex(where: { $0.id == c.id }) else { return }
             let eski = s.channels[i]
             var yeni = c
-            if (eski.komisyonKdvHaric ?? false) != (c.komisyonKdvHaric ?? false) {
-                // Komisyon tabanı değişikliği bugünden başlar: eski kayıtlara eski değer yazılır
+            // Stopaj ayarı dönemlere işlenir: değişiklik bu aydan başlar, geçmiş aylar korunur
+            if eski.stopajAcik != c.stopajAcik || eski.stopajPct != c.stopajPct
+                || eski.stopajBaslangic != c.stopajBaslangic {
+                yeni.stopajDonemleri = StopajDonemi.guncelle(eski: eski, yeni: c, buAy: Dates.currentMonth())
+            }
+            // Kanal hiç kurulmamışsa (oran girilmemiş) ilk girilen ayarlar baştan geçerli:
+            // kurulum akışı da böyle yapar; önceden girilen satışlar %0 komisyonla kalmasın
+            let ilkKurulum = (eski.rateHistory ?? []).isEmpty && eski.setupCompleted != true
+                && eski.commissionPct == 0 && eski.paymentPct == 0 && eski.shippingPerOrder == 0
+                && eski.serviceFeePerOrder == 0 && eski.platformFeeMonthly == 0
+                && eski.otherDeductionPct == 0 && eski.otherDeductionMonthly == 0
+            let tabanDegisti = (eski.komisyonKdvHaric ?? false) != (c.komisyonKdvHaric ?? false)
+            let kdvDegisti = eski.resolvedFeeVatRate != c.resolvedFeeVatRate
+                || eski.resolvedFeesIncludeVat != c.resolvedFeesIncludeVat
+            if tabanDegisti || kdvDegisti {
+                // Komisyon tabanı ve kesinti KDV'si değişikliği bugünden başlar:
+                // eski kayıtlara eski değer yazılır, geçmiş ayların kârı ve KDV'si değişmez
                 var gecmis = eski
                 var bugunku = eski.currentRates
                 bugunku.id = Ids.make(.channelRate)
-                bugunku.from = Dates.today()
+                bugunku.from = ilkKurulum ? "1970-01-01" : Dates.today()
                 bugunku.komisyonKdvHaric = c.komisyonKdvHaric ?? false
+                bugunku.feeVatRate = c.resolvedFeeVatRate
+                bugunku.feesIncludeVat = c.resolvedFeesIncludeVat
                 gecmis.setRates(bugunku)
                 // Önceki kayıtlar kanalın eski ayarını kalıcı olarak taşır; yoksa yeni ayarı devralırlardı
                 gecmis.rateHistory = gecmis.rateHistory?.map { r in
                     var r = r
                     if r.komisyonKdvHaric == nil { r.komisyonKdvHaric = eski.komisyonKdvHaric ?? false }
-                    return r
-                }
-                gecmis.rateHistory = gecmis.rateHistory?.map { r in
-                    var r = r
-                    if r.komisyonKdvHaric == nil { r.komisyonKdvHaric = eski.komisyonKdvHaric ?? false }
+                    if r.feeVatRate == nil { r.feeVatRate = eski.resolvedFeeVatRate }
+                    if r.feesIncludeVat == nil { r.feesIncludeVat = eski.resolvedFeesIncludeVat }
                     return r
                 }
                 yeni.rateHistory = gecmis.rateHistory
@@ -279,7 +295,7 @@ public final class AppStore {
                 gecmis.rateHistory = yeni.rateHistory
                 let bugunku = eski.currentRates
                 gecmis.setRates(ChannelRates(
-                    from: Dates.today(),
+                    from: ilkKurulum ? "1970-01-01" : Dates.today(),
                     commissionPct: c.commissionPct,
                     paymentPct: c.paymentPct,
                     shippingPerOrder: c.shippingPerOrder,
@@ -330,7 +346,7 @@ public final class AppStore {
         let r = engine.channelResult(channelId: channelId, month: month)
         var cm = state.channelMonth(month: month, channelId: channelId)
             ?? ChannelMonth(month: month, channelId: channelId)
-        let mevcut = cm.otherDeductionActual ?? engine.kesintiBrut(r.otherDeduction.amount, channelId: channelId)
+        let mevcut = cm.otherDeductionActual ?? engine.kesintiBrut(r.otherDeduction.amount, channelId: channelId, month: month)
         cm.otherDeductionActual = max(mevcut + k.fark, 0)
         upsertChannelMonth(cm)
     }
@@ -390,6 +406,41 @@ public final class AppStore {
                   s.expenses[i].recurrence == .tek else { return }
             s.expenses[i].yayilanAy = ay > 1 ? ay : nil
         }
+    }
+
+    /// Düzenli giderin değişikliği `ay`dan itibaren geçerli olsun: eski gider bir önceki ayda
+    /// biter, yenisi o aydan başlar; geçmiş aylar değişmez. Yeni giderin kimliğini döndürür.
+    @discardableResult
+    public func giderGuncelleAydanItibaren(_ yeni: Expense, ay: MonthKey) -> Id {
+        var sonuc = yeni.id
+        mutate { s in
+            guard let i = s.expenses.firstIndex(where: { $0.id == yeni.id }) else { return }
+            var eski = s.expenses[i]
+            // Başlangıç ayından itibaren değişiyorsa bölmeye gerek yok: tamamı yeni haliyle
+            guard eski.isRecurring, ay > eski.startMonth else {
+                s.expenses[i] = yeni
+                return
+            }
+            // Durdurulmuş gider: o aydan sonra ayı yok. Geçmiş değişmesin diye yalnızca
+            // hesaba girmeyen bilgiler (tedarikçi, fatura no) güncellenir.
+            if let son = eski.endMonth, son < ay {
+                eski.vendor = yeni.vendor
+                eski.invoiceNo = yeni.invoiceNo
+                s.expenses[i] = eski
+                return
+            }
+            var devam = yeni
+            devam.id = Ids.make(.expense)
+            devam.date = Dates.dateIn(month: ay, dayOfMonth: Dates.day(of: eski.date))
+            devam.overrides = eski.overrides.filter { $0.key >= ay }
+            devam.endMonth = eski.endMonth
+            eski.overrides = eski.overrides.filter { $0.key < ay }
+            eski.endMonth = Dates.addMonths(ay, -1)
+            s.expenses[i] = eski
+            s.expenses.append(devam)
+            sonuc = devam.id
+        }
+        return sonuc
     }
 
     public func deleteExpense(_ id: Id) {
@@ -581,10 +632,28 @@ public final class AppStore {
     /// İçe aktarılan raporu kaydeder. Aynı kanalın aynı aylarındaki eski satışlar
     /// raporla değiştirilir (aynı rapor iki kez aktarılırsa satışlar ikiye katlanmasın).
     public func raporuKaydet(_ sonuc: RaporIceAktarma.Sonuc, kanalId: Id) {
-        let aylar = Set(sonuc.aylarListesi)
+        // Daha önce rapor aktarılmış aylarda eski satışlar silinmez, yeni siparişler eklenir
+        let aylar = Set(sonuc.aylarListesi).subtracting(sonuc.eklenenAylar)
         mutate { s in
             s.sales.removeAll { $0.channelId == kanalId && aylar.contains($0.month) }
             s.sales += sonuc.satislar
+            // Önceki aktarımda alınıp sonradan iptal edilen siparişler aynı ay ve üründen düşülür
+            for g in sonuc.geriAlinacak {
+                var adet = g.qty, tutar = g.grossSales, indirim = g.discount
+                let sira = s.sales.indices.filter {
+                    s.sales[$0].channelId == kanalId && s.sales[$0].month == g.month
+                        && s.sales[$0].productId == g.productId
+                }.sorted { s.sales[$0].qty > s.sales[$1].qty }
+                for i in sira where adet > 0 || tutar > 0 {
+                    let a = min(adet, s.sales[i].qty), t = min(tutar, s.sales[i].grossSales)
+                    let d = min(indirim, s.sales[i].discount)
+                    s.sales[i].qty -= a; s.sales[i].grossSales -= t; s.sales[i].discount -= d
+                    s.sales[i].discount = min(s.sales[i].discount, s.sales[i].grossSales)
+                    adet -= a; tutar -= t; indirim -= d
+                }
+                s.sales.removeAll { $0.channelId == kanalId && $0.qty == 0 && $0.grossSales == 0
+                    && $0.returnsQty == 0 && $0.returnsAmount == 0 }
+            }
             for cm in sonuc.aylar {
                 if let i = s.channelMonths.firstIndex(where: { $0.month == cm.month && $0.channelId == kanalId }) {
                     s.channelMonths[i] = cm
