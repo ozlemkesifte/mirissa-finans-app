@@ -14,6 +14,8 @@ public struct UrunKanalSonuc: Identifiable, Hashable, Sendable {
     public var netSatis: Kurus
     /// Komisyon, ödeme ve diğer yüzde kesintiler + aylık sabit ücret payı
     public var kesinti: Kurus
+    /// `kesinti` içindeki aylık sabit ücret payı (satış olmasa da ödenen kısım)
+    public var sabitKesinti: Kurus = 0
     /// Kargo ve hizmet bedeli payı (adede göre)
     public var kargo: Kurus
     public var urunMaliyeti: Kurus
@@ -40,6 +42,7 @@ public struct UrunKanalSonuc: Identifiable, Hashable, Sendable {
         r.adet += b.adet; r.iadeAdet += b.iadeAdet; r.netSatis += b.netSatis
         r.kesinti += b.kesinti; r.kargo += b.kargo; r.urunMaliyeti += b.urunMaliyeti
         r.ambalaj += b.ambalaj; r.reklam += b.reklam; r.digerGider += b.digerGider
+        r.sabitKesinti += b.sabitKesinti
         return r
     }
 }
@@ -107,7 +110,8 @@ public extension Engine {
             let koli = Engine.dagit(koliToplam, koliAgirlik.reduce(0, +) > 0 ? koliAgirlik : adet)
 
             let yuzdeKesinti = r.commission.amount + (r.otherDeduction.amount - r.fixedDeduction)
-            let kesinti = zip(Engine.dagit(yuzdeKesinti, kdvDahil), Engine.dagit(r.fixedDeduction, net)).map(+)
+            let sabitKesinti = Engine.dagit(r.fixedDeduction, net)
+            let kesinti = zip(Engine.dagit(yuzdeKesinti, kdvDahil), sabitKesinti).map(+)
             let kargo = Engine.dagit(r.shipping.amount + r.serviceFee.amount, adet)
             let reklam = Engine.dagit(r.ads.amount, net)
             let diger = Engine.dagit(r.otherChannelExpensesTotal, net)
@@ -120,7 +124,7 @@ public extension Engine {
                     productId: p, productName: productsById[p]?.name ?? "Ürün",
                     channelId: r.channelId, channelName: r.channelName,
                     adet: adet[i], iadeAdet: iade[i], netSatis: netSatis[i],
-                    kesinti: kesinti[i], kargo: kargo[i], urunMaliyeti: urunMaliyeti[i],
+                    kesinti: kesinti[i], sabitKesinti: sabitKesinti[i], kargo: kargo[i], urunMaliyeti: urunMaliyeti[i],
                     ambalaj: birimAmbalaj[i] + koli[i], reklam: reklam[i], digerGider: diger[i]))
             }
         }

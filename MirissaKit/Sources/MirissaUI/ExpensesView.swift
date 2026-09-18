@@ -57,6 +57,8 @@ struct ExpensesView: View {
 
                     BigButton("Gider Ekle", icon: "plus") { sheet = .expenseFlow }
 
+                    GiderAyrimiKarti()
+
                     if byCategory.isEmpty {
                         Card {
                             EmptyHint(

@@ -116,6 +116,7 @@ enum UrunKanalSonucToplam {
         r.adet += b.adet; r.iadeAdet += b.iadeAdet; r.netSatis += b.netSatis
         r.kesinti += b.kesinti; r.kargo += b.kargo; r.urunMaliyeti += b.urunMaliyeti
         r.ambalaj += b.ambalaj; r.reklam += b.reklam; r.digerGider += b.digerGider
+        r.sabitKesinti += b.sabitKesinti
         return r
     }
 }

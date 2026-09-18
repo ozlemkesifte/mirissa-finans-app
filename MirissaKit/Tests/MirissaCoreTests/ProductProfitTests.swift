@@ -92,6 +92,8 @@ struct ProductProfitPropertyTests {
         }
         let e = Engine(s)
         for ay in Set(s.sales.map(\.month)) {
+            let g = e.giderAyrimi(from: ay, to: ay)
+            #expect(g.urunBasinaToplam + g.genelToplam == e.companyMonth(ay).toplamGider)
             let l = e.urunKanalKarliligi(month: ay)
             for c in e.companyMonth(ay).channels {
                 let u = l.filter { $0.channelId == c.channelId }
