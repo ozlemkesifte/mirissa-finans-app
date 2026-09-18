@@ -533,6 +533,23 @@ public final class AppStore {
         }
     }
 
+    /// İçe aktarılan raporu kaydeder. Aynı kanalın aynı aylarındaki eski satışlar
+    /// raporla değiştirilir (aynı rapor iki kez aktarılırsa satışlar ikiye katlanmasın).
+    public func raporuKaydet(_ sonuc: RaporIceAktarma.Sonuc, kanalId: Id) {
+        let aylar = Set(sonuc.aylarListesi)
+        mutate { s in
+            s.sales.removeAll { $0.channelId == kanalId && aylar.contains($0.month) }
+            s.sales += sonuc.satislar
+            for cm in sonuc.aylar {
+                if let i = s.channelMonths.firstIndex(where: { $0.month == cm.month && $0.channelId == kanalId }) {
+                    s.channelMonths[i] = cm
+                } else {
+                    s.channelMonths.append(cm)
+                }
+            }
+        }
+    }
+
     public func restartSetup() { mutate { $0.settings.setupCompleted = false } }
 
     /// "Değişiklik yok" — fiyatlara dokunmaz, yalnızca son kontrol gününü işaretler.

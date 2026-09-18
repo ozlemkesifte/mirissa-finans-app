@@ -7,12 +7,13 @@ struct YeniIslemAkisi: View {
     @Environment(\.dismiss) private var dismiss
 
     enum Islem: String, Identifiable, CaseIterable {
-        case satis, alim, gider, sayim, baslangic
+        case satis, rapor, alim, gider, sayim, baslangic
         var id: String { rawValue }
 
         var baslik: String {
             switch self {
             case .satis: return "Satış gireceğim"
+            case .rapor: return "Satışları rapordan aktaracağım"
             case .alim: return "Bir şey satın aldım"
             case .gider: return "Gider / fatura ödedim"
             case .sayim: return "Stok sayımı yaptım"
@@ -23,6 +24,7 @@ struct YeniIslemAkisi: View {
         var aciklama: String {
             switch self {
             case .satis: return "Ayın toplam satışını kanal kanal gir"
+            case .rapor: return "Trendyol / Shopify sipariş raporu (CSV): satış, sipariş ve koli kendiliğinden"
             case .alim: return "Kutu, koli, şişe, ürün — stoğa giren her şey"
             case .gider: return "Reklam, kargo, muhasebeci, abonelik"
             case .sayim: return "Depoda saydığın gerçek miktarı yaz"
@@ -33,6 +35,7 @@ struct YeniIslemAkisi: View {
         var ikon: String {
             switch self {
             case .satis: return "cart.fill"
+            case .rapor: return "doc.text.fill"
             case .alim: return "shippingbox.fill"
             case .gider: return "creditcard.fill"
             case .sayim: return "checklist"
@@ -43,6 +46,7 @@ struct YeniIslemAkisi: View {
         var renk: Color {
             switch self {
             case .satis: return Palette.accent
+            case .rapor: return Palette.accent
             case .alim: return Palette.uyari
             case .gider: return Palette.gider
             case .sayim: return Palette.accent
@@ -57,6 +61,7 @@ struct YeniIslemAkisi: View {
     var body: some View {
         switch secim {
         case .satis: SaleFlow()
+        case .rapor: RaporIceAktarmaAkisi()
         case .alim: PurchaseFlow()
         case .gider: ExpenseFlow()
         case .sayim: CountFlow()
