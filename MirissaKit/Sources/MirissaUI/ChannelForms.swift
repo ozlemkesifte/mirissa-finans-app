@@ -70,17 +70,28 @@ struct ChannelForm: View {
 
                 if store.state.channels.count > 1 {
                     Section {
-                        Button(role: .destructive) { showDelete = true } label: {
-                            Label("Kanalı sil", systemImage: "trash")
+                        Button {
+                            store.setChannelArchived(channelId, true)
+                            dismiss()
+                        } label: {
+                            Label("Kanalı kapat (arşivle)", systemImage: "archivebox")
                         }
                     } footer: {
-                        Text("Kanalın satış kayıtları da silinir.")
+                        Text("Kanal yeni girişlerde ve hedeflerde görünmez; geçmiş satışları ve raporlar kalır. "
+                             + "Ürün & Stok → Arşiv'den geri açabilirsin.")
+                    }
+                    Section {
+                        Button(role: .destructive) { showDelete = true } label: {
+                            Label("Kalıcı olarak sil", systemImage: "trash")
+                        }
+                    } footer: {
+                        Text("Kanalın bütün satış kayıtları da silinir; geçmiş raporlar değişir.")
                     }
                 }
             }
         }
         .onAppear { if draft == nil { draft = store.state.channel(channelId) } }
-        .confirmationDialog("Kanal ve satışları silinecek.", isPresented: $showDelete, titleVisibility: .visible) {
+        .confirmationDialog("Kanal ve bütün satışları kalıcı olarak silinecek. Geçmiş ayların kârı değişecek.", isPresented: $showDelete, titleVisibility: .visible) {
             Button("Sil", role: .destructive) { store.deleteChannel(channelId); dismiss() }
             Button("Vazgeç", role: .cancel) {}
         }

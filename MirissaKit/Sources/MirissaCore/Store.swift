@@ -207,6 +207,26 @@ public final class AppStore {
         }
     }
 
+    /// Satıştan kaldır: geçmiş satışlar, stok ve raporlar olduğu gibi kalır;
+    /// ürün listelerde, hedeflerde ve yeni girişlerde görünmez. Geri alınabilir.
+    public func setProductArchived(_ id: Id, _ arsiv: Bool) {
+        mutate { s in
+            if let i = s.products.firstIndex(where: { $0.id == id }) { s.products[i].archived = arsiv }
+        }
+    }
+
+    public func setChannelArchived(_ id: Id, _ arsiv: Bool) {
+        mutate { s in
+            if let i = s.channels.firstIndex(where: { $0.id == id }) { s.channels[i].archived = arsiv }
+        }
+    }
+
+    public func setMaterialArchived(_ id: Id, _ arsiv: Bool) {
+        mutate { s in
+            if let i = s.materials.firstIndex(where: { $0.id == id }) { s.materials[i].archived = arsiv }
+        }
+    }
+
     public func deleteProduct(_ id: Id) {
         mutate { s in
             s.products.removeAll { $0.id == id }

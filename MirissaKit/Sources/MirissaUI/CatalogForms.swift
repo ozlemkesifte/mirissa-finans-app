@@ -99,8 +99,18 @@ struct MaterialForm: View {
 
             if let id = editingId {
                 Section {
+                    Button {
+                        store.setMaterialArchived(id, true)
+                        dismiss()
+                    } label: {
+                        Label("Kullanmıyorum, arşivle", systemImage: "archivebox")
+                    }
+                } footer: {
+                    Text("Malzeme listelerde görünmez; stok geçmişi ve raporlar kalır. Geri alınabilir.")
+                }
+                Section {
                     Button(role: .destructive) { showDelete = true } label: {
-                        Label("Malzemeyi sil", systemImage: "trash")
+                        Label("Kalıcı olarak sil", systemImage: "trash")
                     }
                 } footer: {
                     let used = store.state.products.filter { p in p.recipe.contains { $0.materialId == id } }
@@ -274,18 +284,30 @@ struct ProductForm: View {
                 OptionalQtyField("Kritik stok uyarısı", suffix: "adet", value: $criticalQty)
             }
 
-            if editingId != nil {
+            if let id = editingId {
                 Section {
-                    Button(role: .destructive) { showDelete = true } label: {
-                        Label("Ürünü sil", systemImage: "trash")
+                    Button {
+                        store.setProductArchived(id, true)
+                        dismiss()
+                    } label: {
+                        Label("Satıştan kaldır", systemImage: "archivebox")
                     }
                 } footer: {
-                    Text("Ürünün satış kayıtları ve stok geçmişi de silinir.")
+                    Text("Ürün listelerde, hedeflerde ve yeni satış girişinde görünmez. Geçmiş satışları, "
+                         + "stok geçmişi ve raporlar olduğu gibi kalır. Ürün & Stok → Arşiv'den geri alabilirsin.")
+                }
+                Section {
+                    Button(role: .destructive) { showDelete = true } label: {
+                        Label("Kalıcı olarak sil", systemImage: "trash")
+                    }
+                } footer: {
+                    Text("Ürünün bütün satış kayıtları ve stok geçmişi de silinir; geçmiş raporlar değişir. "
+                         + "Genelde \"Satıştan kaldır\" daha doğrudur.")
                 }
             }
         }
         .onAppear(perform: load)
-        .confirmationDialog("Ürün, satışları ve stok geçmişiyle birlikte silinecek.",
+        .confirmationDialog("Ürün, bütün satışları ve stok geçmişiyle birlikte kalıcı olarak silinecek. Geçmiş ayların kârı değişecek.",
                             isPresented: $showDelete, titleVisibility: .visible) {
             Button("Sil", role: .destructive) { store.deleteProduct(editingId!); dismiss() }
             Button("Vazgeç", role: .cancel) {}
