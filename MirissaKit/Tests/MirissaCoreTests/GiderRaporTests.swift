@@ -106,7 +106,7 @@ struct GiderRaporTests {
     /// Yıllık rapor = 12 ayın toplamı, elle hesapla da tutuyor
     @Test func yillikToplamElleHesaplaTutuyor() {
         let e = Engine(kurulum())
-        let yil = e.year(2026)
+        let yil = e.year(2026, today: "2026-12-31")
 
         // Elle: Muhasebeci 12×5.000 = 60.000
         //       Ajans 6×20.000 = 120.000  (Haziran'da durduruldu)
@@ -140,6 +140,6 @@ struct GiderRaporTests {
         print("  YIL   \(Money.format(yilToplam))")
         print("  (↻ düzenli · • tek seferlik)")
         print("=========================================\n")
-        #expect(yilToplam == e.year(2026).toplamGider)
+        #expect(yilToplam == e.year(2026, today: "2026-12-31").toplamGider)
     }
 }

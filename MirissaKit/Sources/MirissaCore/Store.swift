@@ -34,10 +34,13 @@ public final class AppStore {
                 ? nil : dosyaKlasoru)
         let loaded = file.load()
         self.loadError = loaded.error
+        self.acilisHatasiYok = loaded.error == nil
         let s = loaded.state ?? SeedData.initialState()
         self.state = s
         self.engine = Engine(s)
-        if loaded.state == nil { scheduleSave() }
+        // Yalnızca dosya hiç yoksa başlangıç verisi yazılır. Dosya okunamadıysa
+        // üstüne örnek veri yazılmaz: kullanıcı önce ne olduğunu görmeli.
+        if loaded.state == nil && loaded.error == nil { scheduleSave() }
     }
 
     /// Testler için diske hiç dokunmayan sürüm
@@ -63,8 +66,13 @@ public final class AppStore {
     private func apply(_ s: AppState) {
         state = s
         engine = Engine(s)
+        kullaniciDegistirdi = true
         scheduleSave()
     }
+
+    /// Açılıştan beri kullanıcı bir şey değiştirdi mi. Dosya okunamadıysa,
+    /// kullanıcı bir şey yapmadan dosyanın üstüne yazılmaz.
+    private var kullaniciDegistirdi = false
 
     // MARK: - Kayıt
 
@@ -83,8 +91,13 @@ public final class AppStore {
     public func flush() {
         saveTask?.cancel()
         saveTask = nil
+        // Veri dosyası açılamadıysa ve kullanıcı henüz bir şey girmediyse,
+        // arka plana geçerken örnek veri asıl dosyanın üstüne yazılmaz.
+        guard acilisHatasiYok || kullaniciDegistirdi else { return }
         writeNow(state)
     }
+
+    private var acilisHatasiYok = true
 
     private func writeNow(_ s: AppState) {
         do { try file.save(s) } catch { loadError = String(describing: error) }
@@ -307,12 +320,15 @@ public final class AppStore {
     }
 
     /// Sadece bir ayın tutarını değiştirir, diğer aylar etkilenmez.
-    public func overrideExpense(_ id: Id, month: MonthKey, amount: Kurus?, skipped: Bool = false) {
+    public func overrideExpense(_ id: Id, month: MonthKey, amount: Kurus?, skipped: Bool = false,
+                                vatRate: VatRate? = nil, vatIncluded: Bool? = nil) {
         mutate { s in
             guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
             var ov = s.expenses[i].overrides[month] ?? ExpenseOverride()
             ov.amount = amount
             ov.skipped = skipped
+            ov.vatRate = vatRate
+            ov.vatIncluded = vatIncluded
             s.expenses[i].overrides[month] = ov.isEmpty ? nil : ov
         }
     }

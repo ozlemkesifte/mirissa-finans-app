@@ -21,7 +21,9 @@ public final class Engine {
     private lazy var costHistory: [Id: [(date: DateKey, cost: Double)]] = {
         var out: [Id: [(DateKey, Double)]] = [:]
         for r in ledger.rows {
-            out[r.item.id, default: []].append((r.date, r.unitCostAfter))
+            // Katlama sırası effectiveDate'e göre: sayımlar ayın sonuna alınır.
+            // Görünen tarihi kullanmak listeyi bozar ve ikili arama yanlış sonuç verir.
+            out[r.item.id, default: []].append((r.movement.effectiveDate, r.unitCostAfter))
         }
         return out
     }()
@@ -49,7 +51,10 @@ public final class Engine {
             sonMiktar[key] = r.balanceAfter
             guard r.kind == .duzeltme || r.kind == .sayim else { continue }
             if r.kind == .sayim, oncekiMiktar < 0 { continue }
-            let tutar = oncekiDeger - r.valueAfter
+            // Değer farkı, stok sıfırın altına inip kırpıldığında yanıltır.
+            // Doğrusu: çıkan miktar × o andaki birim maliyet.
+            let birim = oncekiMiktar > 0 ? Double(oncekiDeger) / oncekiMiktar : r.unitCostAfter
+            let tutar = Money.roundHalfAwayFromZero(-r.delta * birim)
             guard tutar != 0 else { continue }
             let kategori: ExpenseCategory
             switch r.movement.reason {
@@ -114,15 +119,13 @@ public final class Engine {
     public func cost(of productId: Id, asOf: DateKey? = nil) -> CostBreakdown {
         let key = "\(productId)|\(asOf ?? "now")"
         if let c = costCache[key] { return c }
+        // Tarih verilmemişse bugün: ileri tarihli alımlar bugünün maliyetine karışmaz
+        let gun = asOf ?? Dates.today()
         let lookup: (Id) -> Double = { [weak self] matId in
-            guard let self else { return 0 }
-            let ref = ItemRef.material(matId)
-            return asOf.map { self.unitCost(ref, asOf: $0) } ?? self.unitCost(ref)
+            self?.unitCost(.material(matId), asOf: gun) ?? 0
         }
         let urunAlimi: (Id) -> Double = { [weak self] urunId in
-            guard let self else { return 0 }
-            let ref = ItemRef.product(urunId)
-            return asOf.map { self.unitCost(ref, asOf: $0) } ?? self.unitCost(ref)
+            self?.unitCost(.product(urunId), asOf: gun) ?? 0
         }
         let b = Costing.breakdown(
             products: productsById, materials: materialsById,
@@ -176,6 +179,7 @@ public final class Engine {
         var ortakDegisken: Kurus = 0
         var channelByCat: [Id: [ExpenseCategory: Kurus]] = [:]
         var channelDegiskenByCat: [Id: [ExpenseCategory: Kurus]] = [:]
+        var kanalReklamNakit: [Id: Kurus] = [:]
         var stokAlimi: Kurus = 0
         var nakit: Kurus = 0
         var giderKdv: Kurus = 0
@@ -186,6 +190,7 @@ public final class Engine {
             if i.capitalized { stokAlimi += i.amount; continue }
             guard i.expenseAmount != 0 else { continue }
             if let ch = i.scope.channelId {
+                if i.category == .reklam { kanalReklamNakit[ch, default: 0] += i.cashAmount }
                 channelByCat[ch, default: [:]][i.category, default: 0] += i.expenseAmount
                 if i.behavior == .satisaBagli {
                     channelDegiskenByCat[ch, default: [:]][i.category, default: 0] += i.expenseAmount
@@ -207,7 +212,7 @@ public final class Engine {
             let catBucket = channelByCat[ch.id] ?? [:]
             // Satışı olmasa bile aylık sabit ücreti olan kanal o ayın gideridir:
             // mağaza aboneliği satış olmayan ayda da ödenir.
-            let ucretVar = !ch.archived && aylikSabitKanalUcreti(ch, month: month) > 0
+            let ucretVar = aylikSabitKanalUcreti(ch, month: month) > 0
             guard !rows.isEmpty || !catBucket.isEmpty
                     || state.channelMonth(month: month, channelId: ch.id) != nil
                     || ucretVar else {
@@ -234,7 +239,12 @@ public final class Engine {
         }
 
         // Platformun kestiği tutarlar da nakit çıkışıdır
-        nakit += results.reduce(0) { $0 + $1.channelFees }
+        // Platformun kestiği tutar KDV dahildir: net kısmı gider, KDV'si indirilecek KDV
+        nakit += results.reduce(0) { $0 + $1.channelFees + $1.feeVat }
+        // Elle girilen aylık reklam tutarının, gider kayıtlarını aşan kısmı da ödenmiştir
+        for c in results where c.ads.isManual {
+            nakit += max(c.ads.amount - (kanalReklamNakit[c.channelId] ?? 0), 0)
+        }
 
         var breakdown = ortakByCat
         for c in results {
@@ -271,12 +281,20 @@ public final class Engine {
         var r = ChannelMonthResult.empty(channelId: ch.id, channelName: ch.name, month: month)
         let cm = state.channelMonth(month: month, channelId: ch.id)
 
+        var netSatisNet: Kurus = 0
         for e in rows {
             // Bütün satış tutarları KDV hariç tutulur: kârlılık net değerler üzerinden.
             let oran = e.resolvedVatRate, dahil = e.resolvedVatIncluded
-            r.grossSales += Vat.net(e.grossSales, rate: oran, included: dahil)
-            r.discount += Vat.net(e.discount, rate: oran, included: dahil)
-            r.returnsAmount += Vat.net(e.returnsAmount, rate: oran, included: dahil)
+            // Net satış satırın kendi bölmesinden gelir; brüt, indirim ve iade ayrı ayrı
+            // yuvarlanınca "brüt − indirim − iade" ile net satış 1-2 kuruş kayabiliyordu.
+            // Brüt, net satışla tutarlı olsun diye indirim ve iadenin üstüne eklenir.
+            let indirimNet = Vat.net(e.discount, rate: oran, included: dahil)
+            let iadeNet = Vat.net(e.returnsAmount, rate: oran, included: dahil)
+            let satirNet = e.vatSplit.net
+            r.grossSales += satirNet + indirimNet + iadeNet
+            r.discount += indirimNet
+            r.returnsAmount += iadeNet
+            netSatisNet += satirNet
             // Kesintiler müşterinin ödediği KDV dahil tutar üzerinden alınır.
             // Satış "KDV hariç" girilmişse KDV'si eklenir; aksi halde komisyon eksik çıkar.
             let bolum = e.vatSplit
@@ -289,10 +307,11 @@ public final class Engine {
             // Ambalaj brüt adet üzerinden gider: iade edilen siparişin kolisi geri gelmez
             r.packagingCost += Money.roundHalfAwayFromZero(Double(b.packaging) * e.qty)
         }
-        r.netSales = r.grossSales - r.discount - r.returnsAmount
+        r.netSales = netSatisNet
 
         // Sipariş başına malzemeler (koli): ürün adedine değil gönderilen koli sayısına göre
-        let siparisAmbalaji = OrderPackaging.hesapla(state, month: month, channelId: ch.id)
+        let siparisAmbalaji = OrderPackaging.hesapla(state, month: month, channelId: ch.id,
+                                                    stokIcin: false)
         for k in siparisAmbalaji.kalemler {
             r.packagingCost += Money.roundHalfAwayFromZero(
                 k.qty * unitCost(.material(k.materialId), asOf: asOf))
@@ -333,6 +352,10 @@ public final class Engine {
         // hesaba katılmaz; sonuç yaklaşık olarak işaretlenir.
         var ekDegisken = 0.0
         for f in oranlar.extras where !f.unknown {
+            // Kullanıcı o ayın gerçek komisyonunu (ya da kargosunu) girdiyse, aynı işi
+            // gören ek kesinti tekrar eklenmez: elle girilen tutar onun da yerine geçer.
+            if AylikKesinti.komisyonMu(f), cm?.commissionActual != nil { continue }
+            if AylikKesinti.kargoMu(f), cm?.shippingActual != nil { continue }
             switch f.basis {
             case .yuzde: ekDegisken += taban * f.value / 100
             case .siparisBasi: ekDegisken += f.value * Double(r.orders)
@@ -349,6 +372,13 @@ public final class Engine {
         )
         r.feeVat = kesintiKdv
         r.eksikBilgiler = oranlar.eksikler
+        // "Aylık gerçek tutarı ben gireceğim" denen kesintiler: o ay tutar girilmemişse
+        // hesapta hiç görünmez. Sessizce 0 saymak yerine eksik olduğu söylenir.
+        if r.units > 0 || r.orders > 0 || r.netSales != 0 {
+            for f in oranlar.elleGirilecekler where AylikKesinti.tutar(f, cm) == nil {
+                r.eksikBilgiler.append("\(f.label.lowercased(with: Locale(identifier: "tr_TR"))) (aylık tutar girilmemiş)")
+            }
+        }
         // Aylık sabit kesintiler sipariş adedinden bağımsızdır; başa baş hesabı
         // için değişken kısımdan ayrı tutulur.
         r.fixedDeduction = min(
@@ -386,10 +416,64 @@ public final class Engine {
     /// geçmiş bir ayın kârı zamanla değişmez.
     func aylikSabitKanalUcreti(_ ch: Channel, month: MonthKey) -> Kurus {
         guard let baslangic = kanalBaslangicAyi(ch), month >= baslangic else { return 0 }
+        // Arşivlenen kanal: son iz bıraktığı aydan sonrası için ücret işlemez,
+        // ama geçmiş ayların raporu arşivlemekle değişmez.
+        if ch.archived, let son = kanalSonAyi(ch), month > son { return 0 }
         let r = ch.rates(on: Dates.monthEnd(month))
         let ek = r.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
             .reduce(0.0) { $0 + $1.value }
         return r.platformFeeMonthly + r.otherDeductionMonthly + Money.roundHalfAwayFromZero(ek)
+    }
+
+    /// Aylık girilen kesintiler için geçmiş aylardan tahmin.
+    ///
+    /// Kullanıcı "komisyonun aylık toplamını ben gireceğim" dediyse, ileriye dönük
+    /// hesapta (başa baş, reklam hedefi) o kesinti bilinmiyor demektir. Geçmişte
+    /// girilmiş gerçek tutarlardan oran çıkarılır ve sonuç "tahmini" işaretlenir;
+    /// hiç veri yoksa açıkça eksik denir.
+    func elleAylikTahmin(_ ch: Channel, on date: DateKey)
+    -> (yuzde: Double, siparisBasi: Double, tahmin: [String], eksik: [String]) {
+        let ekler = ch.rates(on: date).elleGirilecekler
+        guard !ekler.isEmpty else { return (0, 0, [], []) }
+        var yuzde = 0.0, siparisBasi = 0.0
+        var tahmin: [String] = [], eksik: [String] = []
+        let buAy = Dates.month(of: date)
+        for f in ekler {
+            var bulundu = false
+            for geri in 0...12 {
+                let ay = Dates.addMonths(buAy, -geri)
+                guard let cm = state.channelMonth(month: ay, channelId: ch.id),
+                      let tutar = AylikKesinti.tutar(f, cm), tutar != 0 else { continue }
+                let satirlar = state.sales.filter { $0.month == ay && $0.channelId == ch.id }
+                let kdvDahil = satirlar.reduce(0) { toplam, e in
+                    let b = e.vatSplit
+                    return toplam + b.net + b.vat
+                }
+                let adet = satirlar.reduce(0.0) { $0 + max($1.qty - $1.returnsQty, 0) }
+                let siparis = cm.orderCount ?? Int(adet.rounded())
+                if AylikKesinti.siparisBasiMi(f), siparis > 0 {
+                    siparisBasi += Double(tutar) / Double(siparis)
+                    tahmin.append(f.label)
+                    bulundu = true
+                } else if kdvDahil > 0 {
+                    yuzde += Double(tutar) / Double(kdvDahil) * 100
+                    tahmin.append(f.label)
+                    bulundu = true
+                }
+                if bulundu { break }
+            }
+            if !bulundu { eksik.append(f.label) }
+        }
+        return (yuzde, siparisBasi, tahmin, eksik)
+    }
+
+    /// Kanalın son iz bıraktığı ay: son satışı, son ay kaydı ya da son gideri
+    func kanalSonAyi(_ ch: Channel) -> MonthKey? {
+        let sonSatis = state.sales.filter { $0.channelId == ch.id }.map(\.month).max()
+        let sonAy = state.channelMonths.filter { $0.channelId == ch.id }.map(\.month).max()
+        let sonGider = state.expenses.filter { $0.scope.channelId == ch.id }
+            .map { Dates.month(of: $0.date) }.max()
+        return [sonSatis, sonAy, sonGider].compactMap { $0 }.max()
     }
 
     /// Kanalın ilk göründüğü ay: ilk satışı veya tarihli ilk ayar kaydı
@@ -410,8 +494,21 @@ public final class Engine {
 
     // MARK: - Yıl ve trend
 
-    public func year(_ y: Int) -> YearResult {
-        YearResult(year: y, months: (1...12).map { companyMonth(Dates.monthKey(y, $0)) })
+    /// Yılın 12 ayı. Henüz gelmemiş aylar boş gelir: düzenli giderler ileriye
+    /// yansıtılırsa yıllık gider şişer, kâr olduğundan kötü görünürdü.
+    public func year(_ y: Int, today: DateKey = Dates.today()) -> YearResult {
+        let buAy = Dates.month(of: today)
+        return YearResult(year: y, months: (1...12).map { ay in
+            let m = Dates.monthKey(y, ay)
+            return m > buAy ? CompanyMonthResult.empty(m) : companyMonth(m)
+        })
+    }
+
+    /// Bir dönemin bugüne kadarki toplamı (gelecek aylar sayılmaz)
+    public func periodTotals(from: MonthKey, to: MonthKey, today: DateKey = Dates.today()) -> CompanyMonthResult {
+        let son = min(to, Dates.month(of: today))
+        guard son >= from else { return CompanyMonthResult.empty(to) }
+        return companyTotals(from: from, to: son)
     }
 
     public func trend(endingAt month: MonthKey, months n: Int = 6) -> [TrendPoint] {

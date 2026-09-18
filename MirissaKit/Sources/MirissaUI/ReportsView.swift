@@ -206,7 +206,9 @@ struct ChannelReport: View {
         VStack(spacing: Metrics.gap) {
             PeriodPicker(period: period)
             ForEach(store.state.activeChannels) { ch in
-                let r = store.engine.channelTotals(from: period.from, to: period.to, channelId: ch.id)
+                let r = store.engine.channelTotals(from: period.from,
+                                                   to: min(period.to, Dates.currentMonth()),
+                                                   channelId: ch.id)
                 Card {
                     VStack(spacing: 10) {
                         HStack {

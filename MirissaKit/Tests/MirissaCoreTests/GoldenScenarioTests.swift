@@ -248,7 +248,7 @@ struct GoldenScenarioTests {
 
     @Test func yillikRaporAylarinToplami() {
         let e = Self.e
-        let yil = e.year(2026)
+        let yil = e.year(2026, today: "2026-12-31")
         let aylar = (1...12).map { e.companyMonth(Dates.monthKey(2026, $0)) }
         #expect(yil.gercekCiro == aylar.reduce(0) { $0 + $1.gercekCiro })
         #expect(yil.toplamGider == aylar.reduce(0) { $0 + $1.toplamGider })

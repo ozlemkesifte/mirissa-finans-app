@@ -167,8 +167,16 @@ public final class FileStore {
             // Bozuk dosyayı silme — kenara al, kullanıcı verisi asla kaybolmasın
             let backup = url.deletingLastPathComponent()
                 .appendingPathComponent("bozuk-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.copyItem(at: url, to: backup)
-            return (nil, String(describing: error))
+            let kopyalandi = (try? FileManager.default.copyItem(at: url, to: backup)) != nil
+            let neden: String
+            if case PersistenceError.futureVersion = error {
+                neden = "Veri dosyası uygulamanın daha yeni bir sürümüyle kaydedilmiş."
+            } else {
+                neden = "Veri dosyası okunamadı."
+            }
+            return (nil, neden + (kopyalandi
+                ? " Dosyanın bir kopyası \(backup.lastPathComponent) adıyla saklandı; hiçbir şey silinmedi."
+                : " Dosyaya dokunulmadı."))
         }
     }
 

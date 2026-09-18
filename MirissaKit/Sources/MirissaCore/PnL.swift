@@ -261,7 +261,8 @@ public extension Array where Element == ChannelMonthResult {
             r.units += c.units
             r.returnedUnits += c.returnedUnits
             r.orders += c.orders
-            r.ordersIsEstimate = r.ordersIsEstimate && c.ordersIsEstimate
+            // Yalnızca siparişi olan aylara bakılır: boş aylar "tahmini" saymaz
+            if c.orders > 0, c.ordersIsEstimate { r.ordersIsEstimate = true }
             r.commission.amount += c.commission.amount; manualCommission = manualCommission || c.commission.isManual
             r.shipping.amount += c.shipping.amount; manualShipping = manualShipping || c.shipping.isManual
             r.serviceFee.amount += c.serviceFee.amount; manualService = manualService || c.serviceFee.isManual
@@ -273,6 +274,7 @@ public extension Array where Element == ChannelMonthResult {
             r.productCost += c.productCost
             r.packagingCost += c.packagingCost
             r.koliSayisi += c.koliSayisi
+            for e in c.eksikBilgiler where !r.eksikBilgiler.contains(e) { r.eksikBilgiler.append(e) }
             r.koliTahmini = r.koliTahmini || c.koliTahmini
             for (k, v) in c.otherChannelExpenses { r.otherChannelExpenses[k, default: 0] += v }
         }

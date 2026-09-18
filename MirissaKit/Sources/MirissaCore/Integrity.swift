@@ -308,6 +308,57 @@ public enum Integrity {
             }
         }
 
+        // Stok bir dönem eksiye düşüp sonra düzelmişse, o dönemde satılan malın
+        // maliyeti eksik hesaplanmış olabilir. Son bakiyeye bakmak bunu göstermez.
+        for (_, b) in e.ledger.balances where b.wentNegative && b.qty >= 0 {
+            out.append(IntegrityIssue(.supheli, "Stok",
+                "\(s.itemName(b.item)) stoğu bir dönem eksiye düştü; o günlerin maliyeti "
+                    + "eksik hesaplanmış olabilir. Eksik bir alım ya da açılış stoğu olabilir",
+                recordId: b.item.id))
+        }
+
+        // Açılış stoğu maliyetsiz girilmişse ortalama maliyet olduğundan düşük çıkar
+        for p in s.products where (p.openingQty ?? 0) > 0 && p.openingUnitCost == nil {
+            out.append(IntegrityIssue(.supheli, "Stok",
+                "\(p.name) açılış stoğu birim maliyeti girilmeden kaydedilmiş; "
+                    + "ortalama maliyet ve kâr olduğundan iyi görünür", recordId: p.id))
+        }
+        for m in s.materials where (m.openingQty ?? 0) > 0 && m.openingUnitCost == nil {
+            out.append(IntegrityIssue(.supheli, "Stok",
+                "\(m.name) açılış stoğu birim maliyeti girilmeden kaydedilmiş; "
+                    + "ambalaj maliyeti olduğundan düşük çıkar", recordId: m.id))
+        }
+
+        // Birimi artık çevrilemeyen kayıtlar sessizce hesaba girmez
+        func cevrilemez(_ item: ItemRef, _ qty: Double, _ unit: UnitCode) -> Bool {
+            Units.toBaseOrNil(qty: qty, unit: unit, baseUnit: s.itemBaseUnit(item),
+                              packSizes: s.itemPackSizes(item)) == nil
+        }
+        for p in s.purchases where s.itemExists(p.item) && cevrilemez(p.item, p.qty, p.unit) {
+            out.append(IntegrityIssue(.bozuk, "Stok",
+                "\(s.itemName(p.item)) alımı \(p.unit.displayName) ile girilmiş ama malzemede "
+                    + "bu birimin karşılığı yok; alım stoğa ve maliyete hiç girmiyor", recordId: p.id))
+        }
+        for a in s.adjustments where s.itemExists(a.item) && cevrilemez(a.item, a.qty, a.unit) {
+            out.append(IntegrityIssue(.bozuk, "Stok",
+                "\(s.itemName(a.item)) düzeltmesinin birimi (\(a.unit.displayName)) çevrilemiyor; "
+                    + "kayıt hesaba girmiyor", recordId: a.id))
+        }
+        for c in s.counts where s.itemExists(c.item) && cevrilemez(c.item, c.countedQty, c.unit) {
+            out.append(IntegrityIssue(.bozuk, "Stok",
+                "\(s.itemName(c.item)) sayımının birimi (\(c.unit.displayName)) çevrilemiyor; "
+                    + "sayım hesaba girmiyor", recordId: c.id))
+        }
+        for p in s.products {
+            for line in p.recipe where s.material(line.materialId) != nil
+            && cevrilemez(.material(line.materialId), line.qty, line.unit) {
+                out.append(IntegrityIssue(.bozuk, "Reçeteler",
+                    "\(p.name) reçetesinde \(s.itemName(.material(line.materialId))) "
+                        + "\(line.unit.displayName) ile yazılmış ama bu birim artık tanımlı değil; "
+                        + "ne stoktan düşüyor ne maliyete giriyor", recordId: p.id))
+            }
+        }
+
         // Girilen ürün maliyeti ile gerçek alım ortalaması birbirini tutmuyor:
         // kâr hesabı girilen rakamı kullanır, ama ödenen para farklıysa kâr yanlış çıkar.
         for p in s.products where p.tracksOwnStock && !p.isBundle && !p.archived {

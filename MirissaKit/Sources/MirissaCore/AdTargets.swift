@@ -104,7 +104,9 @@ public extension Engine {
                             keepPerOrder: keepPerOrder,
                             unitsPerOrder: adet, unitsPerOrderKnown: bilinen != nil,
                             missingCostProducts: eksikMaliyetAdlari([u.productId], on: date),
-                            missingFees: ch?.rates(on: date).eksikler ?? [],
+                            missingFees: (ch?.rates(on: date).eksikler ?? [])
+                                + u.missingFees.map { "\($0.lowercased(with: Locale(identifier: "tr_TR"))) tutarı girilmemiş" }
+                                + u.estimatedFees.map { "\($0.lowercased(with: Locale(identifier: "tr_TR"))) geçen ayın tutarından tahmin edildi" },
                             isMarketplace: ch?.kind == .marketplace)
         }
         .sorted { ($0.breakevenROAS ?? .infinity) < ($1.breakevenROAS ?? .infinity) }
@@ -121,19 +123,23 @@ public extension Engine {
     /// Tek bir kampanyada birden çok ürün satılıyorsa bakılacak rakam budur.
     func blendedAdTarget(month: MonthKey, keepPerOrder: Kurus?,
                          today: DateKey = Dates.today()) -> AdTarget? {
-        let gun = max(today, Dates.monthStart(month))
+        let gun = hedefGunu(month: month, today: today)
         guard let k = karisikSiparis(month: month, today: today) else { return nil }
         let kanallar = Set(k.kalemler.map(\.channelId))
         var eksikKesinti: [String] = []
         for id in kanallar.sorted() {
             guard let ch = state.channel(id) else { continue }
             eksikKesinti += ch.rates(on: gun).eksikler.map { "\(ch.name) \($0)" }
+            let ek = elleAylikTahmin(ch, on: gun)
+            eksikKesinti += ek.eksik.map { "\(ch.name) \($0.lowercased(with: Locale(identifier: "tr_TR"))) tutarı girilmemiş" }
+            eksikKesinti += ek.tahmin.map { "\(ch.name) \($0.lowercased(with: Locale(identifier: "tr_TR"))) tahmini" }
         }
         let tumPazaryeri = kanallar.allSatisfy { state.channel($0)?.kind == .marketplace }
         return AdTarget(productId: "", productName: "Satış karışımı",
                         channelId: "", channelName: "Tüm kanallar",
                         orderValue: Money.roundHalfAwayFromZero(k.deger),
-                        beforeAds: Money.roundHalfAwayFromZero(k.kalan),
+                        // Reklam dışı satışa bağlı giderler de reklamdan önce düşer
+                        beforeAds: Money.roundHalfAwayFromZero(k.kalan - k.digerDegisken),
                         keepPerOrder: keepPerOrder,
                         unitsPerOrder: k.adet,
                         unitsPerOrderKnown: kanallar.contains { unitsPerOrder(channelId: $0, month: month) != nil },

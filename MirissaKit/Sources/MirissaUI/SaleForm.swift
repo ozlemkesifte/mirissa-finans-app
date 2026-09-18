@@ -140,6 +140,11 @@ struct SaleForm: View {
         )
     }
 
+    /// Düzenlenen kayıt: KDV takibi kapalıyken bile kendi KDV bilgisi korunur
+    private var mevcutKayit: SalesEntry? {
+        editingId.flatMap { id in store.state.sales.first { $0.id == id } }
+    }
+
     private func save() {
         var entry = SalesEntry(
             id: editingId ?? Ids.make(.sale),
@@ -148,8 +153,8 @@ struct SaleForm: View {
             returnsAmount: showReturns ? returnsAmount : 0,
             returnsQty: showReturns ? returnsQty : 0,
             returnsRestock: restock,
-            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
-            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+            vatRate: store.state.settings.vatEnabled ? vatRate : mevcutKayit?.vatRate,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : mevcutKayit?.vatIncluded
         )
         if editingId != nil {
             store.updateSale(entry)

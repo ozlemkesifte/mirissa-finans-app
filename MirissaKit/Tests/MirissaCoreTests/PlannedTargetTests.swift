@@ -95,7 +95,7 @@ struct PlannedTargetTests {
             confirmed: true
         )
         let e = Engine(s)
-        let (agirliklar, gecmisten) = e.targetMix(month: "2026-09")
+        let (agirliklar, gecmisten, _) = e.targetMix(month: "2026-09")
         #expect(!gecmisten)                       // geçmişten değil, dağılımdan
         #expect(agirliklar.count == 8)            // 2 kanal × 4 SKU
         #expect(abs(agirliklar.reduce(0) { $0 + $1.pay } - 1) < 0.0001)
@@ -146,7 +146,7 @@ struct PlannedTargetTests {
 
     @Test func senaryo3_gercekSatisVarsaGecmisKarisimKullanilir() {
         let e = Engine(Golden.senaryo())
-        let (agirliklar, gecmisten) = e.targetMix(month: "2026-10")
+        let (agirliklar, gecmisten, _) = e.targetMix(month: "2026-10")
         #expect(gecmisten)
         #expect(agirliklar.count == 3)            // Eylül'deki 3 satır
         // Eylül'ün gerçek karışımı: 90 + 50 + 20 = 160 net adet

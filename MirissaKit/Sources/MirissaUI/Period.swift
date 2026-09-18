@@ -41,7 +41,7 @@ public final class Period {
 
     /// Seçili dönemin toplamı
     public func result(_ e: Engine) -> CompanyMonthResult {
-        scope == .month ? e.companyMonth(month) : e.companyTotals(from: from, to: to)
+        scope == .month ? e.companyMonth(month) : e.periodTotals(from: from, to: to)
     }
 }
 

@@ -98,7 +98,12 @@ public extension Engine {
         if let v = vatCacheGet(month) { return v }
 
         // Veri başlangıcından bu aya kadar zincirle: devreden KDV aylar boyunca taşınır
-        let baslangic = min(state.dataMonthBounds.first, month)
+        // Zincir, KDV doğuran en eski aydan başlar: satış, gider, alım ya da kanal kaydı
+        let adaylar = [state.dataMonthBounds.first]
+            + state.channelMonths.map(\.month)
+            + state.expenses.map { Dates.month(of: $0.date) }
+            + state.purchases.map { Dates.month(of: $0.date) }
+        let baslangic = min(adaylar.min() ?? month, month)
         var devreden: Kurus = 0
         var sonuc = VatStatus(month: month, hesaplanan: 0, indirilecek: 0, oncekiDevreden: 0)
 
@@ -123,7 +128,7 @@ public extension Engine {
         companyMonth(month).channels.compactMap { c in
             guard c.channelFees > 0,
                   let ch = state.channel(c.channelId),
-                  ch.resolvedFeeVatRate == .yok else { return nil }
+                  ch.feeVatRate == nil else { return nil }   // "KDV yok" seçilmişse uyarı verilmez
             return ch.name
         }
     }

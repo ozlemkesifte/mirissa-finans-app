@@ -105,6 +105,11 @@ public enum Ledger {
                 q = target
             }
 
+            // Kayan nokta artığı: 0,7 × 90 gibi çarpımlar tam sıfır vermez.
+            // Milyonda birden küçük kalıntı sıfır sayılır; yoksa stok "eksi" görünür
+            // ve maliyet eksi stok kuralına düşerdi.
+            if abs(q) < 1e-6 * max(1, abs(mv.delta)) { q = 0 }
+
             if q <= 0 {
                 // Sıfıra bölmeyi ve NaN yayılmasını engelle: son geçerli maliyeti sakla.
                 // Değeri sıfıra kırpmak yerine miktarla orantılı tut — aksi halde

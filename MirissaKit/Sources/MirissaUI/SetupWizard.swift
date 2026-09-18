@@ -1113,7 +1113,8 @@ public struct SetupWizard: View {
                     Self.fiyatlariUygula(&p, liste: t.listeFiyat, kanal: t.kanalFiyat)
                     p.openingQty = t.stok > 0 ? t.stok : nil
                     p.openingUnitCost = t.maliyet > 0 ? t.netMaliyet : nil
-                    p.openingDate = ay
+                    // Var olan kaydın açılış tarihi korunur: yoksa geçmiş aylar kayar
+                    p.openingDate = p.openingDate ?? ay
                     // Maliyet değişikliği geçmiş raporları bozmaz:
                     // eski kalem kapatılır, yenisi bugünden başlar.
                     if t.maliyet > 0 {
@@ -1193,7 +1194,7 @@ public struct SetupWizard: View {
                     m.archived = !t.secili
                     m.openingQty = t.secili && t.stok > 0 ? t.stok : nil
                     m.openingUnitCost = t.secili && t.maliyet > 0 ? t.netMaliyet : nil
-                    m.openingDate = ay
+                    m.openingDate = m.openingDate ?? ay
                     yeniMalzemeler.append(m)
                 } else if t.secili {
                     yeniMalzemeler.append(StockMaterial(

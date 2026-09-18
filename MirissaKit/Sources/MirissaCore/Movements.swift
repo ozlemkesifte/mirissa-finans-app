@@ -48,6 +48,8 @@ public struct Movement: Identifiable, Hashable, Sendable {
     public func isBefore(_ o: Movement) -> Bool {
         if effectiveDate != o.effectiveDate { return effectiveDate < o.effectiveDate }
         if kind.seq != o.kind.seq { return kind.seq < o.kind.seq }
+        // Aynı güne alınan iki sayım kendi tarih sırasıyla uygulanır
+        if date != o.date { return date < o.date }
         if sourceId != o.sourceId { return sourceId < o.sourceId }
         return item.id < o.item.id
     }
@@ -56,6 +58,32 @@ public struct Movement: Identifiable, Hashable, Sendable {
 public enum Movements {
     /// Tüm kaynakları tek bir sıralı hareket akışına dönüştürür.
     public static func all(_ s: AppState) -> [Movement] {
+        sayimlariDuzelt(ham(s))
+    }
+
+    /// Sayım ayın sonuna alınır (aylık satışlar ondan önce düşsün diye). Bu yüzden
+    /// sayımdan SONRA ama aynı ay içinde yapılan alım ve düzeltmeler de sayımdan önce
+    /// işlenir; sayım onları geri alır ve olmayan bir fire/kazanç çıkardı.
+    /// Sayımın hedef miktarına bu hareketler eklenir: sayım günündeki gerçek,
+    /// sonradan gelen mal kadar artar.
+    static func sayimlariDuzelt(_ hareketler: [Movement]) -> [Movement] {
+        var out = hareketler
+        for i in out.indices {
+            let sayim = out[i]
+            guard sayim.kind == .sayim, let hedef = sayim.absoluteTo,
+                  let sonrasi = sayim.sortDate, sonrasi > sayim.date else { continue }
+            var fark = 0.0
+            for m in hareketler where m.item.id == sayim.item.id && m.kind != .sayim {
+                guard m.source != .sales else { continue }   // satışlar zaten ayın tamamı
+                guard m.date > sayim.date, m.effectiveDate <= sonrasi else { continue }
+                fark += m.delta
+            }
+            if fark != 0 { out[i].absoluteTo = hedef + fark }
+        }
+        return out
+    }
+
+    private static func ham(_ s: AppState) -> [Movement] {
         var out: [Movement] = []
         out.reserveCapacity(s.purchases.count + s.adjustments.count + s.counts.count + s.sales.count * 6)
         out += opening(s)

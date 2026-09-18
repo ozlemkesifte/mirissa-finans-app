@@ -15,6 +15,25 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: Metrics.gap) {
                     PeriodPicker(period: period)
+                    if let hata = store.loadError {
+                        Card {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Verilerin açılamadı", systemImage: "exclamationmark.octagon.fill")
+                                    .font(.headline)
+                                    .foregroundStyle(Palette.zarar)
+                                Text(hata)
+                                    .font(.footnote)
+                                    .foregroundStyle(Palette.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text("Şu an gördüğün boş başlangıç verisidir. Yeni kayıt girmeden önce "
+                                     + "Ayarlar → Yedekten geri yükle ile son yedeğini aç.")
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.inkSoft)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                     ButunlukKarti()
 
                     // 1) HEDEF — satış girilmemiş olsa bile çalışır.

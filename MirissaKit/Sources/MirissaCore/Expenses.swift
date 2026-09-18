@@ -31,8 +31,9 @@ public struct ExpenseInstance: Identifiable, Hashable, Sendable {
 
     /// Kâr hesabına bu ay giren tutar (KDV hariç)
     public var expenseAmount: Kurus { capitalized ? 0 : net }
-    /// Kasadan bu ay çıkan tutar (KDV dahil, gerçekten ödenen)
-    public var cashAmount: Kurus { amount }
+    /// Kasadan bu ay çıkan tutar (KDV dahil, gerçekten ödenen).
+    /// Tutar KDV hariç girilmişse KDV'si de ödenir; "amount" o durumda eksik kalır.
+    public var cashAmount: Kurus { net + inputVat }
 }
 
 public enum Expenses {
@@ -107,7 +108,10 @@ public enum Expenses {
     private static func instance(_ e: Expense, month: MonthKey, date: DateKey) -> ExpenseInstance {
         let ov = e.overrides[month]
         let tutar = ov?.amount ?? e.amount
-        let bolum = Vat.split(tutar, rate: e.resolvedVatRate, included: e.resolvedVatIncluded)
+        // O ay için ayrı KDV girilmişse o kullanılır (ör. bir ay KDV'siz fatura)
+        let bolum = Vat.split(tutar,
+                              rate: ov?.vatRate ?? e.resolvedVatRate,
+                              included: ov?.vatIncluded ?? e.resolvedVatIncluded)
         return ExpenseInstance(
             id: e.recurrence == .tek ? e.id : "\(e.id)#\(month)",
             templateId: e.id,

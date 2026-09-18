@@ -887,16 +887,23 @@ public struct ExpenseOverride: Codable, Hashable, Sendable {
     public var skipped: Bool
     /// O aya ait fatura — düzenli giderlerde her ayın kendi faturası olabilir
     public var attachment: String?
+    /// O ayın tutarı farklı KDV ile girilmişse (ör. bir ay KDV'siz fatura)
+    public var vatRate: VatRate?
+    public var vatIncluded: Bool?
 
-    public init(amount: Kurus? = nil, name: String? = nil, skipped: Bool = false, attachment: String? = nil) {
+    public init(amount: Kurus? = nil, name: String? = nil, skipped: Bool = false,
+                attachment: String? = nil, vatRate: VatRate? = nil, vatIncluded: Bool? = nil) {
         self.amount = amount
         self.name = name
         self.skipped = skipped
         self.attachment = attachment
+        self.vatRate = vatRate
+        self.vatIncluded = vatIncluded
     }
 
     public var isEmpty: Bool {
         amount == nil && name == nil && !skipped && attachment == nil
+            && vatRate == nil && vatIncluded == nil
     }
 }
 

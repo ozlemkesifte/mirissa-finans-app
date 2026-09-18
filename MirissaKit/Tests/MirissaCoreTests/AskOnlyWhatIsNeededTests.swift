@@ -217,7 +217,7 @@ struct MixQuestionTests {
                        productId: G.serum, qty: 0, grossSales: tl(40_000)),
         ]
         let e = Engine(s)
-        let (agirliklar, gecmisten) = e.targetMix(month: "2026-09")
+        let (agirliklar, gecmisten, _) = e.targetMix(month: "2026-09")
         #expect(gecmisten)
         #expect(agirliklar.count == 2)
         let t = agirliklar.first { $0.channelId == G.trendyol }?.pay ?? 0
@@ -249,7 +249,7 @@ struct MixQuestionTests {
         var s = Golden.senaryo()
         // Eylül satışları duruyor, öncesinde hiç satış yok
         let e = Engine(s)
-        let (agirliklar, gecmisten) = e.targetMix(month: "2026-09")
+        let (agirliklar, gecmisten, _) = e.targetMix(month: "2026-09")
         #expect(gecmisten)
         #expect(agirliklar.count == 3)
         _ = s

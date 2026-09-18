@@ -76,8 +76,11 @@ struct ReklamHedefiBolumu: View {
                 uyari("Bilinmeyen kesinti: \(kesintisiz.joined(separator: ", ")). Bu kanalların hedefi yaklaşıktır; "
                       + "gerçek kesinti eklenince hedef zorlaşabilir.",
                       renk: Palette.uyari, zemin: Palette.uyariYumusak)
-            } else if !eksik.isEmpty, maliyetsiz.isEmpty {
-                uyari("Bazı fiyat bilgileri eksik. Fiyatı olmayan ürünler ortak hedefe katılmadı.",
+            }
+            let fiyatsiz = eksik.filter { $0.kind == .fiyat }
+            if !fiyatsiz.isEmpty {
+                uyari("Fiyatı girilmemiş: \(fiyatsiz.map(\.title).joined(separator: ", ")). "
+                      + "Bu ürünler ortak hedefe katılmadı.",
                       renk: Palette.uyari, zemin: Palette.uyariYumusak)
             }
 

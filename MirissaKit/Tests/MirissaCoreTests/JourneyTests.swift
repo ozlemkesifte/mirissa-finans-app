@@ -155,7 +155,7 @@ struct JourneyTests {
         kurallar(temiz, "Aralık geri yükleme")
 
         // Yıllık rapor aylık raporların toplamı
-        let yil = temiz.engine.year(2026)
+        let yil = temiz.engine.year(2026, today: "2026-12-31")
         #expect(yil.gercekKar == geriYuklenen.reduce(0) { $0 + $1.kar })
         #expect(yil.gercekCiro == geriYuklenen.reduce(0) { $0 + $1.ciro })
     }

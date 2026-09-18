@@ -61,9 +61,10 @@ struct ReferenceCalculatorTests {
         var kdvDahilNet: Kurus = 0
         var adet = 0.0, iadeAdet = 0.0
         for sat in s.sales where sat.month == ay && sat.channelId == kanalId {
-            b.netSatis += net(sat.grossSales, sat.vatRate, sat.vatIncluded)
-                - net(sat.discount, sat.vatRate, sat.vatIncluded)
-                - net(sat.returnsAmount, sat.vatRate, sat.vatIncluded)
+            // Net satış satırın kendi KDV bölmesinden gelir (tek yuvarlama);
+            // indirim ve iade ayrı ayrı bölünürse toplam kuruş kayar.
+            b.netSatis += net(sat.grossSales - sat.discount - sat.returnsAmount,
+                              sat.vatRate, sat.vatIncluded)
             // Kesinti tabanı müşterinin ödediği tutardır: KDV hariç girilmişse KDV eklenir
             let girilen = sat.grossSales - sat.discount - sat.returnsAmount
             let oranYuzde = Double((sat.vatRate ?? .yok).rawValue)

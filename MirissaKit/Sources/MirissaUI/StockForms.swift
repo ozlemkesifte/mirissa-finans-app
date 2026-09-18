@@ -106,7 +106,8 @@ struct PurchaseForm: View {
                 Toggle("Giderlere yazılmasın", isOn: $excludeFromExpenses)
             } footer: {
                 Text(excludeFromExpenses
-                     ? "Stok artar ama giderlerde görünmez."
+                     ? "Yalnızca stok artar. Nakit çıkışına ve indirilecek KDV'ye girmez — "
+                       + "bedelsiz gelen ya da parası başka yerde takip edilen mal için."
                      : "Bu alım giderlere otomatik yazılır. Stoğa girdiği için kârdan doğrudan düşülmez; ürün satıldıkça maliyet olarak yansır.")
             }
 
@@ -149,6 +150,11 @@ struct PurchaseForm: View {
         }
     }
 
+    /// Düzenlenen alım: KDV takibi kapalıyken bile kendi KDV bilgisi korunur
+    private var mevcutKayit: StockPurchase? {
+        editingId.flatMap { id in store.state.purchases.first { $0.id == id } }
+    }
+
     private var taslak: StockPurchase? {
         guard let item else { return nil }
         return StockPurchase(
@@ -158,8 +164,8 @@ struct PurchaseForm: View {
             vendor: vendor.isEmpty ? nil : vendor,
             excludeFromExpenses: excludeFromExpenses,
             invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
-            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
-            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+            vatRate: store.state.settings.vatEnabled ? vatRate : mevcutKayit?.vatRate,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : mevcutKayit?.vatIncluded
         )
     }
 
@@ -174,8 +180,8 @@ struct PurchaseForm: View {
             excludeFromExpenses: excludeFromExpenses,
             invoiceNo: invoiceNo.isEmpty ? nil : invoiceNo,
             attachment: invoiceRemoved ? nil : mevcutEk,
-            vatRate: store.state.settings.vatEnabled ? vatRate : nil,
-            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+            vatRate: store.state.settings.vatEnabled ? vatRate : mevcutKayit?.vatRate,
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : mevcutKayit?.vatIncluded
         )
         editingId == nil ? store.addPurchase(p) : store.updatePurchase(p)
         if let f = picked {

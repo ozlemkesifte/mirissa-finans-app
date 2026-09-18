@@ -201,7 +201,12 @@ struct ExpenseForm: View {
         if let e = editing {
             hedefId = e.id
             if e.isRecurring && onlyThisMonth {
-                store.overrideExpense(e.id, month: contextMonth, amount: amount)
+                // KDV bu ay farklı girildiyse o da aya özel saklanır
+                let kdvFarkli = store.state.settings.vatEnabled
+                    && (vatRate != e.resolvedVatRate || vatIncluded != e.resolvedVatIncluded)
+                store.overrideExpense(e.id, month: contextMonth, amount: amount,
+                                      vatRate: kdvFarkli ? vatRate : nil,
+                                      vatIncluded: kdvFarkli ? vatIncluded : nil)
                 ayaOzel = true
             } else {
                 var updated = e
@@ -214,8 +219,10 @@ struct ExpenseForm: View {
                 updated.behavior = behavior
                 updated.invoiceNo = invoiceNo.isEmpty ? nil : invoiceNo
                 updated.vendor = vendor.isEmpty ? nil : vendor
-                updated.vatRate = store.state.settings.vatEnabled ? vatRate : nil
-                updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : nil
+                // KDV takibi kapalıyken düzenleme, kayıtta yazan KDV bilgisini silmez:
+                // yoksa eski ayların kârı ve KDV'si kendiliğinden değişirdi.
+                updated.vatRate = store.state.settings.vatEnabled ? vatRate : updated.vatRate
+                updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : updated.vatIncluded
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
                 store.updateExpense(updated)
             }

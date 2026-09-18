@@ -322,10 +322,10 @@ public extension Validation {
                 "Ödenen tutar girilmedi",
                 "Bu alım stoğa eklenecek ama birim maliyeti sıfır olacak; ürün maliyetin eksik çıkar."))
         }
-        if let base = Units.toBaseOrNil(qty: draft.qty, unit: draft.unit,
-                                        baseUnit: state.itemBaseUnit(draft.item),
-                                        packSizes: state.itemPackSizes(draft.item)), base == 0,
-           draft.qty > 0 {
+        let cevrim = Units.toBaseOrNil(qty: draft.qty, unit: draft.unit,
+                                       baseUnit: state.itemBaseUnit(draft.item),
+                                       packSizes: state.itemPackSizes(draft.item))
+        if draft.qty > 0, cevrim == nil || cevrim == 0 {
             out.append(ValidationIssue(.gecersizMiktar, .engel,
                 "Birim karşılığı tanımsız",
                 "1 \(draft.unit.displayName) kaç \(state.itemBaseUnit(draft.item).displayName) "
@@ -533,13 +533,14 @@ public extension Validation {
             lines.append("\(Money.format(birimMaliyet)) / \(birim.displayName) maliyet"
                          + (draft.resolvedVatRate == .yok ? "" : " (KDV hariç)"))
         }
-        if draft.resolvedVatRate != .yok, draft.landedSplit.vat > 0 {
+        if draft.resolvedVatRate != .yok, draft.landedSplit.vat > 0, !draft.excludeFromExpenses {
             lines.append("\(Money.format(draft.landedSplit.vat)) indirilecek KDV")
         }
         return SaveSummary(
             lines: lines,
             note: draft.excludeFromExpenses
-                ? "Bu alım giderlere yazılmayacak."
+                ? "Bu alım hiçbir hesaba katılmayacak: nakit çıkışına ve indirilecek KDV'ye girmez, "
+                  + "yalnızca stok artar."
                 : "Bu ayın kârına doğrudan \(Money.format(net)) gider yazılmayacak; "
                   + "ürün satıldıkça maliyet olarak yansıyacak."
         )

@@ -126,7 +126,7 @@ struct PnLTests {
         }
         s.expenses.append(Expense(id: "e1", date: "2026-01-01", name: "Sabit",
                                   amount: tl(2000), category: .sabit, recurrence: .aylik))
-        let y = Fx.engine(s).year(2026)
+        let y = Fx.engine(s).year(2026, today: "2026-12-31")
         #expect(y.gercekCiro == tl(120_000))
         #expect(y.toplamGider == tl(24_000))
         #expect(y.gercekKar == tl(96_000))

@@ -21,6 +21,10 @@ public struct UnitContribution: Identifiable, Hashable, Sendable {
     public var packagingCost: Kurus
     /// Bir kolinin (sipariş başı malzemelerin) maliyeti
     public var orderPackagingCost: Kurus = 0
+    /// Aylık girilen ve geçmiş aylardan tahmin edilen kesintiler
+    public var estimatedFees: [String] = []
+    /// Aylık girilecek denip hiç tutar girilmediği için hesaba katılamayanlar
+    public var missingFees: [String] = []
 
     public var id: String { "\(channelId)#\(productId)" }
 
@@ -65,6 +69,15 @@ public struct MissingSetupInfo: Identifiable, Hashable, Sendable {
 
 public extension Engine {
 
+    /// Hedef hesabında hangi günün fiyat ve oranları kullanılacak.
+    /// Geçmiş bir ay için o ayın sonu; bu ay ve sonrası için bugün.
+    /// (Geçmiş ayın hedefi bugünkü fiyatla hesaplanırsa rapor sonradan değişirdi.)
+    func hedefGunu(month: MonthKey, today: DateKey = Dates.today()) -> DateKey {
+        month < Dates.month(of: today)
+            ? Dates.monthEnd(month)
+            : max(today, Dates.monthStart(month))
+    }
+
     // MARK: - Satış başına katkı
 
     /// Bir SKU'nun bir kanaldaki bir satışının bıraktığı tutar.
@@ -76,10 +89,18 @@ public extension Engine {
               let fiyat = p.price(for: channelId, on: date), fiyat > 0 else { return nil }
 
         // Pazaryeri fiyatı müşterinin ödediği tutardır: KDV dahildir.
-        let oran = state.settings.vatEnabled ? state.settings.defaultVatRate : .yok
+        // Oran, bu ürünün o kanaldaki son satışından alınır (ör. %10 KDV'li ürün);
+        // hiç satış yoksa ayarlardaki varsayılan kullanılır.
+        let ay = Dates.month(of: date)
+        let sonSatis = state.sales
+            .filter { $0.productId == productId && $0.channelId == channelId && $0.month <= ay }
+            .max { $0.month < $1.month }
+        let oran = sonSatis?.vatRate
+            ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok)
         let net = Vat.net(fiyat, rate: oran, included: true)
 
-        let k = siparisKesintisi(ch, siparisDegeri: fiyat, on: date)
+        let kk = kanalKesintisi(ch, siparisDegeri: fiyat, on: date)
+        let k = kk.0
         let b = cost(of: productId, asOf: date)
         return UnitContribution(
             productId: productId, productName: p.name,
@@ -87,7 +108,8 @@ public extension Engine {
             price: fiyat, netRevenue: net,
             channelFees: k.toplam, perOrderFees: k.siparisBasi,
             productCost: b.intrinsic, packagingCost: b.packaging,
-            orderPackagingCost: b.orderPackaging
+            orderPackagingCost: b.orderPackaging,
+            estimatedFees: kk.tahmin, missingFees: kk.eksik
         )
     }
 
@@ -95,9 +117,16 @@ public extension Engine {
     /// Yüzdeler KDV dahil sipariş değeri üzerinden, kargo ve hizmet bedeli sipariş başına bir kez.
     func siparisKesintisi(_ ch: Channel, siparisDegeri: Kurus,
                           on date: DateKey) -> (toplam: Kurus, siparisBasi: Kurus) {
+        kanalKesintisi(ch, siparisDegeri: siparisDegeri, on: date).0
+    }
+
+    /// Sipariş kesintisi + "aylık gireceğim" denenlerin tahmini ve eksikleri
+    func kanalKesintisi(_ ch: Channel, siparisDegeri: Kurus, on date: DateKey)
+    -> ((toplam: Kurus, siparisBasi: Kurus), tahmin: [String], eksik: [String]) {
         let r = ch.rates(on: date)
-        var yuzde = Double(siparisDegeri) * (r.commissionPct + r.paymentPct + r.otherDeductionPct) / 100
-        var sabit = Double(r.shippingPerOrder) + Double(r.serviceFeePerOrder)
+        let ek = elleAylikTahmin(ch, on: date)
+        var yuzde = Double(siparisDegeri) * (r.commissionPct + r.paymentPct + r.otherDeductionPct + ek.yuzde) / 100
+        var sabit = Double(r.shippingPerOrder) + Double(r.serviceFeePerOrder) + ek.siparisBasi
         for f in r.extras where !f.unknown {
             switch f.basis {
             case .yuzde: yuzde += Double(siparisDegeri) * f.value / 100
@@ -109,7 +138,7 @@ public extension Engine {
             Vat.net(Money.roundHalfAwayFromZero(v), rate: ch.resolvedFeeVatRate,
                     included: ch.resolvedFeesIncludeVat)
         }
-        return (net(yuzde + sabit), net(sabit))
+        return ((net(yuzde + sabit), net(sabit)), ek.tahmin, ek.eksik)
     }
 
     /// Bu kanalda bir siparişte ortalama kaç ürün çıkıyor.
@@ -142,9 +171,9 @@ public extension Engine {
     /// sipariş başı kesintisi ayrı hesaba katılır.
     func karisikSiparis(month: MonthKey, today: DateKey = Dates.today())
     -> (deger: Double, kalan: Double, ciro: Double, adet: Double, gecmisten: Bool,
-        kalemler: [UnitContribution])? {
-        let gun = max(today, Dates.monthStart(month))
-        let (agirliklar, gecmisten) = targetMix(month: month)
+        kalemler: [UnitContribution], digerDegisken: Double)? {
+        let gun = hedefGunu(month: month, today: today)
+        let (agirliklar, gecmisten, temelAy) = targetMix(month: month)
         guard !agirliklar.isEmpty else { return nil }
 
         var deger = 0.0, kalanUrun = 0.0, ciro = 0.0, adetPay = 0.0
@@ -155,9 +184,18 @@ public extension Engine {
         for a in agirliklar {
             guard let u = unitContribution(productId: a.productId,
                                            channelId: a.channelId, on: gun) else { continue }
-            deger += Double(u.price) * a.pay
-            kalanUrun += Double(u.perUnitBeforeOrderFees) * a.pay
-            ciro += Double(u.netRevenue) * a.pay
+            // Geçmiş aydan geliyorsa gerçekte satılan fiyat esas alınır:
+            // indirim ve iadeler liste fiyatını olduğundan iyi gösterir.
+            let oran = temelAy.map {
+                gerceklesmeOrani(channelId: a.channelId, productId: a.productId, month: $0)
+            } ?? 1
+            // Yüzdeye bağlı kesintiler fiyatla birlikte küçülür, sipariş başı olanlar küçülmez
+            let yuzdeKesinti = Double(u.channelFees - u.perOrderFees) * oran
+            let birimKalan = Double(u.netRevenue) * oran - yuzdeKesinti
+                - Double(u.productCost) - Double(u.packagingCost)
+            deger += Double(u.price) * oran * a.pay
+            kalanUrun += birimKalan * a.pay
+            ciro += Double(u.netRevenue) * oran * a.pay
             adetPay += a.pay
             kanalAdet[a.channelId, default: 0] += a.pay
             kanalSiparisKesintisi[a.channelId] = u.perOrderFees
@@ -176,8 +214,12 @@ public extension Engine {
             siparisKesintisi += adet / u * koli * (kanalKoliMaliyeti[kanal] ?? 0) / adet
         }
         guard siparisPay > 0 else { return nil }
+        // Reklam dışı satışa bağlı giderler (influencer vb.). Başa baş hesabı bunları
+        // aylık tutar olarak sabit gidere ekler; reklam hedefi sipariş başına düşer.
+        // Karar çağırana bırakılır ki aynı gider iki kez sayılmasın.
+        let digerDegisken = temelAy.map { digerDegiskenGiderSiparisBasi(month: $0) } ?? 0
         return (deger / siparisPay, (kalanUrun - siparisKesintisi) / siparisPay,
-                ciro / siparisPay, adetPay / siparisPay, gecmisten, kalemler)
+                ciro / siparisPay, adetPay / siparisPay, gecmisten, kalemler, digerDegisken)
     }
 
     /// Fiyatı tanımlı bütün SKU + kanal ikilileri
@@ -198,7 +240,7 @@ public extension Engine {
     /// Hedefte kullanılacak ağırlıklar: (kanal, ürün, pay).
     /// Geçmiş ay varsa gerçek dağılım, yoksa kullanıcının onayladığı yaklaşık dağılım.
     func targetMix(month: MonthKey) -> (agirliklar: [(channelId: Id, productId: Id, pay: Double)],
-                                        gecmisten: Bool) {
+                                        gecmisten: Bool, temelAy: MonthKey?) {
         /// Ağırlık ürün adedidir. Eski kayıtlarda adet boş bırakılmış olabilir:
         /// o satırın adedi tutar ÷ o ayki fiyattan tahmin edilir. Fiyat da yoksa
         /// o ayın bütün satırları tutara göre tartılır — adet ile kuruş asla toplanmaz.
@@ -230,7 +272,8 @@ public extension Engine {
 
         // 1) Son tamamlanmış aydan gerçek dağılım
         for geri in 1...12 {
-            if let d = dagilim(Dates.addMonths(month, -geri)) { return (d, true) }
+            let ay = Dates.addMonths(month, -geri)
+            if let d = dagilim(ay) { return (d, true, ay) }
         }
         // 2) Kullanıcının onayladığı yaklaşık dağılım.
         //    Bir SKU o kanalda satılmıyorsa dağılıma girmez.
@@ -246,15 +289,16 @@ public extension Engine {
                 return acikListe.contains(a.productId)
             }
             let toplam = filtreli.reduce(0.0) { $0 + $1.pay }
-            guard toplam > 0 else { return ([], false) }
-            return (filtreli.map { ($0.channelId, $0.productId, $0.pay / toplam) }, false)
+            guard toplam > 0 else { return ([], false, nil) }
+            return (filtreli.map { ($0.channelId, $0.productId, $0.pay / toplam) }, false, nil)
         }
         // 3) Ayın kendi satışları girilmişse dağılımı oradan al
-        if let d = dagilim(month) { return (d, true) }
+        if let d = dagilim(month) { return (d, true, month) }
 
         // 4) Sonraki aylarda satış varsa (kullanıcı ileriye kayıt girmiş olabilir)
         for ileri in 1...12 {
-            if let d = dagilim(Dates.addMonths(month, ileri)) { return (d, true) }
+            let ay = Dates.addMonths(month, ileri)
+            if let d = dagilim(ay) { return (d, true, ay) }
         }
 
         // 5) Tek bir olasılık varsa soracak bir şey yok:
@@ -267,14 +311,42 @@ public extension Engine {
             tekIkililer += satilan.map { (ch.id, $0, 0) }
         }
         if tekIkililer.count == 1 {
-            return ([(tekIkililer[0].channelId, tekIkililer[0].productId, 1)], false)
+            return ([(tekIkililer[0].channelId, tekIkililer[0].productId, 1)], false, nil)
         }
         // Tek ürün varsa ürün dağılımı sormaya gerek yok; kanal payları da
         // tek kanalsa bellidir.
         if state.activeChannels.count == 1, state.activeProducts.count == 1 {
-            return ([(state.activeChannels[0].id, state.activeProducts[0].id, 1)], false)
+            return ([(state.activeChannels[0].id, state.activeProducts[0].id, 1)], false, nil)
         }
-        return ([], false)
+        return ([], false, nil)
+    }
+
+    /// Temel alınan ayda bu SKU gerçekte liste fiyatının yüzde kaçına satılmış.
+    /// İndirim ve iadeler düşülür: hedef, gerçekte eline geçen tutara göre kurulur.
+    func gerceklesmeOrani(channelId: Id, productId: Id, month: MonthKey) -> Double {
+        let satirlar = state.sales.filter {
+            $0.month == month && $0.channelId == channelId && $0.productId == productId
+        }
+        let adet = satirlar.reduce(0.0) { $0 + max($1.qty - $1.returnsQty, 0) }
+        guard adet > 0,
+              let fiyat = productsById[productId]?.price(for: channelId, on: Dates.monthEnd(month)),
+              fiyat > 0 else { return 1 }
+        let kdvDahil = satirlar.reduce(0) { toplam, e in
+            let b = e.vatSplit
+            return toplam + b.net + b.vat
+        }
+        let oran = Double(kdvDahil) / (adet * Double(fiyat))
+        // Aşırı değerler veri hatasıdır; hedefi bozmasın
+        return (oran > 0.2 && oran < 1.5) ? oran : 1
+    }
+
+    /// Temel ayda reklam dışı, satışa bağlı giderlerin sipariş başına düşen payı
+    func digerDegiskenGiderSiparisBasi(month: MonthKey) -> Double {
+        let r = companyMonth(month)
+        guard r.orders > 0 else { return 0 }
+        let toplam = r.ortakGiderDegisken
+            + r.channels.reduce(0) { $0 + $1.otherChannelExpensesVariable }
+        return Double(max(toplam, 0)) / Double(r.orders)
     }
 
     // MARK: - Hedef için eksikler
@@ -286,8 +358,8 @@ public extension Engine {
     /// yoksa kullanıcı hiç satmadığı ürün-kanal ikilileri için fiyat sorulur.
     func missingForTarget(month: MonthKey, today: DateKey = Dates.today()) -> [MissingSetupInfo] {
         var out: [MissingSetupInfo] = []
-        let gun = max(today, Dates.monthStart(month))
-        let (agirliklar, _) = targetMix(month: month)
+        let gun = hedefGunu(month: month, today: today)
+        let (agirliklar, _, _) = targetMix(month: month)
 
         if agirliklar.isEmpty {
             out.append(MissingSetupInfo(
@@ -336,6 +408,13 @@ public extension Engine {
             for eksik in ch.rates(on: gun).eksikler {
                 out.append(MissingSetupInfo(.kanalKesintisi, "\(ch.name) \(eksik) girilmemiş",
                                             channelId: ch.id))
+            }
+            // "Aylık gerçek tutarı gireceğim" denip hiç tutar girilmemiş kesintiler
+            for eksik in elleAylikTahmin(ch, on: gun).eksik {
+                out.append(MissingSetupInfo(
+                    .kanalKesintisi,
+                    "\(ch.name) \(eksik.lowercased(with: Locale(identifier: "tr_TR"))) tutarı hiç girilmemiş",
+                    channelId: ch.id))
             }
         }
 

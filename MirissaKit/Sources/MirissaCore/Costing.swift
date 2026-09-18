@@ -62,8 +62,34 @@ public enum OrderPackaging {
                                       buyukSiparis: 0, tahmini: false)
     }
 
-    /// Bir kanalın bir aydaki sipariş başı malzeme tüketimi
-    public static func hesapla(_ s: AppState, month: MonthKey, channelId: Id) -> Sonuc {
+    /// Bir kanalın bir ayda kaç koli gönderdiği (malzemeden bağımsız)
+    public static func siparisBilgisi(_ s: AppState, month: MonthKey, channelId: Id)
+    -> (adet: Double, siparis: Int?, buyuk: Int, koli: Double, tahmini: Bool) {
+        let adet = s.sales.filter { $0.month == month && $0.channelId == channelId && $0.qty > 0 }
+            .reduce(0.0) { $0 + $1.qty }
+        guard adet > 0 else { return (0, nil, 0, 0, false) }
+        let cm = s.channelMonth(month: month, channelId: channelId)
+        guard let girilen = cm?.orderCount, girilen > 0 else {
+            // Sipariş sayısı yoksa her ürün ayrı sipariş sayılır (tahmini)
+            return (adet, nil, 0, adet, true)
+        }
+        let o = min(girilen, Int(adet.rounded(.up)))
+        var buyuk = 0
+        var tahmini = true
+        if let b = cm?.bigOrderCount {
+            buyuk = min(max(b, 0), o)
+            tahmini = false
+        } else {
+            buyuk = min(max(Int((adet - 2 * Double(o)).rounded(.up)), 0), o)
+        }
+        return (adet, o, buyuk, min(Double(o + buyuk), adet), tahmini)
+    }
+
+    /// Bir kanalın bir aydaki sipariş başı malzeme tüketimi.
+    /// `stokIcin` true ise stoktan düşen satırlar, false ise maliyete giren satırlar sayılır:
+    /// iki bayrak ayrı ayrı işaretlenebildiği için hesap da ayrı yapılır.
+    public static func hesapla(_ s: AppState, month: MonthKey, channelId: Id,
+                               stokIcin: Bool = true) -> Sonuc {
         let satirlar = s.sales.filter { $0.month == month && $0.channelId == channelId && $0.qty > 0 }
         let adet = satirlar.reduce(0.0) { $0 + $1.qty }
         guard adet > 0 else { return .bos }
@@ -74,7 +100,7 @@ public enum OrderPackaging {
         var agirlik: [Id: Double] = [:]
         for e in satirlar {
             guard let p = urunler[e.productId] else { continue }
-            for line in p.recipe where line.resolvedConsumesStock {
+            for line in p.recipe where (stokIcin ? line.resolvedConsumesStock : line.resolvedAddsCost) {
                 guard let m = malzemeler[line.materialId], m.usedPerOrder,
                       let birim = Units.toBaseOrNil(qty: line.qty, unit: line.unit,
                                                     baseUnit: m.baseUnit, packSizes: m.packSizes),
@@ -84,22 +110,8 @@ public enum OrderPackaging {
         }
         guard !agirlik.isEmpty else { return .bos }
 
-        let cm = s.channelMonth(month: month, channelId: channelId)
-        var koli = adet
-        var tahmini = true
-        var buyuk = 0
-        var siparis: Int? = nil
-        if let o = cm?.orderCount, o > 0 {
-            let o = min(o, Int(adet.rounded(.up)))
-            siparis = o
-            if let b = cm?.bigOrderCount {
-                buyuk = min(max(b, 0), o)
-                tahmini = false
-            } else {
-                buyuk = min(max(Int((adet - 2 * Double(o)).rounded(.up)), 0), o)
-            }
-            koli = min(Double(o + buyuk), adet)
-        }
+        let bilgi = siparisBilgisi(s, month: month, channelId: channelId)
+        let (koli, tahmini, buyuk, siparis) = (bilgi.koli, bilgi.tahmini, bilgi.buyuk, bilgi.siparis)
         let kalemler = agirlik.keys.sorted().map { id -> Tuketim in
             // Koli sayısı, malzemeyi kullanan ürünlerin payı kadar
             let q = (koli * agirlik[id]! / adet).rounded()
@@ -115,10 +127,12 @@ public enum OrderPackaging {
                                       urunAdedi: Double) -> Double {
         for geri in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0] {
             let ay = Dates.addMonths(month, -geri)
-            let r = hesapla(s, month: ay, channelId: channelId)
-            if let o = r.siparisSayisi, o > 0 { return r.koliSayisi / Double(o) }
+            let r = siparisBilgisi(s, month: ay, channelId: channelId)
+            if let o = r.siparis, o > 0 { return r.koli / Double(o) }
         }
-        return urunAdedi >= Double(ikinciKoliUrunSayisi) ? 2 : 1
+        // Veri yoksa: 2 ürüne kadar 1 koli, üstündeki her ürün için 3+ olma olasılığı
+        // kadar ikinci koli. 2 üründe 1, 3 üründe 2 koli; aradaki ortalamalar orantılı.
+        return 1 + min(max(urunAdedi - 2, 0), 1)
     }
 }
 
