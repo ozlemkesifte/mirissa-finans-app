@@ -102,8 +102,15 @@ struct StockView: View {
 
     private func subtitle(for ref: ItemRef) -> String {
         if let n = store.engine.ordersLeft(ref) { return "Yaklaşık \(n) siparişlik" }
-        let cost = Money.roundHalfAwayFromZero(store.engine.unitCost(ref))
-        return cost > 0 ? "Birim maliyet: \(cost.tl)" : "Maliyet girilmedi"
+        let ham = store.engine.unitCost(ref)
+        guard ham > 0 else { return "Maliyet girilmedi" }
+        // Gram / ml / cm başına maliyet kuruşun altında kalabilir: 1.000 birimlik fiyat gösterilir
+        if ref.kind == .material, let m = store.state.material(ref.id),
+           [UnitCode.gram, .ml, .cm].contains(m.baseUnit), ham < 50 {
+            let buyuk: String = m.baseUnit == .gram ? "kg" : (m.baseUnit == .ml ? "litre" : "10 metre")
+            return "Birim maliyet: \(Money.roundHalfAwayFromZero(ham * 1_000).tl) / \(buyuk)"
+        }
+        return "Birim maliyet: \(Money.roundHalfAwayFromZero(ham).tl)"
     }
 
     // MARK: Stok sayımı

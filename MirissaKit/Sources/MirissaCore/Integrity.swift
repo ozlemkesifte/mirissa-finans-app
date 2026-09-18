@@ -40,6 +40,132 @@ public enum Integrity {
         out += giderVeAlimlar(s)
         out += stokHareketleri(s)
         out += fiyatVeMaliyetTarihleri(s)
+        out += girisTutarliligi(s)
+        return out
+    }
+
+    // MARK: Girilen rakamların birbirini tutması
+
+    /// Tek tek geçerli görünen ama birlikte yanlış sonuç veren girişler.
+    /// Hiçbiri sessizce düzeltilmez; kullanıcıya ne olduğu söylenir.
+    private static func girisTutarliligi(_ s: AppState) -> [IntegrityIssue] {
+        var out: [IntegrityIssue] = []
+        let buAy = Dates.currentMonth()
+        func ad(_ kanal: Id) -> String { s.channel(kanal)?.name ?? "Kanal" }
+
+        for e in s.sales {
+            let urun = s.product(e.productId)?.name ?? "Ürün"
+            if e.qty == 0 && e.grossSales != 0 {
+                out.append(IntegrityIssue(.supheli, "Satışlar",
+                    "\(e.month) \(ad(e.channelId)) \(urun) satışında adet girilmemiş; ürün, ambalaj, "
+                        + "koli ve kargo maliyeti hesaplanamıyor, kâr olduğundan yüksek görünür", recordId: e.id))
+            }
+            if e.qty > 0 && e.grossSales == 0 {
+                out.append(IntegrityIssue(.supheli, "Satışlar",
+                    "\(e.month) \(ad(e.channelId)) \(urun) satışında tutar 0; satış tutarı girilmemiş olabilir",
+                    recordId: e.id))
+            }
+            if e.month > buAy {
+                out.append(IntegrityIssue(.supheli, "Satışlar",
+                    "\(urun) satışı ileri bir aya (\(e.month)) girilmiş; stok bugünden düşüyor",
+                    recordId: e.id))
+            }
+        }
+
+        // Ay kayıtları: sipariş sayısı, 3+ sipariş, eksi tutarlar, tekrar eden kayıt
+        var gorulen = Set<String>()
+        for cm in s.channelMonths {
+            let anahtar = "\(cm.month)|\(cm.channelId)"
+            if !gorulen.insert(anahtar).inserted {
+                out.append(IntegrityIssue(.bozuk, "Kanallar",
+                    "\(ad(cm.channelId)) \(cm.month) için iki ayrı ay kaydı var; yalnızca biri hesaba giriyor",
+                    recordId: cm.id))
+            }
+            let adet = s.sales.filter { $0.month == cm.month && $0.channelId == cm.channelId }
+                .reduce(0.0) { $0 + $1.qty }
+            if let o = cm.orderCount, o > 0 {
+                if adet == 0 {
+                    out.append(IntegrityIssue(.supheli, "Kanallar",
+                        "\(ad(cm.channelId)) \(cm.month): \(o) sipariş girilmiş ama o ay satış yok; "
+                            + "kargo ve hizmet bedeli satışsız aya yazılıyor", recordId: cm.id))
+                } else if Double(o) > adet {
+                    out.append(IntegrityIssue(.supheli, "Kanallar",
+                        "\(ad(cm.channelId)) \(cm.month): sipariş sayısı (\(o)) satılan üründen "
+                            + "(\(Int(adet))) fazla; kargo fazla hesaplanıyor olabilir", recordId: cm.id))
+                }
+                if let b = cm.bigOrderCount, b > o {
+                    out.append(IntegrityIssue(.supheli, "Kanallar",
+                        "\(ad(cm.channelId)) \(cm.month): 3+ ürünlü sipariş (\(b)) toplam siparişten fazla",
+                        recordId: cm.id))
+                }
+            }
+            let eksiler = [("komisyon", cm.commissionActual), ("kargo", cm.shippingActual),
+                           ("hizmet bedeli", cm.serviceFeeActual), ("diğer kesinti", cm.otherDeductionActual),
+                           ("reklam", cm.adsActual)]
+                .filter { ($0.1 ?? 0) < 0 }.map(\.0)
+            if !eksiler.isEmpty {
+                out.append(IntegrityIssue(.bozuk, "Kanallar",
+                    "\(ad(cm.channelId)) \(cm.month) için eksi tutar girilmiş (\(eksiler.joined(separator: ", "))); "
+                        + "gider gelir gibi sayılıyor", recordId: cm.id))
+            }
+        }
+
+        // Kanal oranlarında eksi kesinti
+        for ch in s.channels {
+            let kayitlar = (ch.rateHistory ?? []) + [ch.currentRates]
+            let eksi = kayitlar.contains { r in
+                r.commissionPct < 0 || r.paymentPct < 0 || r.otherDeductionPct < 0
+                    || r.shippingPerOrder < 0 || r.serviceFeePerOrder < 0
+                    || r.platformFeeMonthly < 0 || r.otherDeductionMonthly < 0
+                    || r.extras.contains { $0.value < 0 }
+            }
+            if eksi {
+                out.append(IntegrityIssue(.bozuk, "Kanallar",
+                    "\(ch.name) kesinti ayarlarında eksi değer var; kesinti gelir gibi sayılıyor",
+                    recordId: ch.id))
+            }
+        }
+
+        // Gider: aya özel eksi tutar
+        for g in s.expenses {
+            for (ay, ov) in g.overrides where (ov.amount ?? 0) < 0 {
+                out.append(IntegrityIssue(.bozuk, "Giderler",
+                    "\(g.name) \(ay) için eksi tutar girilmiş; gider gelir gibi sayılıyor", recordId: g.id))
+            }
+        }
+
+        // Alım: adetsiz para, eksi nakliye, sete yapılan stok kaydı
+        for p in s.purchases {
+            if p.qty == 0 && p.landedTotal != 0 {
+                out.append(IntegrityIssue(.supheli, "Alımlar",
+                    "\(s.itemName(p.item)) alımında miktar 0 ama para ödenmiş; tutar stoğa ve maliyete girmiyor",
+                    recordId: p.id))
+            }
+            if p.shippingCost < 0 {
+                out.append(IntegrityIssue(.bozuk, "Alımlar",
+                    "\(s.itemName(p.item)) alımında nakliye eksi girilmiş", recordId: p.id))
+            }
+        }
+        let setler = Set(s.products.filter(\.isBundle).map(\.id))
+        let setKayitlari = s.purchases.map(\.item) + s.adjustments.map(\.item) + s.counts.map(\.item)
+        for sid in setler where setKayitlari.contains(.product(sid)) {
+            out.append(IntegrityIssue(.supheli, "Stok",
+                "\(s.product(sid)?.name ?? "Set") bir set ama alım, düzeltme ya da sayım kaydı var; "
+                    + "setin kendi stoğu tutulmaz, bu kayıtlar gizli bir stok oluşturuyor", recordId: sid))
+        }
+
+        // Satılan set: bileşeninin maliyeti bilinmiyorsa set kârı şişer
+        let e = Engine(s)
+        let satilanSetler = Set(s.sales.map(\.productId)).intersection(setler)
+        for sid in satilanSetler {
+            let eksik = e.maliyetiEksikUrunler(sid, asOf: Dates.today())
+            if !eksik.isEmpty {
+                let adlar = eksik.compactMap { s.product($0)?.name }.joined(separator: ", ")
+                out.append(IntegrityIssue(.supheli, "Maliyet",
+                    "\(s.product(sid)?.name ?? "Set") satılıyor ama içindeki \(adlar) maliyeti bilinmiyor; "
+                        + "set kârı olduğundan yüksek görünür", recordId: sid))
+            }
+        }
         return out
     }
 
@@ -380,7 +506,9 @@ public enum Integrity {
         let satilanlar = Set(s.sales.filter { $0.qty > 0 }.map(\.productId))
         var maliyetsizMalzeme = Set<Id>()
         for p in s.products where satilanlar.contains(p.id) && !p.archived {
-            let maliyetliSatirlar = p.recipe.filter { $0.resolvedAddsCost || $0.resolvedConsumesStock }
+            let maliyetliSatirlar = p.recipe.filter {
+                ($0.resolvedAddsCost || $0.resolvedConsumesStock) && $0.qty > 0
+            }
             if maliyetliSatirlar.isEmpty {
                 out.append(IntegrityIssue(.supheli, "Ambalaj",
                     "\(p.name) satılıyor ama ambalaj reçetesi yok; koli, patpat, dolgu gibi "

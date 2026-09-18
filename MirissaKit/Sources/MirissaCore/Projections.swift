@@ -122,12 +122,20 @@ public extension Engine {
         if let c = consumptionCache[key] { return c }
 
         var result = ConsumptionRate.none
+        let satirlar = ledger.rows(for: item)
+        // Kalem ilk kez ne zaman göründü: yeni ürünün oranı, henüz yokken geçen
+        // aylarla sulandırılmasın
+        let ilkAy = satirlar.map { Dates.month(of: $0.date) }.min()
         for window in [state.settings.consumptionWindowMonths, 6, 12] where window > 0 {
-            let start = Dates.addMonths(end, -(window - 1))
+            let start = max(Dates.addMonths(end, -(window - 1)), ilkAy ?? end)
+            guard start <= end else { continue }
             let months = Set(Dates.monthRange(from: start, to: end))
+            // Satışın net tüketimi: stoğa geri dönen iadeler düşülür.
+            // Fire, numune ve sayım farkı katılmaz — yoksa oran şişer.
             var used = 0.0
-            for r in ledger.rows(for: item)
-            where r.kind == .satis && months.contains(Dates.month(of: r.date)) {
+            for r in satirlar
+            where r.movement.source == .sales && (r.kind == .satis || r.kind == .iade)
+                && months.contains(Dates.month(of: r.date)) {
                 used += -r.delta
             }
             guard used > 0 else { continue }
@@ -135,8 +143,8 @@ public extension Engine {
             for m in months { orders += companyMonth(m).orders }
             result = ConsumptionRate(
                 perOrder: orders > 0 ? used / Double(orders) : 0,
-                perMonth: window > 0 ? used / Double(window) : 0,
-                windowMonths: window
+                perMonth: used / Double(months.count),
+                windowMonths: months.count
             )
             break
         }
@@ -150,7 +158,8 @@ public extension Engine {
         guard rate.perOrder > 0 else { return nil }
         let q = qty(item)
         guard q > 0 else { return 0 }
-        return Int((q / rate.perOrder).rounded(.down))
+        // Küçük pay: 35 ÷ (700/600) = 29,99999… gibi kayan nokta artıkları bir eksik saymasın
+        return Int((q / rate.perOrder + 1e-9).rounded(.down))
     }
 
     /// Eldeki bileşen stoğuyla bu setten en fazla kaç adet hazırlanabilir.
@@ -162,7 +171,9 @@ public extension Engine {
         let leaves = Costing.explodeToLeafProducts(products: byId, productId: productId, qty: 1)
         var enAz: Int?
         for (leafId, mult) in leaves where mult > 0 {
-            let adet = Int((qty(.product(leafId)) / mult).rounded(.down))
+            // Stok tutmayan (boş set) yaprak sınırlamaz; kayan nokta artığına küçük pay
+            guard byId[leafId]?.tracksOwnStock == true else { continue }
+            let adet = Int((qty(.product(leafId)) / mult + 1e-9).rounded(.down))
             enAz = min(enAz ?? adet, adet)
         }
         return enAz.map { max(0, $0) }
@@ -175,7 +186,9 @@ public extension Engine {
         let leaves = Costing.explodeToLeafProducts(products: byId, productId: productId, qty: 1)
         var en: (Id, Int)?
         for (leafId, mult) in leaves where mult > 0 {
-            let adet = Int((qty(.product(leafId)) / mult).rounded(.down))
+            // Stok tutmayan (boş set) yaprak sınırlamaz; kayan nokta artığına küçük pay
+            guard byId[leafId]?.tracksOwnStock == true else { continue }
+            let adet = Int((qty(.product(leafId)) / mult + 1e-9).rounded(.down))
             if en == nil || adet < en!.1 { en = (leafId, adet) }
         }
         return en.map { ($0.0, max(0, $0.1)) }

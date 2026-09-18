@@ -506,3 +506,232 @@ struct YearToDateTests {
         #expect(e.periodTotals(from: "2026-01", to: "2026-12", today: "2027-02-01").toplamGider == tl(12_000))
     }
 }
+
+/// Aylık girilen kesintiler: her etiket kendi alanına, tahmin ayarın yerine geçer
+@Suite("Denetim 3 tur 2: aylık kesinti eşleştirmesi")
+struct MonthlyFeeMappingTests {
+
+    private func durum(_ extras: [ChannelExtraFee], komisyonYuzde: Double = 0,
+                       ay: ChannelMonth) -> AppState {
+        var s = Fx.base()
+        s.settings.vatEnabled = false
+        s.products[1] = Product(id: Fx.serumId, name: "Serum",
+                                costLines: [CostLine(id: "c", label: "Üretim", amount: tl(100))])
+        s.products[1].setPrice(tl(1_000), channelId: ChannelIds.trendyol, from: "2026-01-01")
+        s.channels[0].commissionPct = komisyonYuzde
+        s.channels[0].setRates(ChannelRates(from: "2026-01-01", commissionPct: komisyonYuzde,
+                                            extras: extras))
+        s.sales.append(SalesEntry(id: "s", month: ay.month, channelId: ChannelIds.trendyol,
+                                  productId: Fx.serumId, qty: 10, grossSales: tl(10_000)))
+        s.channelMonths.append(ay)
+        return s
+    }
+
+    @Test func girilenKomisyonHizmetBedeliniSilmez() {
+        let s = durum([ChannelExtraFee(label: "Hizmet bedeli", basis: .siparisBasi, value: Double(tl(5)))],
+                      ay: ChannelMonth(id: "cm", month: "2026-09", channelId: ChannelIds.trendyol,
+                                       orderCount: 10, commissionActual: tl(1_000)))
+        let c = Engine(s).companyMonth("2026-09").channels.first { $0.channelId == ChannelIds.trendyol }!
+        #expect(c.commission.amount == tl(1_000))
+        #expect(c.otherDeduction.amount == tl(50))     // 10 sipariş × 5 TL hizmet kalır
+    }
+
+    @Test func tahminAyardakiOraninYerineGecerUstuneEklenmez() {
+        // Ayarda %5 komisyon da var; ama komisyon aylık giriliyor ve ağustosta %20 çıkmış
+        let s = durum([ChannelExtraFee(label: "Komisyon", basis: .elleAylik)], komisyonYuzde: 5,
+                      ay: ChannelMonth(id: "cm", month: "2026-08", channelId: ChannelIds.trendyol,
+                                       orderCount: 10, commissionActual: tl(2_000)))
+        let u = Engine(s).unitContribution(productId: Fx.serumId, channelId: ChannelIds.trendyol,
+                                           on: "2026-09-15")!
+        #expect(u.channelFees == tl(200))    // %25 değil, %20
+    }
+
+    @Test func sifirGirilenTutarGirilmisSayilir() {
+        let s = durum([ChannelExtraFee(label: "Kargo", basis: .elleAylik)],
+                      ay: ChannelMonth(id: "cm", month: "2026-08", channelId: ChannelIds.trendyol,
+                                       orderCount: 10, shippingActual: 0))
+        let u = Engine(s).unitContribution(productId: Fx.serumId, channelId: ChannelIds.trendyol,
+                                           on: "2026-09-15")!
+        #expect(u.missingFees.isEmpty)
+        #expect(u.estimatedFees == ["Kargo"])
+        #expect(u.channelFees == 0)
+    }
+
+    @Test func siparisSayisiSifirsaAdettenHesaplanir() {
+        let s = durum([ChannelExtraFee(label: "Kargo", basis: .elleAylik)],
+                      ay: ChannelMonth(id: "cm", month: "2026-08", channelId: ChannelIds.trendyol,
+                                       orderCount: 0, shippingActual: tl(500)))
+        let u = Engine(s).unitContribution(productId: Fx.serumId, channelId: ChannelIds.trendyol,
+                                           on: "2026-09-15")!
+        // 500 TL ÷ 10 ürün (sipariş) = 50 TL, yüzdeye dönüşmez
+        #expect(u.perOrderFees == tl(50))
+    }
+
+    @Test func buyukHarfliEtiketDeEslesir() {
+        let s = durum([ChannelExtraFee(label: "KOMISYON", basis: .elleAylik)],
+                      ay: ChannelMonth(id: "cm", month: "2026-08", channelId: ChannelIds.trendyol,
+                                       orderCount: 10, commissionActual: tl(1_500)))
+        let u = Engine(s).unitContribution(productId: Fx.serumId, channelId: ChannelIds.trendyol,
+                                           on: "2026-09-15")!
+        #expect(u.channelFees == tl(150))
+    }
+
+    @Test func aylikReklamKanalKesintisiEksigiSayilmaz() {
+        let s = durum([ChannelExtraFee(label: "Kanal reklam gideri", basis: .elleAylik)],
+                      ay: ChannelMonth(id: "cm", month: "2026-09", channelId: ChannelIds.trendyol,
+                                       orderCount: 10))
+        let c = Engine(s).companyMonth("2026-09").channels.first { $0.channelId == ChannelIds.trendyol }!
+        #expect(!c.eksikBilgiler.contains { $0.contains("reklam") })
+    }
+}
+
+@Suite("Denetim 3 tur 2: maliyet kalemi yeniden girilince")
+struct CostLineReentryTests {
+    @Test func hepsiSilinipYenidenGirilenMaliyetGecmisiDegistirmez() {
+        var p = Fx.sampuan()
+        p.applyCostLines([CostLine(id: "a", label: "Üretim", amount: tl(100))], today: "2026-01-10")
+        p.applyCostLines([], today: "2026-05-01")                       // hepsi kaldırıldı
+        p.applyCostLines([CostLine(id: "b", label: "Üretim", amount: tl(160))], today: "2026-09-01")
+        let toplam: (DateKey) -> Kurus = { d in p.costLines(on: d).reduce(0) { $0 + $1.amount } }
+        #expect(toplam("2026-03-15") == tl(100))   // eski dönem eski maliyetle
+        #expect(toplam("2026-06-15") == 0)         // kaldırıldığı dönem
+        #expect(toplam("2026-09-15") == tl(160))   // yeni maliyet bugünden
+    }
+}
+
+/// Stok tahminleri ve dışa aktarma
+@Suite("Denetim 3 tur 2: stok tahmini ve CSV")
+struct ProjectionAndCSVTests {
+
+    @Test func stogaDonenIadeTuketimOraniniSisirmez() {
+        var s = Fx.base()
+        s.addPurchase("u", "2026-07-01", .product(Fx.sampuanId), qty: 1_000, paid: tl(100_000))
+        // Eylül: 100 satış, 20 iade stoğa döndü → net 80 ürün, 80 sipariş
+        s.sales.append(SalesEntry(id: "s", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.sampuanId, qty: 100, grossSales: tl(100_000),
+                                  returnsAmount: tl(20_000), returnsQty: 20, returnsRestock: true))
+        s.channelMonths.append(ChannelMonth(id: "cm", month: "2026-09",
+                                            channelId: ChannelIds.trendyol, orderCount: 80))
+        let r = Engine(s).consumptionRate(.product(Fx.sampuanId), endingAt: "2026-09")
+        #expect(abs(r.perOrder - 1.0) < 1e-9)       // 80 ürün ÷ 80 sipariş
+    }
+
+    @Test func yeniUrununAylikHiziOncekiAylarlaSulanmaz() {
+        var s = Fx.base()
+        s.addPurchase("u", "2026-09-01", .product(Fx.sampuanId), qty: 1_000, paid: tl(100_000))
+        s.sales.append(SalesEntry(id: "s", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.sampuanId, qty: 90, grossSales: tl(90_000)))
+        let r = Engine(s).consumptionRate(.product(Fx.sampuanId), endingAt: "2026-09")
+        // Ürün eylülde başladı: ayda 90, üç aya bölünüp 30 değil
+        #expect(abs(r.perMonth - 90) < 1e-9)
+    }
+
+    @Test func kayanNoktaArtigiBirSiparisEksikSaymaz() {
+        var s = Fx.base()
+        s.products[1] = Product(id: Fx.serumId, name: "Serum",
+                                recipe: [RecipeLine(id: "r", materialId: Fx.dolguId, qty: 7, unit: .gram)])
+        s.addPurchase("d", "2026-09-01", .material(Fx.dolguId), qty: 800, unit: .gram, paid: tl(80))
+        // 100 ürün × 7 g = 700 g, 600 siparişte → sipariş başı 7/6 g; kalan 100 g → 100 ÷ (7/6) = 85,7 → 85
+        s.sales.append(SalesEntry(id: "s", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.serumId, qty: 100, grossSales: tl(10_000)))
+        s.channelMonths.append(ChannelMonth(id: "cm", month: "2026-09",
+                                            channelId: ChannelIds.trendyol, orderCount: 600))
+        let e = Engine(s)
+        #expect(e.ordersLeft(.material(Fx.dolguId), endingAt: "2026-09") == 85)
+        // Tam bölünen durum: kalan 35 ve sipariş başı 7/6 → 30 (29 değil)
+        var s2 = s
+        s2.purchases[0].qty = 735
+        #expect(Engine(s2).ordersLeft(.material(Fx.dolguId), endingAt: "2026-09") == 30)
+    }
+
+    @Test func bosIcSetYapilabilirSayisiniSifirlamaz() {
+        var s = Fx.base()
+        s.addPurchase("u", "2026-09-01", .product(Fx.sampuanId), qty: 10, paid: tl(1_000))
+        s.addPurchase("r", "2026-09-01", .product(Fx.serumId), qty: 10, paid: tl(1_000))
+        s.products.append(Product(id: "bos", name: "Boş set", isBundle: true))
+        if let i = s.products.firstIndex(where: { $0.id == Fx.setId }) {
+            s.products[i].components.append(BundleComponent(productId: "bos", qty: 1))
+        }
+        #expect(Engine(s).buildable(Fx.setId) == 10)
+    }
+
+    @Test func csvGelecekAylariYazmazOdenenTutarKdvDahil() {
+        var s = Fx.base()
+        var g = Expense(id: "k", date: "2026-01-01", name: "Kira", amount: tl(1_000),
+                        category: .sabit, recurrence: .aylik)
+        g.vatRate = .yirmi
+        g.vatIncluded = false
+        s.expenses.append(g)
+        let dosyalar = CSVExport.all(Engine(s), from: "2026-01", to: "2026-12", today: "2026-09-17")
+        let ozet = dosyalar.first { $0.name == "aylik-ozet.csv" }!.contents
+        #expect(ozet.contains("2026-09"))
+        #expect(!ozet.contains("2026-10"))
+        let giderler = dosyalar.first { $0.name == "giderler.csv" }!.contents
+        #expect(giderler.contains("1200,00"))        // 1.000 + %20 KDV ödendi
+    }
+
+    @Test func csvBicimleri() {
+        #expect(CSVExport.num(-0.001, digits: 1) == "0,0")
+        #expect(CSVExport.adet(0.5) == "0,500")
+        #expect(CSVExport.adet(12) == "12")
+        #expect(CSVExport.esc("a\r\nb").hasPrefix("\""))
+        #expect(CSVExport.birimMaliyet(0.3) == "0,0030")
+    }
+}
+
+/// Tek tek geçerli görünen ama birlikte yanlış sonuç veren girişler
+@Suite("Denetim 3 tur 2: giriş tutarlılığı")
+struct InputConsistencyTests {
+
+    private func mesajlar(_ s: AppState) -> [String] { Integrity.check(s).map(\.message) }
+
+    @Test func kendiniIcerenSetteHedefHesabiCokmez() {
+        var s = Fx.base()
+        let i = s.products.firstIndex { $0.id == Fx.setId }!
+        s.products[i].components.append(BundleComponent(productId: Fx.setId, qty: 1))
+        s.products[i].setPrice(tl(1_000), channelId: ChannelIds.trendyol, from: "2026-01-01")
+        s.sales.append(SalesEntry(id: "s", month: "2026-08", channelId: ChannelIds.trendyol,
+                                  productId: Fx.setId, qty: 1, grossSales: tl(1_000)))
+        let e = Engine(s)
+        _ = e.missingForTarget(month: "2026-09", today: "2026-09-15")
+        _ = Integrity.check(s)
+    }
+
+    @Test func adetsizSatisVeTutarsizSatisUyarilir() {
+        var s = Fx.base()
+        s.sales.append(SalesEntry(id: "a", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.sampuanId, qty: 0, grossSales: tl(5_000)))
+        s.sales.append(SalesEntry(id: "b", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.serumId, qty: 10, grossSales: 0))
+        let m = mesajlar(s)
+        #expect(m.contains { $0.contains("adet girilmemiş") })
+        #expect(m.contains { $0.contains("tutar 0") })
+    }
+
+    @Test func siparisSayisiUrundenFazlaysaVeEksiTutarUyarilir() {
+        var s = Fx.base()
+        s.sales.append(SalesEntry(id: "a", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.sampuanId, qty: 100, grossSales: tl(10_000)))
+        s.channelMonths.append(ChannelMonth(id: "cm", month: "2026-09", channelId: ChannelIds.trendyol,
+                                            orderCount: 150, commissionActual: -tl(500),
+                                            bigOrderCount: 200))
+        let m = mesajlar(s)
+        #expect(m.contains { $0.contains("satılan üründen") })
+        #expect(m.contains { $0.contains("3+ ürünlü sipariş") })
+        #expect(m.contains { $0.contains("eksi tutar") })
+    }
+
+    @Test func miktariSifirReceteReceteSayilmaz() {
+        var s = Fx.base()
+        s.products[1].recipe = [RecipeLine(id: "r", materialId: Fx.koliId, qty: 0, unit: .adet)]
+        s.sales.append(SalesEntry(id: "a", month: "2026-09", channelId: ChannelIds.trendyol,
+                                  productId: Fx.serumId, qty: 5, grossSales: tl(500)))
+        #expect(mesajlar(s).contains { $0.contains("Serum satılıyor ama ambalaj reçetesi yok") })
+    }
+
+    @Test func seteYapilanAlimUyarilir() {
+        var s = Fx.base()
+        s.addPurchase("p", "2026-09-01", .product(Fx.setId), qty: 10, paid: tl(1_000))
+        #expect(mesajlar(s).contains { $0.contains("bir set ama alım") })
+    }
+}

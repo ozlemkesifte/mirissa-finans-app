@@ -356,6 +356,7 @@ public final class Engine {
             // gören ek kesinti tekrar eklenmez: elle girilen tutar onun da yerine geçer.
             if AylikKesinti.komisyonMu(f), cm?.commissionActual != nil { continue }
             if AylikKesinti.kargoMu(f), cm?.shippingActual != nil { continue }
+            if AylikKesinti.hizmetMu(f), cm?.serviceFeeActual != nil { continue }
             switch f.basis {
             case .yuzde: ekDegisken += taban * f.value / 100
             case .siparisBasi: ekDegisken += f.value * Double(r.orders)
@@ -375,7 +376,8 @@ public final class Engine {
         // "Aylık gerçek tutarı ben gireceğim" denen kesintiler: o ay tutar girilmemişse
         // hesapta hiç görünmez. Sessizce 0 saymak yerine eksik olduğu söylenir.
         if r.units > 0 || r.orders > 0 || r.netSales != 0 {
-            for f in oranlar.elleGirilecekler where AylikKesinti.tutar(f, cm) == nil {
+            for f in oranlar.elleGirilecekler
+            where AylikKesinti.alan(f) != .reklam && AylikKesinti.tutar(f, cm) == nil {
                 r.eksikBilgiler.append("\(f.label.lowercased(with: Locale(identifier: "tr_TR"))) (aylık tutar girilmemiş)")
             }
         }
@@ -431,40 +433,53 @@ public final class Engine {
     /// hesapta (başa baş, reklam hedefi) o kesinti bilinmiyor demektir. Geçmişte
     /// girilmiş gerçek tutarlardan oran çıkarılır ve sonuç "tahmini" işaretlenir;
     /// hiç veri yoksa açıkça eksik denir.
-    func elleAylikTahmin(_ ch: Channel, on date: DateKey)
-    -> (yuzde: Double, siparisBasi: Double, tahmin: [String], eksik: [String]) {
+    func elleAylikTahmin(_ ch: Channel, on date: DateKey) -> AylikKesintiTahmini {
+        var t = AylikKesintiTahmini()
         let ekler = ch.rates(on: date).elleGirilecekler
-        guard !ekler.isEmpty else { return (0, 0, [], []) }
-        var yuzde = 0.0, siparisBasi = 0.0
-        var tahmin: [String] = [], eksik: [String] = []
+        guard !ekler.isEmpty else { return t }
         let buAy = Dates.month(of: date)
+        // Aynı alana bağlı iki kesinti varsa alan bir kez tahmin edilir (çift sayım olmaz)
+        var gorulen = Set<AylikKesinti.Alan>()
         for f in ekler {
+            let alan = AylikKesinti.alan(f)
+            // Reklam kanal kesintisi değildir; reklam hedefi zaten reklamdan öncesini ölçer
+            guard alan != .reklam, gorulen.insert(alan).inserted else { continue }
             var bulundu = false
             for geri in 0...12 {
                 let ay = Dates.addMonths(buAy, -geri)
+                // 0 girildiyse de girilmiştir: "bu ay kargo ödemedim" geçerli bir cevaptır
                 guard let cm = state.channelMonth(month: ay, channelId: ch.id),
-                      let tutar = AylikKesinti.tutar(f, cm), tutar != 0 else { continue }
+                      let tutar = AylikKesinti.tutar(alan, cm) else { continue }
                 let satirlar = state.sales.filter { $0.month == ay && $0.channelId == ch.id }
                 let kdvDahil = satirlar.reduce(0) { toplam, e in
                     let b = e.vatSplit
                     return toplam + b.net + b.vat
                 }
                 let adet = satirlar.reduce(0.0) { $0 + max($1.qty - $1.returnsQty, 0) }
-                let siparis = cm.orderCount ?? Int(adet.rounded())
-                if AylikKesinti.siparisBasiMi(f), siparis > 0 {
-                    siparisBasi += Double(tutar) / Double(siparis)
-                    tahmin.append(f.label)
-                    bulundu = true
-                } else if kdvDahil > 0 {
-                    yuzde += Double(tutar) / Double(kdvDahil) * 100
-                    tahmin.append(f.label)
-                    bulundu = true
+                let siparis = (cm.orderCount ?? 0) > 0 ? cm.orderCount! : Int(adet.rounded())
+                switch alan {
+                case .kargo, .hizmet:
+                    guard siparis > 0 else { continue }
+                    let deger = Double(tutar) / Double(siparis)
+                    if alan == .kargo { t.kargoSiparisBasi = deger } else { t.hizmetSiparisBasi = deger }
+                case .komisyon:
+                    guard kdvDahil > 0 else { continue }
+                    t.komisyonYuzde = Double(tutar) / Double(kdvDahil) * 100
+                case .diger:
+                    guard kdvDahil > 0 else { continue }
+                    // Aylık sabit ücret ayrıca sabit gider sayılır; oranı şişirmesin
+                    let sabit = aylikSabitKanalUcreti(ch, month: ay)
+                    t.digerYuzde = Double(max(tutar - sabit, 0)) / Double(kdvDahil) * 100
+                case .reklam:
+                    continue
                 }
-                if bulundu { break }
+                t.tahmin.append(f.label)
+                bulundu = true
+                break
             }
-            if !bulundu { eksik.append(f.label) }
+            if !bulundu { t.eksik.append(f.label) }
         }
-        return (yuzde, siparisBasi, tahmin, eksik)
+        return t
     }
 
     /// Kanalın son iz bıraktığı ay: son satışı, son ay kaydı ya da son gideri

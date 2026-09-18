@@ -12,15 +12,31 @@ public enum CSVExport {
     static let sep = ";"
 
     static func esc(_ v: String) -> String {
-        if v.contains(sep) || v.contains("\"") || v.contains("\n") {
+        // "\r\n" Swift'te tek karakterdir; satır sonu skaler düzeyde aranır
+        let satirSonu = v.unicodeScalars.contains { $0 == "\n" || $0 == "\r" }
+        if v.contains(sep) || v.contains("\"") || satirSonu {
             return "\"" + v.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         return v
     }
 
     static func num(_ v: Double, digits: Int = 2) -> String {
-        String(format: "%.\(digits)f", v).replacingOccurrences(of: ".", with: ",")
+        var s = String(format: "%.\(digits)f", v)
+        // Sıfıra yuvarlanan eksi değer "-0,0" yazılmasın
+        if s.hasPrefix("-"), s.dropFirst().allSatisfy({ $0 == "0" || $0 == "." }) { s.removeFirst() }
+        return s.replacingOccurrences(of: ".", with: ",")
     }
+
+    /// Adet: tam sayıysa ondalıksız, değilse ondalığıyla (0,5 adet 0 ya da 1 yazılmasın)
+    static func adet(_ v: Double) -> String {
+        abs(v - v.rounded()) < 1e-9 ? num(v, digits: 0) : num(v, digits: 3)
+    }
+
+    /// Birim maliyet: gram/ml başına kuruşun altında kalabilir; 4 basamak TL
+    static func birimMaliyet(_ kurus: Double) -> String { num(kurus / 100, digits: 4) }
+
+    /// Dışa aktarılacak dönemin sonu: henüz gelmemiş aylar yazılmaz
+    static func bugune(_ to: MonthKey, today: DateKey) -> MonthKey { min(to, Dates.month(of: today)) }
 
     static func money(_ k: Kurus) -> String { num(Money.toTL(k)) }
 
@@ -44,11 +60,11 @@ public enum CSVExport {
                     s.month,
                     e.state.channel(s.channelId)?.name ?? s.channelId,
                     e.state.product(s.productId)?.name ?? s.productId,
-                    num(s.qty, digits: 0),
+                    adet(s.qty),
                     money(s.grossSales),
                     money(s.discount),
                     money(s.returnsAmount),
-                    num(s.returnsQty, digits: 0),
+                    adet(s.returnsQty),
                     money(s.netSales),
                     money(s.vatSplit.net),
                     money(s.vatSplit.vat),
@@ -70,7 +86,7 @@ public enum CSVExport {
                 i.name,
                 i.category.displayName,
                 i.scope.channelId.map { e.state.channel($0)?.name ?? $0 } ?? "Ortak",
-                money(i.amount),
+                money(i.cashAmount),
                 money(i.net),
                 money(i.inputVat),
                 i.capitalized ? "Stoğa girdi" : "Gider",
@@ -79,7 +95,7 @@ public enum CSVExport {
         }
         return file("giderler.csv",
                     ["Tarih", "Ay", "Gider adı", "Kategori", "Bölüm",
-                     "Tutar", "KDV hariç", "İndirilecek KDV", "Kâra etkisi", "Tür"], rows)
+                     "Ödenen (KDV dahil)", "KDV hariç", "İndirilecek KDV", "Kâra etkisi", "Tür"], rows)
     }
 
     public static func products(_ e: Engine) -> ExportFile {
@@ -89,17 +105,18 @@ public enum CSVExport {
             return [
                 p.name,
                 p.isBundle ? "Set" : "Ürün",
-                num(b.qty, digits: 0),
+                adet(b.qty),
                 money(c.ownLines),
                 money(c.components),
                 money(c.packaging),
+                money(c.orderPackaging),
                 money(c.total),
                 money(b.value),
             ]
         }
         return file("urunler.csv",
                     ["Ürün", "Tür", "Stok", "Kendi maliyeti", "Bileşen maliyeti",
-                     "Paketleme maliyeti", "Toplam birim maliyet", "Stok değeri"], rows)
+                     "Paketleme maliyeti", "Koli (sipariş başı)", "Toplam birim maliyet", "Stok değeri"], rows)
     }
 
     public static func materials(_ e: Engine) -> ExportFile {
@@ -111,7 +128,7 @@ public enum CSVExport {
                 m.category.displayName,
                 m.baseUnit.displayName,
                 num(b.qty),
-                money(Money.roundHalfAwayFromZero(b.unitCost)),
+                birimMaliyet(b.unitCost),
                 money(b.value),
                 m.minQty.map { num($0) } ?? "",
                 m.criticalQty.map { num($0) } ?? "",
@@ -133,7 +150,7 @@ public enum CSVExport {
                 r.label,
                 num(r.delta),
                 num(r.balanceAfter),
-                money(Money.roundHalfAwayFromZero(r.unitCostAfter)),
+                birimMaliyet(r.unitCostAfter),
                 money(r.valueAfter),
             ]
         }
@@ -175,7 +192,9 @@ public enum CSVExport {
                      "Tahmini ödenecek", "Sonraki aya devreden"], rows)
     }
 
-    public static func all(_ e: Engine, from: MonthKey, to: MonthKey) -> [ExportFile] {
+    public static func all(_ e: Engine, from: MonthKey, to: MonthKey,
+                           today: DateKey = Dates.today()) -> [ExportFile] {
+        let to = max(bugune(to, today: today), from)
         var out = [
             monthlySummary(e, from: from, to: to),
             sales(e),

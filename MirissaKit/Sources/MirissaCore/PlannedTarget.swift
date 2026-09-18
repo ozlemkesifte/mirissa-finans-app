@@ -125,9 +125,13 @@ public extension Engine {
     -> ((toplam: Kurus, siparisBasi: Kurus), tahmin: [String], eksik: [String]) {
         let r = ch.rates(on: date)
         let ek = elleAylikTahmin(ch, on: date)
-        var yuzde = Double(siparisDegeri) * (r.commissionPct + r.paymentPct + r.otherDeductionPct + ek.yuzde) / 100
-        var sabit = Double(r.shippingPerOrder) + Double(r.serviceFeePerOrder) + ek.siparisBasi
-        for f in r.extras where !f.unknown {
+        // Tahmin edilen alan ayardaki aynı alanın yerine geçer (ayın gerçek tutarı gibi)
+        let komisyon = ek.komisyonYuzde ?? (r.commissionPct + r.paymentPct)
+        let diger = ek.digerYuzde ?? r.otherDeductionPct
+        var yuzde = Double(siparisDegeri) * (komisyon + diger) / 100
+        var sabit = (ek.kargoSiparisBasi ?? Double(r.shippingPerOrder))
+            + (ek.hizmetSiparisBasi ?? Double(r.serviceFeePerOrder))
+        for f in r.extras where !f.unknown && !ek.degistirir(AylikKesinti.alan(f)) {
             switch f.basis {
             case .yuzde: yuzde += Double(siparisDegeri) * f.value / 100
             case .siparisBasi: sabit += f.value
@@ -426,17 +430,23 @@ public extension Engine {
 
     /// Maliyeti girilmemiş ürünler. Set verilirse bileşenlerine iner:
     /// setin maliyeti bileşenlerden hesaplandığı için "set maliyeti" sorulmaz.
-    func maliyetiEksikUrunler(_ productId: Id, asOf: DateKey) -> [Id] {
-        guard let p = productsById[productId] else { return [] }
+    func maliyetiEksikUrunler(_ productId: Id, asOf: DateKey, ziyaret: Set<Id> = []) -> [Id] {
+        // Kendini içeren (hatalı) set tanımında sonsuz döngüye girme
+        guard !ziyaret.contains(productId), ziyaret.count < 8,
+              let p = productsById[productId] else { return [] }
         if p.isBundle {
-            let bilesenler = p.components.flatMap { maliyetiEksikUrunler($0.productId, asOf: asOf) }
+            let sonraki = ziyaret.union([productId])
+            let bilesenler = p.components.flatMap {
+                maliyetiEksikUrunler($0.productId, asOf: asOf, ziyaret: sonraki)
+            }
             // Setin kendi ek maliyeti yoksa sorun değil; bileşenlerine bak
             return bilesenler
         }
         // Ambalaj maliyeti reçeteden gelir; burada aranan ÜRÜNÜN kendi
         // üretim maliyetidir. Toplama bakmak yanıltıcı olurdu: reçetesi olan
         // bir ürünün maliyeti hiç girilmemiş olsa bile toplam sıfırdan büyük çıkar.
-        return cost(of: productId, asOf: asOf).intrinsic == 0 ? [productId] : []
+        let b = cost(of: productId, asOf: asOf)
+        return (b.intrinsic == 0 && !b.ownFromPurchases) ? [productId] : []
     }
 
     // MARK: - Kurulumdan hesaplanan katkı

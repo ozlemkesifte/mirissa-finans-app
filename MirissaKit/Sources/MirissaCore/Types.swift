@@ -315,7 +315,9 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     /// bozmadan uygular: değişen kalem kapatılır, yerine yenisi açılır.
     public mutating func applyCostLines(_ yeni: [CostLine], today: DateKey) {
         let aktif = costLines.filter { $0.validTo == nil }
-        let ilkKez = aktif.isEmpty
+        // "İlk kez" yalnızca hiç maliyet kaydı yoksa: kalemler silinip yeniden
+        // girildiyse eski dönemlerin maliyeti vardır, yeni rakam bugünden başlar.
+        let ilkKez = costLines.isEmpty
         var sonuc = costLines.filter { $0.validTo != nil }   // geçmiş olduğu gibi kalır
         let dun = Dates.addDays(today, -1)
 

@@ -8,7 +8,7 @@ struct HomeView: View {
     @State private var sheet: AppSheet?
 
     private var result: CompanyMonthResult { period.result(store.engine) }
-    private var alerts: [StockAlert] { store.engine.stockAlerts(endingAt: period.month) }
+    private var alerts: [StockAlert] { store.engine.stockAlerts() }   // bugünkü stok, bugünkü hız
 
     var body: some View {
         NavigationStack {

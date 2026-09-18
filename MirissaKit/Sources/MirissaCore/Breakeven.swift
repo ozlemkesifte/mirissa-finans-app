@@ -494,9 +494,9 @@ public extension Engine {
         let gun = Dates.monthEnd(month)
         return state.activeChannels.contains { ch in
             if !ch.rates(on: gun).eksikler.isEmpty { return true }
-            // Aylık girilen kesintiler ileriye dönük hesapta kesin değildir
-            let ek = elleAylikTahmin(ch, on: gun)
-            return !ek.eksik.isEmpty || !ek.tahmin.isEmpty
+            // Aylık girilecek denip hiç tutarı olmayan kesinti hesaba giremez.
+            // (Geçmiş aydan tahmin edilenler hesapta var; "girilmemiş" denmez.)
+            return !elleAylikTahmin(ch, on: gun).eksik.isEmpty
         }
     }
 

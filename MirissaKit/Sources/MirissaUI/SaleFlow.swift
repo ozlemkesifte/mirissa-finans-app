@@ -36,7 +36,7 @@ struct SaleFlow: View {
     @State private var kargo: Kurus = 0
     @State private var siparisSayisi: Double = 0
     @State private var buyukSiparis: Double = 0
-    @State private var buyukSiparisBiliniyor = true
+    @State private var buyukSiparisBiliniyor = false
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
     @State private var urunArama = ""
@@ -74,7 +74,7 @@ struct SaleFlow: View {
         indirim = t.indirim; iadeTutar = t.iadeTutar; iadeAdet = t.iadeAdet
         iadeSatilabilir = t.iadeSatilabilir; gercekKesinti = t.gercekKesinti
         komisyon = t.komisyon; kargo = t.kargo; siparisSayisi = t.siparisSayisi
-        buyukSiparis = t.buyukSiparis ?? 0; buyukSiparisBiliniyor = t.buyukSiparisBiliniyor ?? true
+        buyukSiparis = t.buyukSiparis ?? 0; buyukSiparisBiliniyor = t.buyukSiparisBiliniyor ?? false
     }
 
     private func taslakKaydet() {
@@ -388,7 +388,10 @@ struct SaleFlow: View {
         }
         .onAppear {
             if siparisSayisi == 0, let o = mevcut?.orderCount { siparisSayisi = Double(o) }
-            if buyukSiparis == 0, let b = mevcut?.bigOrderCount { buyukSiparis = Double(b) }
+            if buyukSiparis == 0, let b = mevcut?.bigOrderCount {
+                buyukSiparis = Double(b)
+                buyukSiparisBiliniyor = true
+            }
         }
     }
 
