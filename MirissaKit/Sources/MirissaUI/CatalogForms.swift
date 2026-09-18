@@ -13,6 +13,8 @@ struct MaterialForm: View {
     @State private var baseUnit: UnitCode = .adet
     @State private var minQty: Double?
     @State private var criticalQty: Double?
+    @State private var tedarikGun: Double?
+    @State private var minSiparis: Double?
     @State private var packSizes: [String: Double] = [:]
     @State private var showPack = false
     @State private var siparisBasi: Bool?
@@ -91,6 +93,8 @@ struct MaterialForm: View {
             Section {
                 OptionalQtyField("Stok azalıyor uyarısı", suffix: baseUnit.displayName, value: $minQty)
                 OptionalQtyField("Kritik stok uyarısı", suffix: baseUnit.displayName, value: $criticalQty)
+                OptionalQtyField("Tedarik süresi", suffix: "gün", value: $tedarikGun)
+                OptionalQtyField("En az sipariş", suffix: baseUnit.displayName, value: $minSiparis)
             } header: {
                 Text("Uyarı seviyeleri")
             } footer: {
@@ -134,6 +138,7 @@ struct MaterialForm: View {
         guard let id = editingId, let m = store.state.material(id) else { return }
         name = m.name; category = m.category; baseUnit = m.baseUnit
         minQty = m.minQty; criticalQty = m.criticalQty
+        tedarikGun = m.tedarikSuresiGun.map(Double.init); minSiparis = m.minSiparis
         packSizes = m.packSizesRaw
         showPack = !m.packSizesRaw.isEmpty
         siparisBasi = m.perOrder
@@ -145,13 +150,17 @@ struct MaterialForm: View {
             m.name = name; m.category = category; m.baseUnit = baseUnit
             m.minQty = minQty; m.criticalQty = criticalQty; m.packSizesRaw = clean
             m.perOrder = siparisBasi ?? m.perOrder
+            m.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }; m.minSiparis = minSiparis
             store.updateMaterial(m)
         } else {
-            store.addMaterial(StockMaterial(
+            var yeni = StockMaterial(
                 name: name, category: category, baseUnit: baseUnit,
                 packSizesRaw: clean, minQty: minQty, criticalQty: criticalQty,
                 perOrder: siparisBasi
-            ))
+            )
+            yeni.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }
+            yeni.minSiparis = minSiparis
+            store.addMaterial(yeni)
         }
     }
 }
@@ -171,6 +180,8 @@ struct ProductForm: View {
 
     @State private var minQty: Double?
     @State private var criticalQty: Double?
+    @State private var tedarikGun: Double?
+    @State private var minSiparis: Double?
     @State private var listeFiyat: Kurus = 0
     @State private var kanalFiyat: [Id: Kurus] = [:]
     @State private var loaded = false
@@ -282,6 +293,8 @@ struct ProductForm: View {
             Section("Uyarı seviyeleri") {
                 OptionalQtyField("Stok azalıyor uyarısı", suffix: "adet", value: $minQty)
                 OptionalQtyField("Kritik stok uyarısı", suffix: "adet", value: $criticalQty)
+                OptionalQtyField("Üretim / tedarik süresi", suffix: "gün", value: $tedarikGun)
+                OptionalQtyField("En az üretim adedi", suffix: "adet", value: $minSiparis)
             }
 
             if let id = editingId {
@@ -326,6 +339,7 @@ struct ProductForm: View {
         })
         costLines = p.costLines(on: nil); recipe = p.recipe
         minQty = p.minQty; criticalQty = p.criticalQty
+        tedarikGun = p.tedarikSuresiGun.map(Double.init); minSiparis = p.minSiparis
     }
 
     private var taslak: Product {
@@ -361,6 +375,7 @@ struct ProductForm: View {
             p.applyCostLines(cleanCost, today: Dates.today())
             p.recipe = recipe
             p.minQty = minQty; p.criticalQty = criticalQty
+            p.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }; p.minSiparis = minSiparis
             let bugun = Dates.today()
             p.applyCurrentPrice(listeFiyat, channelId: nil, today: bugun)
             for (kanal, tutar) in kanalFiyat.sorted(by: { $0.key < $1.key }) {
@@ -368,13 +383,16 @@ struct ProductForm: View {
             }
             store.updateProduct(p)
         } else {
-            store.addProduct(Product(
+            var yeni = Product(
                 name: name, isBundle: isBundle,
                 components: isBundle ? components : [],
                 costLines: cleanCost, recipe: recipe,
                 minQty: minQty, criticalQty: criticalQty,
                 priceHistory: yeniFiyatGecmisi()
-            ))
+            )
+            yeni.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }
+            yeni.minSiparis = minSiparis
+            store.addProduct(yeni)
         }
     }
 }

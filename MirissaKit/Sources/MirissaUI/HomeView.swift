@@ -68,6 +68,7 @@ struct HomeView: View {
                     islemler
                     YarimIslemKarti(sheet: $sheet)
                     PriceCheckCard(sheet: $sheet)
+                    SiparisZamaniKarti()
                     if !alerts.isEmpty { stockAlerts }
                     TrendChart(
                         points: trendPoints,

@@ -46,6 +46,10 @@ public struct StockMaterial: Codable, Identifiable, Hashable, Sendable {
     public var packSizesRaw: [String: Double]
     public var minQty: BaseQty?
     public var criticalQty: BaseQty?
+    /// Sipariş verildikten kaç gün sonra elde olur (tedarik süresi)
+    public var tedarikSuresiGun: Int?
+    /// Tedarikçinin kabul ettiği en az sipariş (temel birim)
+    public var minSiparis: BaseQty?
     /// Açılış stoğu (uygulamaya geçerken eldeki mevcut)
     public var openingQty: BaseQty?
     public var openingUnitCost: Kurus?
@@ -233,6 +237,10 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
     public var costIncludesMaterials: [Id]
     public var minQty: BaseQty?
     public var criticalQty: BaseQty?
+    /// Sipariş verildikten (üretime verildikten) kaç gün sonra elde olur
+    public var tedarikSuresiGun: Int?
+    /// En az sipariş / üretim adedi
+    public var minSiparis: BaseQty?
     public var openingQty: BaseQty?
     public var openingUnitCost: Kurus?
     public var openingDate: DateKey?
