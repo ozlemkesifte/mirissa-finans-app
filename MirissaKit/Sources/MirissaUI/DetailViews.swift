@@ -91,15 +91,18 @@ struct ProductDetail: View {
                     if p.isBundle, c.components != 0 {
                         LabeledRow("İçindeki ürünler", c.components.tl)
                     }
+                    if c.orderPackaging != 0 {
+                        LabeledRow("Koli (siparişte 1–2 ürüne 1, 3+ ürüne 2)", c.orderPackaging.tl)
+                    }
                     if c.packaging != 0 {
                         LabeledRow("Paketleme malzemeleri (her satışta)", c.packaging.tl)
-                    } else if p.recipe.isEmpty {
+                    } else if p.recipe.isEmpty && c.orderPackaging == 0 {
                         Text("Ambalaj reçetesi yok: koli, patpat, dolgu gibi malzemeler bu ürünün maliyetine eklenmiyor.")
                             .font(.caption).foregroundStyle(Palette.uyari)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if p.costLines(on: nil).isEmpty && !c.ownFromPurchases && c.components == 0 && c.packaging == 0 {
+                    if p.costLines(on: nil).isEmpty && !c.ownFromPurchases && c.components == 0 && c.packaging == 0 && c.orderPackaging == 0 {
                         Text("Henüz maliyet kalemi girilmedi.")
                             .font(.footnote).foregroundStyle(Palette.inkFaint)
                             .frame(maxWidth: .infinity, alignment: .leading)
