@@ -129,8 +129,7 @@ public extension Engine {
 
         var stopaj: Kurus = 0
         var stopajOrani: Double?
-        if let oran = ch.stopajPct, oran > 0,
-           Dates.month(of: date) >= Dates.month(of: ch.stopajBaslangic ?? "2025-01-01") {
+        if let oran = ch.stopajOrani(month: Dates.month(of: date)) {
             stopajOrani = oran
             stopaj = Money.roundHalfAwayFromZero(Double(u.netRevenue) * oran / 100)
         }

@@ -188,3 +188,69 @@ struct StopajKomisyonTests {
         #expect(s.satisKdvOrani(Fx.serumId) == .yirmi)
     }
 }
+
+/// Denetimde bulunan hataların düzeltmeleri
+@Suite("Stopaj ve KDV denetim düzeltmeleri")
+@MainActor
+struct StopajDenetimTests {
+    @Test func nakitTahminiStopajiDuser() {
+        var s = Fx.base()
+        s.settings.vatEnabled = false
+        s.channels[0].commissionPct = 0
+        s.channels[0].stopajPct = 1
+        for ay in ["2026-06", "2026-07", "2026-08"] {
+            s.sales.append(SalesEntry(id: ay, month: ay, channelId: ChannelIds.trendyol,
+                                      productId: Fx.sampuanId, qty: 30, grossSales: tl(30_000)))
+        }
+        s.settings.ek.kasaBakiye = tl(1_000)
+        s.settings.ek.kasaTarih = "2026-09-15"
+        // 30.000 − %1 stopaj = 29.700
+        #expect(Engine(s).nakitTahmini(bugun: "2026-09-15")?.aylikTahsilat == tl(29_700))
+    }
+
+    @Test func urunKdvOraniGecmisAyinHedefiniDegistirmez() {
+        var s = Fx.base()
+        s.settings.vatEnabled = true
+        s.sales.append(SalesEntry(id: "h", month: "2026-06", channelId: ChannelIds.trendyol,
+                                  productId: Fx.sampuanId, qty: 1, grossSales: tl(1_200),
+                                  vatRate: .yirmi, vatIncluded: true))
+        s.products[0].kdvOrani = .on
+        let e = Engine(s)
+        #expect(e.satisKdvOrani(productId: Fx.sampuanId, channelId: ChannelIds.trendyol,
+                                on: "2026-06-30", today: "2026-09-18") == .yirmi)
+        #expect(e.satisKdvOrani(productId: Fx.sampuanId, channelId: ChannelIds.trendyol,
+                                on: "2026-09-18", today: "2026-09-18") == .on)
+        // KDV takibi kapalıyken ürün oranı kullanılmaz
+        s.settings.vatEnabled = false; s.sales = []
+        #expect(Engine(s).satisKdvOrani(productId: Fx.sampuanId, channelId: ChannelIds.trendyol,
+                                        on: "2026-09-18", today: "2026-09-18") == .yok)
+    }
+
+    @Test func iceAktarmaUrununKdvOraniniKullanir() {
+        let k = [RaporIceAktarma.Kalem(siparisNo: "1", tarih: "2026-09-02", urunAnahtari: "a", urunAdi: "A",
+                                        adet: 1, tutar: tl(1_100), indirim: 0, iptal: false),
+                 RaporIceAktarma.Kalem(siparisNo: "2", tarih: "2026-09-02", urunAnahtari: "b", urunAdi: "B",
+                                        adet: 1, tutar: tl(1_200), indirim: 0, iptal: false)]
+        let r = RaporIceAktarma.donustur(k, kanalId: "ty", eslesme: ["a": "pa", "b": "pb"], mevcutAylar: [],
+                                         urunKdvOrani: { $0 == "pa" ? .on : .yirmi })
+        #expect(r.satislar.first { $0.productId == "pa" }?.vatRate == .on)
+        #expect(r.satislar.first { $0.productId == "pb" }?.vatRate == .yirmi)
+    }
+
+    @Test func stopajKapatilincaGecmisAylarKorunur() {
+        var s = Fx.base()
+        s.settings.vatEnabled = false
+        s.channels[0].commissionPct = 0
+        s.channels[0].stopajPct = 1
+        s.channels[0].stopajBaslangic = "2026-01-01"
+        s.channels[0].stopajBitis = "2026-05"
+        for ay in ["2026-05", "2026-06"] {
+            s.sales.append(SalesEntry(id: ay, month: ay, channelId: ChannelIds.trendyol,
+                                      productId: Fx.sampuanId, qty: 1, grossSales: tl(10_000)))
+        }
+        let e = Engine(s)
+        #expect(e.channelResult(channelId: ChannelIds.trendyol, month: "2026-05").stopaj == tl(100))
+        #expect(e.channelResult(channelId: ChannelIds.trendyol, month: "2026-06").stopaj == 0)
+        #expect(!s.channels[0].stopajAcik)
+    }
+}

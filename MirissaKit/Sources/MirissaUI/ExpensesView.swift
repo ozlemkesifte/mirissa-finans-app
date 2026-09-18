@@ -207,15 +207,16 @@ private struct CategoryCard: View {
                                             .font(.caption2)
                                             .foregroundStyle(Palette.inkFaint)
                                     }
-                                    if i.sourceKind == .duzenli { Pill("her ay") }
+                                    if i.sourceKind == .duzenli { Pill("düzenli") }
                                     Spacer(minLength: 8)
                                     VStack(alignment: .trailing, spacing: 1) {
                                         // Kâra etki eden tutar (KDV hariç)
                                         Text(i.expenseAmount.tl)
                                             .font(.subheadline.weight(.medium))
                                             .foregroundStyle(Palette.ink)
-                                        if i.amount != i.expenseAmount {
-                                            Text("\(i.amount.tl) ödendi")
+                                        if i.cashAmount != i.expenseAmount {
+                                            // Aylara bölünen giderde para ödeme ayında çıkar
+                                            Text(i.cashAmount == 0 ? "ödemesi başka ayda" : "\(i.cashAmount.tl) ödendi")
                                                 .font(.caption2)
                                                 .foregroundStyle(Palette.inkFaint)
                                         }

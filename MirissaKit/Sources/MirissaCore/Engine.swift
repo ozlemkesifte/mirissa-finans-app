@@ -349,7 +349,7 @@ public final class Engine {
         r.commission = kesinti(cm?.commissionActual,
                                auto: komisyonTabani * oranlar.commissionPct / 100 + taban * oranlar.paymentPct / 100)
         // E-ticaret stopajı: KDV hariç satış tutarının yüzdesi (komisyon, kargo düşülmez)
-        if let oran = ch.stopajPct, oran > 0, month >= Dates.month(of: ch.stopajBaslangic ?? "2025-01-01") {
+        if let oran = ch.stopajOrani(month: month) {
             r.stopaj = Money.roundHalfAwayFromZero(Double(max(r.netSales, 0)) * oran / 100)
         }
         r.shipping = kesinti(cm?.shippingActual,

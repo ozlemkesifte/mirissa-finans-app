@@ -433,6 +433,18 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public var stopajPct: Double? = nil
     /// Stopajın kesilmeye başladığı gün (yasal başlangıç 2025-01-01)
     public var stopajBaslangic: DateKey? = nil
+    /// Stopaj kapatıldıysa son ay (dahil). Kapatmak geçmiş ayları değiştirmez.
+    public var stopajBitis: MonthKey? = nil
+
+    /// O ay kesilen stopaj oranı (%); kesilmiyorsa nil
+    public func stopajOrani(month: MonthKey) -> Double? {
+        guard let oran = stopajPct, oran > 0,
+              month >= Dates.month(of: stopajBaslangic ?? "2025-01-01") else { return nil }
+        if let son = stopajBitis, month > son { return nil }
+        return oran
+    }
+    /// Stopaj bugün açık mı
+    public var stopajAcik: Bool { (stopajPct ?? 0) > 0 && stopajBitis == nil }
     /// Tarihli kesinti ayarları. Boşsa yukarıdaki düz alanlar kullanılır.
     /// Komisyon değişince eski kayıt silinmez; geçmiş dönemler bozulmaz.
     public var rateHistory: [ChannelRates]?

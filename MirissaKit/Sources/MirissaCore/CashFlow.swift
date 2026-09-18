@@ -50,7 +50,8 @@ public extension Engine {
         for m in aylar {
             let r = companyMonth(m)
             // Kanalların yatırdığı: müşterinin ödediği − platformun kestiği (KDV dahil)
-            tahsilat += r.channels.reduce(0) { $0 + $1.netSalesIncVat - $1.channelFees - $1.feeVat }
+            // Stopaj da pazaryerince kesilir: hesaba yatmaz
+            tahsilat += r.channels.reduce(0) { $0 + $1.netSalesIncVat - $1.channelFees - $1.feeVat - $1.stopaj }
             for i in expenseInstances(month: m) {
                 switch i.sourceKind {
                 case .tekSeferlik: duzensiz += i.cashAmount

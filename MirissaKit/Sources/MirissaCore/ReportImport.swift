@@ -235,6 +235,13 @@ public enum RaporIceAktarma {
     /// `eslesme`: rapor ürün anahtarı → uygulama ürünü (nil = atla).
     public static func donustur(_ kalemler: [Kalem], kanalId: Id, eslesme: [String: Id],
                                 mevcutAylar: [ChannelMonth], kdvOrani: VatRate?) -> Sonuc {
+        donustur(kalemler, kanalId: kanalId, eslesme: eslesme, mevcutAylar: mevcutAylar,
+                 urunKdvOrani: { _ in kdvOrani })
+    }
+
+    /// `urunKdvOrani`: ürünün satış KDV oranı (ürüne özel oran ya da varsayılan; KDV kapalıysa nil)
+    public static func donustur(_ kalemler: [Kalem], kanalId: Id, eslesme: [String: Id],
+                                mevcutAylar: [ChannelMonth], urunKdvOrani: (Id) -> VatRate?) -> Sonuc {
         let gecerli = kalemler.filter { !$0.iptal }
         let iptal = Set(kalemler.filter(\.iptal).map(\.siparisNo)).count
         var atlanan = 0
@@ -254,7 +261,7 @@ public enum RaporIceAktarma {
             let t = toplam[a]!
             return SalesEntry(month: a.ay, channelId: kanalId, productId: a.urun, qty: t.adet,
                               grossSales: t.tutar, discount: min(t.indirim, t.tutar),
-                              vatRate: kdvOrani, vatIncluded: true)
+                              vatRate: urunKdvOrani(a.urun), vatIncluded: true)
         }
         var aylar: [ChannelMonth] = []
         for (ay, siparisler) in siparisAdet {

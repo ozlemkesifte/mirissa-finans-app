@@ -31,6 +31,16 @@ struct ExpenseForm: View {
 
     private var yayilan: Int? { recurrence == .tek && yayilanAy > 1 ? yayilanAy : nil }
 
+    /// Kâra her ay yazılan pay: KDV hariç tutarın 1/n'i
+    private func aylikPay(_ n: Int) -> Kurus {
+        let net = store.state.settings.vatEnabled
+            ? Vat.net(amount, rate: vatRate, included: vatIncluded) : amount
+        return Money.roundHalfAwayFromZero(Double(net) / Double(n))
+    }
+    private var kdvNotu: String {
+        store.state.settings.vatEnabled && vatRate != .yok ? ", KDV hariç" : ""
+    }
+
     init(month: MonthKey) {
         self.editingId = nil
         self.contextMonth = month
@@ -91,12 +101,12 @@ struct ExpenseForm: View {
                 if recurrence != editing?.recurrence, editing?.isRecurring == true {
                     Text("Tekrar şekli değişince gider baştan bu şekilde hesaplanır (geçmiş aylar da).")
                 } else if recurrence == .yillik {
-                    Text("Yılda bir ödenen tutarı yaz. Kâra her ay 1/12'si yazılır (ayda \(Money.roundHalfAwayFromZero(Double(amount) / 12).tl)); "
+                    Text("Yılda bir ödenen tutarı yaz. Kâra her ay 1/12'si yazılır (ayda \(aylikPay(12).tl)\(kdvNotu)); "
                          + "para ve KDV ödeme ayında (tarihteki ay) çıkar.")
                 } else if recurrence == .aylik {
                     Text("Bir kez gir, her ay otomatik eklensin. İstediğin zaman durdurabilirsin.")
                 } else if recurrence == .tek && yayilanAy > 1 {
-                    Text("Kâra \(yayilanAy) ay boyunca her ay \(Money.roundHalfAwayFromZero(Double(amount) / Double(yayilanAy)).tl) yazılır; "
+                    Text("Kâra \(yayilanAy) ay boyunca her ay \(aylikPay(yayilanAy).tl)\(kdvNotu) yazılır; "
                          + "para ve KDV ödediğin ayda çıkar. Web sitesi, ekipman, yıllık yazılım gibi "
                          + "birkaç ay işine yarayan büyük harcamalar tek bir ayı zarara sokmasın diye.")
                 } else if recurrence == .tek {

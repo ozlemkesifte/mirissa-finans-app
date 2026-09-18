@@ -85,13 +85,24 @@ struct ChannelForm: View {
 
                 Section {
                     Toggle("Bu kanal e-ticaret stopajı kesiyor", isOn: Binding(
-                        get: { (draft?.stopajPct ?? 0) > 0 },
+                        get: { draft?.stopajAcik ?? false },
                         set: { acik in
-                            draft?.stopajPct = acik ? 1 : nil
-                            if acik, draft?.stopajBaslangic == nil { draft?.stopajBaslangic = "2025-01-01" }
+                            if acik {
+                                if draft?.stopajBitis != nil {
+                                    // Yeniden açılıyor: aradaki aylar kesilmemiş sayılmasın diye bitiş kaldırılır
+                                    draft?.stopajBitis = nil
+                                } else {
+                                    draft?.stopajPct = 1
+                                    // Varsayılan başlangıç bu ay: açmak geçmiş ayların hakedişini değiştirmez
+                                    draft?.stopajBaslangic = Dates.monthStart(Dates.currentMonth())
+                                }
+                            } else if (draft?.stopajPct ?? 0) > 0 {
+                                // Kapatmak geçmişi silmez: geçen aya kadar kesilmiş sayılır
+                                draft?.stopajBitis = Dates.addMonths(Dates.currentMonth(), -1)
+                            }
                         }
                     ))
-                    if (draft?.stopajPct ?? 0) > 0 {
+                    if draft?.stopajAcik == true {
                         PercentField("Stopaj oranı", value: Binding(
                             get: { draft?.stopajPct ?? 0 },
                             set: { draft?.stopajPct = $0 }
@@ -107,7 +118,9 @@ struct ChannelForm: View {
                     Text("1 Ocak 2025'ten beri pazaryerleri KDV hariç satış tutarının %1'ini keserek vergi dairesine yatırır "
                          + "(komisyon ve kargo düşülmeden). Bu bir gider değildir: hesabına yatan parayı azaltır ama "
                          + "yıllık gelir/kurumlar vergisinden ve geçici vergiden düşülür. Kârın değişmez; vergi karşılığın azalır. "
-                         + "Kendi siten (Shopify) kesmez; bunu kapalı bırak. Oranı hesap özetinden kontrol et.")
+                         + "Kendi siten (Shopify) kesmez; bunu kapalı bırak. Oranı hesap özetinden kontrol et. "
+                         + "Başlangıç günü bu ay gelir; geçmiş aylarda da kesildiyse (2025'ten beri) tarihi geriye al — "
+                         + "o ayların hakediş farkını daha önce \"diğer kesinti\"ye yazdıysan geriye alma, iki kez sayılır.")
                 }
 
                 if store.state.channels.count > 1 {

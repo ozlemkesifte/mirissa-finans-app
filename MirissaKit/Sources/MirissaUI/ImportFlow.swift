@@ -34,7 +34,7 @@ struct RaporIceAktarmaAkisi: View {
     private var sonuc: RaporIceAktarma.Sonuc {
         RaporIceAktarma.donustur(cozum.kalemler, kanalId: kanalId, eslesme: eslesme,
                                  mevcutAylar: store.state.channelMonths,
-                                 kdvOrani: store.state.settings.vatEnabled ? store.state.settings.defaultVatRate : nil)
+                                 urunKdvOrani: { [state = store.state] in state.satisKdvOrani($0) })
     }
 
     var body: some View {

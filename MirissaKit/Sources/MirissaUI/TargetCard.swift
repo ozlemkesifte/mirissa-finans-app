@@ -395,7 +395,7 @@ struct SabitGiderDokumuBolumu: View {
             Button("Vazgeç", role: .cancel) { yillikSoru = nil }
         } message: {
             if let s = yillikSoru, let e = s.expenseId.flatMap({ id in store.state.expenses.first { $0.id == id } }) {
-                Text("Girdiğin \(e.amount.tl) yılda bir ödenen tutar sayılacak; kâra her ay \(Money.roundHalfAwayFromZero(Double(e.amount) / 12).tl) yazılacak. "
+                Text("Girdiğin \(e.amount.tl) yılda bir ödenen tutar sayılacak; kâra her ay \(Money.roundHalfAwayFromZero(Double(Vat.net(e.amount, rate: e.resolvedVatRate, included: e.resolvedVatIncluded)) / 12).tl)\(e.resolvedVatRate != .yok ? " (KDV hariç)" : "") yazılacak. "
                      + "Bu giderin geçmiş ayları da buna göre düzelir.")
             }
         }

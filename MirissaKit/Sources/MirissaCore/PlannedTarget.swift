@@ -150,14 +150,20 @@ public extension Engine {
         return ((net(yuzde + sabit), net(sabit)), ek.tahmin, ek.eksik)
     }
 
-    /// Bir ürünün satış KDV oranı: ürüne özel oran; yoksa o kanaldaki son satışının oranı;
-    /// o da yoksa ayarlardaki varsayılan.
-    func satisKdvOrani(productId: Id, channelId: Id, on date: DateKey) -> VatRate {
-        if let o = productsById[productId]?.kdvOrani { return o }
+    /// Bir ürünün satış KDV oranı.
+    /// Bu ay ve sonrası: ürüne özel oran; yoksa o kanaldaki son satışının oranı; o da yoksa varsayılan.
+    /// Geçmiş ay: o aya kadarki son gerçek satışın oranı önce gelir — ürünün oranı bugün
+    /// değiştirilirse geçmiş ayların hedefi değişmesin.
+    func satisKdvOrani(productId: Id, channelId: Id, on date: DateKey,
+                       today: DateKey = Dates.today()) -> VatRate {
         let ay = Dates.month(of: date)
         let sonSatis = state.sales
             .filter { $0.productId == productId && $0.channelId == channelId && $0.month <= ay }
             .max { $0.month < $1.month }
+        let urunOrani = state.settings.vatEnabled ? productsById[productId]?.kdvOrani : nil
+        let gecmis = ay < Dates.month(of: today)
+        if gecmis, let o = sonSatis?.vatRate { return o }
+        if let o = urunOrani { return o }
         return sonSatis?.vatRate
             ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok)
     }
