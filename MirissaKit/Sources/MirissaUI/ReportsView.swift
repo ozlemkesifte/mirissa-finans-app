@@ -1,7 +1,7 @@
 import SwiftUI
 import MirissaCore
 
-enum ReportTab: String, CaseIterable, Identifiable {
+enum ReportTab: String, CaseIterable, Identifiable, Sendable {
     case aylik, yillik, kanallar, urunler, nakit
     var id: String { rawValue }
     var label: String {
@@ -18,7 +18,8 @@ enum ReportTab: String, CaseIterable, Identifiable {
 struct ReportsView: View {
     @Environment(AppStore.self) private var store
     @Environment(Period.self) private var period
-    @State private var tab: ReportTab = .aylik
+    /// Seçili rapor sekmesi hatırlanır; ana sayfadaki kartlar doğrudan ilgili sekmeyi açabilir
+    @AppStorage("raporSekmesi") private var tab: ReportTab = .aylik
     @State private var sheet: AppSheet?
 
     var body: some View {

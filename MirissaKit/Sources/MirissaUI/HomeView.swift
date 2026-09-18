@@ -60,6 +60,10 @@ struct HomeView: View {
                     if !satisGirilmedi || period.scope == .year {
                         VergiKarti(month: period.scope == .month ? period.month : min(period.to, Dates.currentMonth()))
                     }
+                    NakitOzetKarti {
+                        UserDefaults.standard.set(ReportTab.nakit.rawValue, forKey: "raporSekmesi")
+                        tab = 4
+                    }
                     islemler
                     YarimIslemKarti(sheet: $sheet)
                     PriceCheckCard(sheet: $sheet)
