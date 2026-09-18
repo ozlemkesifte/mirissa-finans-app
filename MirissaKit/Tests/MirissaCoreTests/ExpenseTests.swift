@@ -54,7 +54,7 @@ struct ExpenseTests {
         #expect(Fx.engine(s).expenseInstances(month: "2026-04").isEmpty)
     }
 
-    /// Yıllık gider yıl dönümünde çıkar
+    /// Yıllık gider: kâra her ay 1/12'si yazılır, para ödeme ayında çıkar
     @Test func yillikGider() {
         var s = Fx.base()
         s.expenses.append(Expense(
@@ -62,10 +62,23 @@ struct ExpenseTests {
             amount: tl(1200), category: .diger, recurrence: .yillik
         ))
         let e = Fx.engine(s)
-        #expect(e.expenseInstances(month: "2026-03").count == 1)
-        #expect(e.expenseInstances(month: "2027-03").count == 1)
-        #expect(e.expenseInstances(month: "2026-04").isEmpty)
-        #expect(e.expenseInstances(month: "2027-02").isEmpty)
+        #expect(e.expenseInstances(month: "2026-02").isEmpty)         // başlamadan önce yok
+        let mart = e.expenseInstances(month: "2026-03").first!
+        #expect(mart.expenseAmount == tl(100))
+        #expect(mart.cashAmount == tl(1200))                          // ödeme ayı
+        let nisan = e.expenseInstances(month: "2026-04").first!
+        #expect(nisan.expenseAmount == tl(100))
+        #expect(nisan.cashAmount == 0)
+        #expect(e.expenseInstances(month: "2027-03").first?.cashAmount == tl(1200))   // ertesi yıl
+        // 12 ayın toplamı yıllık tutar
+        let yil = (0..<12).reduce(0) { $0 + e.companyMonth(Dates.addMonths("2026-03", $1)).toplamGider }
+        #expect(yil == tl(1200))
+    }
+
+    @Test func yillikKusuratIlkAylaraEklenir() {
+        #expect((0..<12).map { Expenses.onIkideBiri(1_000_007, $0) }.reduce(0, +) == 1_000_007)
+        #expect(Expenses.onIkideBiri(1_000_007, 0) == 83_334)
+        #expect(Expenses.onIkideBiri(1_000_007, 11) == 83_333)
     }
 
     /// 29 Şubat çıpası olmayan yıllarda 28'e düşer

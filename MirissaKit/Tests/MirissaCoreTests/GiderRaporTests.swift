@@ -90,17 +90,19 @@ struct GiderRaporTests {
         #expect(klaviyo(8) == tl(2000))     // devam ediyor
     }
 
-    /// Yıllık gider sadece yıl dönümü ayında
-    @Test func yillikGiderSadeceDonumAyinda() {
+    /// Yıllık gider: nisandan itibaren her aya payı düşer, para yalnızca nisanda çıkar
+    @Test func yillikGiderAylaraBolunur() {
         let e = Engine(kurulum())
         for ay in 1...12 {
             let m = Dates.monthKey(2026, ay)
-            let varMi = e.expenseInstances(month: m).contains { $0.name == "Alan adı" }
-            #expect(varMi == (ay == 4))
+            let satir = e.expenseInstances(month: m).first { $0.templateId != nil && $0.name.hasPrefix("Alan adı") }
+            #expect((satir != nil) == (ay >= 4))
+            if let satir {
+                #expect(satir.expenseAmount == tl(100))
+                #expect(satir.cashAmount == (ay == 4 ? tl(1200) : 0))
+            }
         }
-        // Ertesi yıl yine Nisan'da
-        #expect(e.expenseInstances(month: "2027-04").contains { $0.name == "Alan adı" })
-        #expect(!e.expenseInstances(month: "2027-05").contains { $0.name == "Alan adı" })
+        #expect(e.expenseInstances(month: "2027-04").contains { $0.name == "Alan adı (yıllık ödeme)" })
     }
 
     /// Yıllık rapor = 12 ayın toplamı, elle hesapla da tutuyor
@@ -111,8 +113,8 @@ struct GiderRaporTests {
         // Elle: Muhasebeci 12×5.000 = 60.000
         //       Ajans 6×20.000 = 120.000  (Haziran'da durduruldu)
         //       Klaviyo: Mart,Nis,Haz,Ağu,Eyl,Eki,Kas,Ara = 8×2.000 + Mayıs 3.500 = 19.500
-        //       Alan adı 1.200 · Influencer 8.000 · Fuar 15.000
-        let elle = tl(60_000) + tl(120_000) + tl(19_500) + tl(1200) + tl(8000) + tl(15_000)
+        //       Alan adı yıllık 1.200: nisan–aralık 9 ay × 100 = 900 · Influencer 8.000 · Fuar 15.000
+        let elle = tl(60_000) + tl(120_000) + tl(19_500) + tl(900) + tl(8000) + tl(15_000)
         #expect(yil.toplamGider == elle)
         #expect(yil.toplamGider == yil.months.reduce(0) { $0 + $1.toplamGider })
     }

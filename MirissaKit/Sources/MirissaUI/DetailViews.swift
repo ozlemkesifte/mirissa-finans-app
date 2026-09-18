@@ -71,45 +71,18 @@ struct ProductDetail: View {
     }
 
     private func costCard(_ p: Product) -> some View {
-        let c = store.engine.cost(of: productId)
-        return VStack(spacing: Metrics.gap) {
-            SectionTitle("Maliyet Dökümü", actionLabel: "Düzenle") { sheet = .editProduct(productId) }
+        VStack(spacing: Metrics.gap) {
+            SectionTitle("Bir satışın maliyeti", actionLabel: "Düzenle") { sheet = .editProduct(productId) }
             Card {
-                VStack(spacing: 9) {
-                    // Yalnızca bugün geçerli kalemler gösterilir; kapanmış
-                    // eski maliyetler ekranda toplam ile çelişirdi.
-                    ForEach(p.costLines(on: nil)) { line in
-                        LabeledRow(line.label.isEmpty ? "Kalem" : line.label, line.amount.tl)
-                    }
-                    if c.ownFromPurchases {
-                        LabeledRow("Ürün (alımların ortalaması)", c.ownLines.tl)
-                        Text("Maliyet girilmediği için stok alımlarında ödediğin tutarların ortalaması kullanılıyor.")
-                            .font(.caption2).foregroundStyle(Palette.inkFaint)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if p.isBundle, c.components != 0 {
-                        LabeledRow("İçindeki ürünler", c.components.tl)
-                    }
-                    if c.orderPackaging != 0 {
-                        LabeledRow("Koli (siparişte 1–2 ürüne 1, 3+ ürüne 2)", c.orderPackaging.tl)
-                    }
-                    if c.packaging != 0 {
-                        LabeledRow("Paketleme malzemeleri (her satışta)", c.packaging.tl)
-                    } else if p.recipe.isEmpty && c.orderPackaging == 0 {
-                        Text("Ambalaj reçetesi yok: koli, patpat, dolgu gibi malzemeler bu ürünün maliyetine eklenmiyor.")
-                            .font(.caption).foregroundStyle(Palette.uyari)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    if p.costLines(on: nil).isEmpty && !c.ownFromPurchases && c.components == 0 && c.packaging == 0 && c.orderPackaging == 0 {
-                        Text("Henüz maliyet kalemi girilmedi.")
-                            .font(.footnote).foregroundStyle(Palette.inkFaint)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    Divider().overlay(Palette.separator)
-                    LabeledRow("TOPLAM ÜRÜN MALİYETİ", c.total.tl, tone: Palette.accent, strong: true)
+                if let d = store.engine.birimMaliyetDokumu(productId: productId) {
+                    BirimMaliyetListesi(dokum: d)
                 }
+            }
+            if p.recipe.isEmpty && !p.isBundle {
+                Text("Ambalaj reçetesi yok: koli, patpat, dolgu gibi malzemeler bu ürünün maliyetine eklenmiyor.")
+                    .font(.caption).foregroundStyle(Palette.uyari)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

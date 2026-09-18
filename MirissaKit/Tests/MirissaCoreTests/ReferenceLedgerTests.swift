@@ -63,11 +63,22 @@ struct ReferenceLedgerTests {
                     guard ay >= bas else { continue }
                     if let bitis = e.endMonth, ay > bitis { continue }
                     let aySayisi = (Int(ay.suffix(2))! - Int(bas.suffix(2))!)
+                    if e.recurrence == .yillik {
+                        // Yıllık: ödeme ayından itibaren her aya 1/12 (artan kuruş ilk aylara),
+                        // KDV ödeme ayında. Ödeme ayı atlandıysa o yılın payları da yok.
+                        let odemeAyi = String(format: "2026-%02d", Int(bas.suffix(2))! + (aySayisi / 12) * 12)
+                        if let o = e.overrides[odemeAyi], o.skipped { continue }
+                        let t = e.overrides[odemeAyi]?.amount ?? e.amount
+                        let b = net(t, e.vatRate, e.vatIncluded)
+                        let taban = b.net / 12, artan = b.net - taban * 12
+                        beklenen += taban + (aySayisi % 12 < abs(artan) ? (artan > 0 ? 1 : -1) : 0)
+                        if aySayisi % 12 == 0 { beklenenKdv += b.kdv }
+                        continue
+                    }
                     let dusuyor: Bool
                     switch e.recurrence {
                     case .tek: dusuyor = ay == bas
-                    case .aylik: dusuyor = true
-                    case .yillik: dusuyor = aySayisi % 12 == 0
+                    case .aylik, .yillik: dusuyor = true
                     }
                     guard dusuyor else { continue }
                     if let o = e.overrides[ay], o.skipped { continue }

@@ -73,11 +73,17 @@ struct ExpenseForm: View {
                     ForEach(Recurrence.allCases) { r in Text(r.displayName).tag(r) }
                 }
                 .pickerStyle(.segmented)
-                if editing?.isRecurring == true {
-                    Toggle("Sadece bu ayın tutarını değiştir", isOn: $onlyThisMonth)
+                if editing?.isRecurring == true && recurrence == editing?.recurrence {
+                    Toggle(recurrence == .yillik ? "Sadece bu yılın tutarını değiştir" : "Sadece bu ayın tutarını değiştir",
+                           isOn: $onlyThisMonth)
                 }
             } footer: {
-                if recurrence == .aylik {
+                if recurrence != editing?.recurrence, editing?.isRecurring == true {
+                    Text("Tekrar şekli değişince gider baştan bu şekilde hesaplanır (geçmiş aylar da).")
+                } else if recurrence == .yillik {
+                    Text("Yılda bir ödenen tutarı yaz. Kâra her ay 1/12'si yazılır (ayda \(Money.roundHalfAwayFromZero(Double(amount) / 12).tl)); "
+                         + "para ve KDV ödeme ayında (tarihteki ay) çıkar.")
+                } else if recurrence == .aylik {
                     Text("Bir kez gir, her ay otomatik eklensin. İstediğin zaman durdurabilirsin.")
                 } else if editing?.isRecurring == true && onlyThisMonth {
                     Text("Sadece \(Dates.displayMonth(contextMonth)) ayı değişir, diğer aylar aynı kalır.")
@@ -200,11 +206,15 @@ struct ExpenseForm: View {
 
         if let e = editing {
             hedefId = e.id
-            if e.isRecurring && onlyThisMonth {
+            if e.isRecurring && onlyThisMonth && recurrence == e.recurrence {
                 // KDV bu ay farklı girildiyse o da aya özel saklanır
                 let kdvFarkli = store.state.settings.vatEnabled
                     && (vatRate != e.resolvedVatRate || vatIncluded != e.resolvedVatIncluded)
-                store.overrideExpense(e.id, month: contextMonth, amount: amount,
+                // Yıllık giderde tutar ödeme ayına bağlıdır: o yılın ödeme ayına yazılır
+                let hedefAy = e.recurrence == .yillik
+                    ? Dates.addMonths(e.startMonth, (Dates.monthsBetween(e.startMonth, contextMonth) / 12) * 12)
+                    : contextMonth
+                store.overrideExpense(e.id, month: hedefAy, amount: amount,
                                       vatRate: kdvFarkli ? vatRate : nil,
                                       vatIncluded: kdvFarkli ? vatIncluded : nil)
                 ayaOzel = true

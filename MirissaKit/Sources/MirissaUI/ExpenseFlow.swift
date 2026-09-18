@@ -223,7 +223,7 @@ struct ExpenseFlow: View {
                     ileri(kanalSorulsun ? .kapsam : .ozet)
                 }
                 SecenekButonu(baslik: "Her yıl",
-                              aciklama: "Alan adı, yıllık lisans gibi",
+                              aciklama: "Alan adı, yıllık lisans gibi — kâra aylara bölünerek yazılır",
                               ikon: "calendar", renk: Palette.gider) {
                     tekrar = .yillik
                     ileri(kanalSorulsun ? .kapsam : .ozet)

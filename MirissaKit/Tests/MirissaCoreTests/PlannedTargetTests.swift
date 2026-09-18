@@ -43,7 +43,8 @@ struct PlannedTargetTests {
         #expect((basaBas?.orders ?? 0) > 0)
         #expect((basaBas?.dailyOrders ?? 0) > 0)
         // Kâr hedefleri de üretilir
-        #expect(plan.targets.filter { !$0.isBreakeven }.count == 3)
+        // Kullanıcı kâr hedefi girmediği için hazır bir tutar gösterilmez
+        #expect(plan.targets.filter { !$0.isBreakeven }.isEmpty)
         #expect(plan.isApproximate)
     }
 
@@ -81,8 +82,11 @@ struct PlannedTargetTests {
         #expect(plan.fixedCosts == tl(30_000))
         // ceil(30.000 / 545) = 56
         #expect(plan.targets.first { $0.isBreakeven }?.orders == 56)
-        // 25.000 TL kâr için: ceil(55.000 / 545) = 101
-        #expect(plan.targets.first { $0.targetProfit == tl(25_000) }?.orders == 101)
+        // Kullanıcı 25.000 TL kâr hedefi girerse: ceil(55.000 / 545) = 101
+        var s2 = s
+        s2.settings.profitGoals["2026-09"] = tl(25_000)
+        #expect(Engine(s2).plan(month: "2026-09", today: "2026-09-16")
+            .targets.first { $0.targetProfit == tl(25_000) }?.orders == 101)
     }
 
     // MARK: Senaryo 2 — geçmiş satış yok, yaklaşık dağılım tanımlı

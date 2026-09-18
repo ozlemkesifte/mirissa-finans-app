@@ -181,9 +181,9 @@ public struct BreakevenPlan: Hashable, Sendable {
 
 public extension Engine {
 
-    static let defaultGoals: [Kurus] = [
-        Money.fromTL(25_000), Money.fromTL(50_000), Money.fromTL(100_000),
-    ]
+    /// Kullanıcı kendi kâr hedefini girmedikçe hazır bir tutar gösterilmez:
+    /// hedef rakamı kullanıcıya aittir, uygulama uydurmaz.
+    static let defaultGoals: [Kurus] = []
 
     /// Aylık hedef ve ay sonu sonucu.
     ///
@@ -599,9 +599,8 @@ public struct YearlyPlan: Hashable, Sendable {
 
 public extension Engine {
 
-    static let defaultYearlyGoals: [Kurus] = [
-        Money.fromTL(250_000), Money.fromTL(500_000), Money.fromTL(1_000_000),
-    ]
+    /// Yıllık kâr hedefi de yalnızca kullanıcının girdiği tutardır
+    static let defaultYearlyGoals: [Kurus] = []
 
     /// Yıllık başa baş ve kâr hedefleri.
     func yearlyPlan(year y: Int, today: DateKey = Dates.today()) -> YearlyPlan {

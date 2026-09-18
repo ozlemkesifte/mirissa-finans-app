@@ -21,12 +21,11 @@ struct HedefKarti: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let be = basaBas {
                     basaBasBolumu(be, plan: p)
-                    if !karHedefleri.isEmpty {
-                        Divider().overlay(Palette.separator)
-                        ForEach(karHedefleri) { t in
-                            karHedefi(t)
-                        }
+                    Divider().overlay(Palette.separator)
+                    ForEach(karHedefleri) { t in
+                        karHedefi(t)
                     }
+                    KarHedefiGirisi(month: month)
                     notlar(p)
                     katkiOzeti
                     ReklamHedefiBolumu(month: month)
@@ -286,6 +285,49 @@ struct GerceklesenKarti: View {
                         .font(.subheadline.weight(.semibold))
                         .buttonStyle(.plain)
                         .foregroundStyle(Palette.accent)
+                }
+            }
+        }
+    }
+}
+
+/// Kullanıcının kendi aylık kâr hedefi. Girilmemişse hazır tutar gösterilmez.
+struct KarHedefiGirisi: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+    @State private var duzenle = false
+    @State private var tutar: Kurus = 0
+
+    private var kayitli: Kurus? { store.state.settings.profitGoal(for: month) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if duzenle {
+                BuyukParaAlani(baslik: "Bu ay kâr hedefin", deger: $tutar)
+                HStack {
+                    Button("Kaydet") {
+                        store.setProfitGoal(tutar > 0 ? tutar : nil, for: month)
+                        duzenle = false
+                    }
+                    .font(.footnote.weight(.semibold))
+                    if kayitli != nil {
+                        Button("Hedefi kaldır", role: .destructive) {
+                            store.setProfitGoal(nil, for: month)
+                            duzenle = false
+                        }
+                        .font(.footnote)
+                    }
+                    Spacer()
+                    Button("Vazgeç") { duzenle = false }.font(.footnote)
+                }
+            } else {
+                Button {
+                    tutar = kayitli ?? 0
+                    duzenle = true
+                } label: {
+                    Label(kayitli == nil ? "Kâr hedefi gir: bu ay ne kadar kazanmak istiyorsun?" : "Kâr hedefini değiştir",
+                          systemImage: "target")
+                        .font(.footnote.weight(.semibold))
                 }
             }
         }

@@ -57,6 +57,7 @@ struct ExpensesView: View {
 
                     BigButton("Gider Ekle", icon: "plus") { sheet = .expenseFlow }
 
+                    BirSatisinMaliyetiKarti()
                     GiderAyrimiKarti()
 
                     if byCategory.isEmpty {
@@ -262,7 +263,8 @@ private struct RecurringRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(expense.name).font(.subheadline.weight(.medium)).foregroundStyle(Palette.ink)
                 HStack(spacing: 6) {
-                    Text(expense.recurrence == .aylik ? "her ay" : "her yıl")
+                    Text(expense.recurrence == .aylik ? "her ay"
+                         : "yılda bir, \(Dates.displayMonth(expense.startMonth).split(separator: " ").first.map(String.init) ?? "") ayında")
                     if let end = expense.endMonth {
                         Text("·")
                         Text("\(Dates.displayMonthShort(end)) sonunda durduruldu")
@@ -272,9 +274,15 @@ private struct RecurringRow: View {
                 .foregroundStyle(expense.isStopped ? Palette.uyari : Palette.inkFaint)
             }
             Spacer(minLength: 8)
-            Text(expense.amount.tl)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(expense.isStopped ? Palette.inkFaint : Palette.ink)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(expense.amount.tl)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(expense.isStopped ? Palette.inkFaint : Palette.ink)
+                if expense.recurrence == .yillik {
+                    Text("ayda \(Money.roundHalfAwayFromZero(Double(expense.amount) / 12).tl)")
+                        .font(.caption2).foregroundStyle(Palette.inkFaint)
+                }
+            }
             Image(systemName: "chevron.right")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(Palette.inkFaint)

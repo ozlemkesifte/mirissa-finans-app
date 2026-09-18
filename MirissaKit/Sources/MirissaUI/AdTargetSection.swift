@@ -123,7 +123,7 @@ struct ReklamHedefiBolumu: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Bu para sabit giderlerini ve kârını karşılar. Emin değilsen 150 TL iyi bir başlangıç.")
+            Text("Bu para sabit giderlerini ve kârını karşılar. Tutarı sen seç; seçmezsen yalnızca zarar sınırı gösterilir.")
                 .font(.caption)
                 .foregroundStyle(Palette.inkFaint)
                 .fixedSize(horizontal: false, vertical: true)

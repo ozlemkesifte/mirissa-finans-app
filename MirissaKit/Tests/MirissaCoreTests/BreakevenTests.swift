@@ -48,7 +48,14 @@ struct BreakevenTests {
     /// Hedef rakamları: ayın tamamı ve günlük ortalama
     @Test func hedefRakamlari() {
         let p = Engine(kurulum()).plan(month: "2026-09", today: "2026-09-03")
-        func hedef(_ kar: Kurus) -> MonthlyTarget { p.targets.first { $0.targetProfit == kar }! }
+        // Kâr hedefi kullanıcının girdiği tutardır; her biri ayrı ayrı girilmiş gibi denenir
+        func hedef(_ kar: Kurus) -> MonthlyTarget {
+            var s = kurulum()
+            if kar > 0 { s.settings.profitGoals["2026-09"] = kar }
+            return Engine(s).plan(month: "2026-09", today: "2026-09-03").targets.first { $0.targetProfit == kar }!
+        }
+        // Kullanıcı hedef girmediyse yalnızca başa baş vardır (hazır tutar uydurulmaz)
+        #expect(p.targets.count == 1)
 
         let basaBas = hedef(0)
         #expect(basaBas.isBreakeven)

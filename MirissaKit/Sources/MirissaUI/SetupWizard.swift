@@ -694,7 +694,7 @@ public struct SetupWizard: View {
     private var giderAdimi: some View {
         SoruAdimi(
             soru: "Bu giderler neler?",
-            aciklama: "Adını ve aylık tutarını yaz.",
+            aciklama: "Adını, tutarını ve ayda mı yılda mı ödediğini yaz.",
             geri: geriGit,
             ileri: { ileri(.ozet) }
         ) {
@@ -709,7 +709,18 @@ public struct SetupWizard: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        MoneyField("Aylık tutar", value: $g.tutar)
+                        Picker("", selection: Binding(get: { g.yillik ?? false }, set: { g.yillik = $0 })) {
+                            Text("Ayda bir").tag(false)
+                            Text("Yılda bir").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        MoneyField(g.yillik == true ? "Yıllık tutar" : "Aylık tutar", value: $g.tutar)
+                        if g.yillik == true, g.tutar > 0 {
+                            Text("Kâra her ay 1/12'si yazılır: ayda \(Money.roundHalfAwayFromZero(Double(g.tutar) / 12).tl)")
+                                .font(.caption).foregroundStyle(Palette.inkFaint)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }
@@ -1272,7 +1283,7 @@ public struct SetupWizard: View {
                 if !s.expenses.contains(where: { $0.id == t.id }) {
                     s.expenses.append(Expense(
                         id: t.id, date: ay, name: t.ad, amount: t.tutar,
-                        category: .sabit, recurrence: .aylik,
+                        category: .sabit, recurrence: t.yillik == true ? .yillik : .aylik,
                         vatRate: s.settings.vatEnabled ? s.settings.defaultVatRate : nil,
                         vatIncluded: s.settings.defaultVatIncluded
                     ))
@@ -1349,6 +1360,8 @@ struct GiderTaslak: Identifiable, Codable {
     var id: Id = Ids.make(.expense)
     var ad: String
     var tutar: Kurus
+    /// Yılda bir mi ödeniyor (nil = ayda bir)
+    var yillik: Bool?
 }
 
 struct KanalTaslak: Identifiable {

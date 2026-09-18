@@ -7,15 +7,18 @@ struct GiderAyrimiKarti: View {
     @Environment(Period.self) private var period
     @State private var urunlerAcik = false
 
+    private var donem: String { period.scope == .month ? Dates.displayMonth(period.month) : "\(period.year)" }
+
     var body: some View {
         let g = store.engine.giderAyrimi(from: period.from, to: min(period.to, Dates.currentMonth()))
         if g.urunBasinaToplam != 0 || g.genelToplam != 0 {
             VStack(spacing: Metrics.gap) {
-                grup("Ürün başına giden", "Her satışta oluşur; satış olmasa bunlar da olmaz.",
-                     g.urunBasina, g.urunBasinaToplam, ikon: "shippingbox") {
-                    if !g.urunler.isEmpty { urunDokumu(g.urunler) }
-                }
-                grup("Genel giderler", "Satış olmasa da ödenir. Başa baş hedefi bunları karşılamak içindir.",
+                grup("Satışa bağlı giderler — \(donem) toplamı",
+                     "Satış adedi arttıkça artan giderler. Bu, \(donem) içindeki bütün satışların toplamıdır; "
+                        + "tek bir satışın maliyeti değildir (onu yukarıda ürün ürün görebilirsin).",
+                     g.urunBasina, g.urunBasinaToplam, ikon: "cart") { EmptyView() }
+                grup("Genel giderler — \(donem) toplamı",
+                     "Satış olmasa da ödenir. Yılda bir ödenenler aylara bölünerek yazılır. Başa baş hedefi bunları karşılamak içindir.",
                      g.genel, g.genelToplam, ikon: "building.2") { EmptyView() }
             }
         }

@@ -58,7 +58,7 @@ public enum Expenses {
                 out += expand(e, step: 1, from: from, to: to)
 
             case .yillik:
-                out += expand(e, step: 12, from: from, to: to)
+                out += yillikAylaraBol(e, from: from, to: to)
             }
         }
 
@@ -123,6 +123,49 @@ public enum Expenses {
             if k > 2400 { break } // güvenlik freni
         }
         return out
+    }
+
+    /// Yılda bir ödenen gider: kâra her ay 1/12'si yazılır (bir ay şişip diğerleri
+    /// boş kalmasın, başa baş hedefi doğru çıksın). Para ve KDV ödeme ayındadır.
+    private static func yillikAylaraBol(_ e: Expense, from: MonthKey, to: MonthKey) -> [ExpenseInstance] {
+        let start = e.startMonth
+        let hardEnd = e.endMonth.map { min($0, to) } ?? to
+        guard from <= hardEnd else { return [] }
+        let anchorDay = Dates.day(of: e.date)
+        var out: [ExpenseInstance] = []
+        var m = max(from, start)
+        while m <= hardEnd {
+            let k = Dates.monthsBetween(start, m)
+            let odemeAyi = Dates.addMonths(start, (k / 12) * 12)
+            let sira = k % 12
+            defer { m = Dates.addMonths(m, 1) }
+            let ov = e.overrides[odemeAyi]
+            if ov?.skipped == true { continue }
+            let yillik = ov?.amount ?? e.amount
+            let bolum = Vat.split(yillik, rate: ov?.vatRate ?? e.resolvedVatRate,
+                                  included: ov?.vatIncluded ?? e.resolvedVatIncluded)
+            let pay = onIkideBiri(bolum.net, sira)
+            let brutPay = onIkideBiri(yillik, sira)
+            let odemeAyinda = m == odemeAyi
+            out.append(ExpenseInstance(
+                id: "\(e.id)#\(m)", templateId: e.id, sourceKind: .duzenli,
+                date: Dates.dateIn(month: m, dayOfMonth: anchorDay), month: m,
+                name: (ov?.name ?? e.name) + (odemeAyinda ? " (yıllık ödeme)" : " (yıllık payı)"),
+                amount: brutPay, category: e.category, scope: e.scope, behavior: e.resolvedBehavior,
+                attachment: odemeAyinda ? (ov?.attachment ?? e.attachment) : nil,
+                net: pay, inputVat: odemeAyinda ? bolum.vat : 0,
+                capitalized: false, editable: true,
+                nakitTutari: odemeAyinda ? bolum.net + bolum.vat : 0))
+            if out.count > 2400 { break }
+        }
+        return out
+    }
+
+    /// Yıllık tutarın `sira`'ncı ayın payı: eşit bölünür, artan kuruşlar ilk aylara (toplam birebir tutar)
+    static func onIkideBiri(_ t: Kurus, _ sira: Int) -> Kurus {
+        let taban = t / 12
+        let artan = t - taban * 12
+        return taban + (sira < abs(artan) ? (artan > 0 ? 1 : -1) : 0)
     }
 
     private static func instance(_ e: Expense, month: MonthKey, date: DateKey) -> ExpenseInstance {
