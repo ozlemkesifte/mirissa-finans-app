@@ -533,6 +533,11 @@ public extension Validation {
             lines.append("\(Money.format(birimMaliyet)) / \(birim.displayName) maliyet"
                          + (draft.resolvedVatRate == .yok ? "" : " (KDV hariç)"))
         }
+        if let plan = draft.odeme {
+            let kalan = plan.taksitler.reduce(0) { $0 + $1.tutar }
+            lines.append("Bugün \(Money.format(plan.pesinat)) ödendi; kalan \(Money.format(kalan)) "
+                         + "\(plan.taksitler.count) taksitte (ilk: \(Dates.displayDateShort(plan.taksitler.first?.vade ?? draft.date)))")
+        }
         if draft.resolvedVatRate != .yok, draft.landedSplit.vat > 0, !draft.excludeFromExpenses {
             lines.append("\(Money.format(draft.landedSplit.vat)) indirilecek KDV")
         }

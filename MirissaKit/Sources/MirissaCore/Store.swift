@@ -424,6 +424,15 @@ public final class AppStore {
 
     public func addPurchase(_ p: StockPurchase) { mutate { $0.purchases.append(p) } }
 
+    /// Vadeli alımın taksiti ödendi (ya da ödeme geri alındı: tarih nil)
+    public func taksitOdendi(purchaseId: Id, taksitId: Id, tarih: DateKey?) {
+        mutate { s in
+            guard let i = s.purchases.firstIndex(where: { $0.id == purchaseId }),
+                  let j = s.purchases[i].odeme?.taksitler.firstIndex(where: { $0.id == taksitId }) else { return }
+            s.purchases[i].odeme?.taksitler[j].odemeTarihi = tarih
+        }
+    }
+
     public func updatePurchase(_ p: StockPurchase) {
         mutate { s in
             if let i = s.purchases.firstIndex(where: { $0.id == p.id }) { s.purchases[i] = p }

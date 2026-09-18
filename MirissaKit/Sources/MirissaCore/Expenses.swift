@@ -2,6 +2,8 @@ import Foundation
 
 public enum ExpenseSourceKind: String, Sendable {
     case tekSeferlik, duzenli, stokAlimi
+    /// Vadeli alımın sonradan ödenen taksiti: yalnızca nakit çıkışıdır
+    case taksit
 }
 
 /// Ekranlarda gösterilen tek bir gider satırı.
@@ -28,12 +30,14 @@ public struct ExpenseInstance: Identifiable, Hashable, Sendable {
     public var capitalized: Bool
     /// Doğrudan düzenlenebilir mi (stok alımları kendi ekranından düzenlenir)
     public var editable: Bool
+    /// Bu ay kasadan çıkan tutar farklıysa (vadeli alımda peşinat, taksit ayında taksit)
+    public var nakitTutari: Kurus? = nil
 
     /// Kâr hesabına bu ay giren tutar (KDV hariç)
     public var expenseAmount: Kurus { capitalized ? 0 : net }
     /// Kasadan bu ay çıkan tutar (KDV dahil, gerçekten ödenen).
     /// Tutar KDV hariç girilmişse KDV'si de ödenir; "amount" o durumda eksik kalır.
-    public var cashAmount: Kurus { net + inputVat }
+    public var cashAmount: Kurus { nakitTutari ?? (net + inputVat) }
 }
 
 public enum Expenses {
@@ -76,8 +80,24 @@ public enum Expenses {
                 net: p.landedSplit.net,
                 inputVat: p.landedSplit.vat,
                 capitalized: s.settings.capitalizePurchases,
-                editable: false
+                editable: false,
+                // Vadeli alımda alım günü yalnızca peşinat ödenir
+                nakitTutari: p.odeme?.pesinat
             ))
+        }
+        // Vadeli alımların taksitleri: ödendiği (ya da vadesi geldiği) ayda nakit çıkışı
+        for p in s.purchases where !p.excludeFromExpenses {
+            for t in p.odeme?.taksitler ?? [] {
+                let m = Dates.month(of: t.nakitGunu)
+                guard m >= from, m <= to, t.tutar != 0 else { continue }
+                out.append(ExpenseInstance(
+                    id: "taksit:\(p.id):\(t.id)", templateId: nil, sourceKind: .taksit,
+                    date: t.nakitGunu, month: m,
+                    name: "\(s.itemName(p.item)) alımı taksiti" + (t.odendi ? "" : " (vadesi)"),
+                    amount: 0, category: p.resolvedCategory, scope: p.expenseScope,
+                    behavior: .satisaBagli, attachment: nil, net: 0, inputVat: 0,
+                    capitalized: true, editable: false, nakitTutari: t.tutar))
+            }
         }
 
         out.sort { $0.date == $1.date ? $0.id < $1.id : $0.date > $1.date }

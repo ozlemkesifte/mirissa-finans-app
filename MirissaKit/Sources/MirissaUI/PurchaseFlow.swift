@@ -6,7 +6,7 @@ struct PurchaseFlow: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
-    private enum Adim: Hashable, Codable { case kalem, miktar, tutar, kdv, kdvOran, ozet }
+    private enum Adim: Hashable, Codable { case kalem, miktar, tutar, kdv, kdvOran, odeme, odemePlani, ozet }
 
     @State private var adim: Adim = .kalem
     @State private var gecmis: [Adim] = []
@@ -23,6 +23,10 @@ struct PurchaseFlow: View {
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
     @State private var arama = ""
+    @State private var vadeli: Bool?
+    @State private var pesinat: Kurus = 0
+    @State private var taksitSayisi: Double = 1
+    @State private var ilkVade: DateKey = Dates.addMonthsToDate(Dates.today(), 1)
 
     private struct Kayit: Codable {
         var adim: Adim
@@ -36,6 +40,10 @@ struct PurchaseFlow: View {
         var kdvSecildi: Bool
         var oranSecildi: Bool
         var tarih: DateKey
+        var vadeli: Bool?
+        var pesinat: Kurus?
+        var taksitSayisi: Double?
+        var ilkVade: DateKey?
     }
 
     private var taslakKaydi: TaslakKaydi {
@@ -44,15 +52,21 @@ struct PurchaseFlow: View {
     }
 
     private var kdvAcik: Bool { store.state.settings.vatEnabled }
-    private var toplamAdim: Int { kdvAcik ? 6 : 4 }
+    private var toplamAdim: Int { kdvAcik ? 7 : 5 }
 
     private var taslak: StockPurchase? {
         guard let kalem else { return nil }
-        return StockPurchase(
+        var p = StockPurchase(
             date: tarih, item: kalem, qty: miktar, unit: birim, totalPaid: tutar,
             vatRate: kdvAcik ? kdvOrani : nil,
             vatIncluded: kdvAcik ? kdvDahil : nil
         )
+        if vadeli == true {
+            let brut = p.landedSplit.net + p.landedSplit.vat
+            p.odeme = OdemePlani.esit(toplam: brut, pesinat: min(pesinat, brut),
+                                      taksitSayisi: Int(taksitSayisi.rounded()), ilkVade: ilkVade)
+        }
+        return p
     }
 
     var body: some View {
@@ -85,6 +99,8 @@ struct PurchaseFlow: View {
         case .tutar: tutarAdimi
         case .kdv: kdvAdimi
         case .kdvOran: kdvOranAdimi
+        case .odeme: odemeAdimi
+        case .odemePlani: odemePlaniAdimi
         case .ozet: ozetAdimi
         }
     }
@@ -95,13 +111,16 @@ struct PurchaseFlow: View {
         birim = t.birim; tutar = t.tutar; kdvDahil = t.kdvDahil
         kdvOrani = t.kdvOrani; kdvSecildi = t.kdvSecildi
         oranSecildi = t.oranSecildi; tarih = t.tarih
+        vadeli = t.vadeli; pesinat = t.pesinat ?? 0; taksitSayisi = t.taksitSayisi ?? 1
+        ilkVade = t.ilkVade ?? Dates.addMonthsToDate(Dates.today(), 1)
     }
 
     private func taslakKaydet() {
         taslakKaydi.kaydet(store, adim: gecmis.count + 1, durum: Kayit(
             adim: adim, gecmis: gecmis, kalem: kalem, miktar: miktar, birim: birim,
             tutar: tutar, kdvDahil: kdvDahil, kdvOrani: kdvOrani,
-            kdvSecildi: kdvSecildi, oranSecildi: oranSecildi, tarih: tarih))
+            kdvSecildi: kdvSecildi, oranSecildi: oranSecildi, tarih: tarih,
+            vadeli: vadeli, pesinat: pesinat, taksitSayisi: taksitSayisi, ilkVade: ilkVade))
     }
 
     // 1
@@ -185,7 +204,7 @@ struct PurchaseFlow: View {
             adim: 3, toplam: toplamAdim,
             ileriAktif: tutar > 0,
             geri: geriGit, vazgec: { dismiss() },
-            ileri: { ileri(kdvAcik ? .kdv : .ozet) }
+            ileri: { ileri(kdvAcik ? .kdv : .odeme) }
         ) {
             BuyukParaAlani(baslik: "Ödenen toplam", deger: $tutar)
             if miktar > 0, tutar > 0, let kalem {
@@ -217,7 +236,52 @@ struct PurchaseFlow: View {
         ) { oran in
             kdvOrani = oran
             oranSecildi = true
-            ileri(.ozet)
+            ileri(.odeme)
+        }
+    }
+
+    // Ödeme: peşin mi, vadeli mi
+    private var odemeAdimi: some View {
+        SoruAdimi(
+            soru: "Parasının tamamını şimdi mi ödedin?",
+            aciklama: "Fason üretici kalanı teslimde ya da vadeli alıyorsa, ya da kartla taksitli ödediysen "
+                + "\"Hayır\" de. Maliyet yine bugün yazılır; yalnızca paranın çıkış zamanı değişir.",
+            adim: toplamAdim - 1, toplam: toplamAdim,
+            geri: geriGit, vazgec: { dismiss() }
+        ) {
+            EvetHayirSorusu(evet: "Evet, peşin ödedim", hayir: "Hayır, kalanını sonra ödeyeceğim",
+                            secim: vadeli.map { !$0 }) { pesin in
+                vadeli = !pesin
+                ileri(pesin ? .ozet : .odemePlani)
+            }
+        }
+    }
+
+    private var odemePlaniAdimi: some View {
+        let brut = taslak.map { $0.landedSplit.net + $0.landedSplit.vat } ?? tutar
+        return SoruAdimi(
+            soru: "Nasıl ödeyeceksin?",
+            aciklama: "Toplam \(Money.format(brut)). Kalan, eşit taksitlere bölünür.",
+            adim: toplamAdim - 1, toplam: toplamAdim,
+            ileriAktif: pesinat <= brut && taksitSayisi >= 1,
+            geri: geriGit, vazgec: { dismiss() },
+            ileri: { ileri(.ozet) }
+        ) {
+            BuyukParaAlani(baslik: "Bugün ödenen (peşinat, yoksa 0)", deger: $pesinat)
+            BuyukSayiAlani(baslik: "Kalan kaç taksitte (vadeli tek ödemeyse 1)", birim: "taksit",
+                           deger: $taksitSayisi)
+            Card {
+                DateRow(label: "İlk ödeme günü", dateKey: $ilkVade)
+            }
+            if let plan = taslak?.odeme {
+                Card(background: Palette.inset) {
+                    VStack(spacing: 6) {
+                        ForEach(plan.taksitler) { t in
+                            LabeledRow(Dates.displayDateShort(t.vade), t.tutar.tl)
+                        }
+                    }
+                }
+            }
         }
     }
 

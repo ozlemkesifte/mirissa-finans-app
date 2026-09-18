@@ -1005,6 +1005,8 @@ public struct StockPurchase: Codable, Identifiable, Hashable, Sendable {
     /// KDV oranı. `nil` eski kayıtlar için "KDV yok" sayılır.
     public var vatRate: VatRate?
     public var vatIncluded: Bool?
+    /// Vadeli ya da taksitli ödeme. `nil` = peşin (tamamı alım günü ödendi).
+    public var odeme: OdemePlani?
 
     public init(
         id: Id = Ids.make(.purchase),

@@ -172,7 +172,7 @@ struct PurchaseForm: View {
     private func save() {
         guard let item else { return }
         let mevcutEk = editingId.flatMap { id in store.state.purchases.first { $0.id == id }?.attachment }
-        let p = StockPurchase(
+        var p = StockPurchase(
             id: editingId ?? Ids.make(.purchase),
             date: date, item: item, qty: qty, unit: unit,
             totalPaid: paid, shippingCost: shipping,
@@ -183,6 +183,15 @@ struct PurchaseForm: View {
             vatRate: store.state.settings.vatEnabled ? vatRate : mevcutKayit?.vatRate,
             vatIncluded: store.state.settings.vatEnabled ? vatIncluded : mevcutKayit?.vatIncluded
         )
+        // Düzenlerken vadeli ödeme planı korunur; tutar değiştiyse kalan taksitlere yansıtılır
+        if var plan = mevcutKayit?.odeme {
+            let brut = p.landedSplit.net + p.landedSplit.vat
+            let fark = brut - plan.toplam
+            if fark != 0, let j = plan.taksitler.lastIndex(where: { !$0.odendi }) {
+                plan.taksitler[j].tutar = max(plan.taksitler[j].tutar + fark, 0)
+            }
+            p.odeme = plan
+        }
         editingId == nil ? store.addPurchase(p) : store.updatePurchase(p)
         if let f = picked {
             store.attachInvoice(data: f.data, ext: f.ext, toPurchase: p.id)

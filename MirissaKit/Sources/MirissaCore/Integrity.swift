@@ -134,6 +134,17 @@ public enum Integrity {
             }
         }
 
+        // Vadeli alım: peşinat + taksitler ödenen toplamı (KDV dahil) vermeli
+        for p in s.purchases {
+            guard let plan = p.odeme else { continue }
+            let brut = p.landedSplit.net + p.landedSplit.vat
+            if plan.toplam != brut {
+                out.append(IntegrityIssue(.supheli, "Alımlar",
+                    "\(s.itemName(p.item)) alımının ödeme planı (\(Money.format(plan.toplam))) "
+                        + "ödenecek tutarı (\(Money.format(brut))) tutmuyor", recordId: p.id))
+            }
+        }
+
         // Alım: adetsiz para, eksi nakliye, sete yapılan stok kaydı
         for p in s.purchases {
             if p.qty == 0 && p.landedTotal != 0 {

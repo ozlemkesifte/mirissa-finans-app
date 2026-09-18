@@ -90,7 +90,8 @@ public enum CSVExport {
                 money(i.net),
                 money(i.inputVat),
                 i.capitalized ? "Stoğa girdi" : "Gider",
-                i.sourceKind == .duzenli ? "Düzenli" : (i.sourceKind == .stokAlimi ? "Stok alımı" : "Tek seferlik"),
+                i.sourceKind == .duzenli ? "Düzenli"
+                    : (i.sourceKind == .stokAlimi ? "Stok alımı" : (i.sourceKind == .taksit ? "Taksit ödemesi" : "Tek seferlik")),
             ]
         }
         return file("giderler.csv",

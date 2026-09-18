@@ -102,6 +102,14 @@ public enum Dates {
         return gb - ga
     }
 
+    /// Tarihe ay ekler; gün ayın son gününü aşarsa ayın sonuna çekilir (31 Ocak + 1 ay = 28/29 Şubat)
+    public static func addMonthsToDate(_ d: DateKey, _ n: Int) -> DateKey {
+        let ay = addMonths(month(of: d), n)
+        let gun = Int(d.suffix(2)) ?? 1
+        let son = Int(monthEnd(ay).suffix(2)) ?? 28
+        return String(format: "%@-%02d", ay, min(gun, son))
+    }
+
     /// Bir güne n gün ekler.
     public static func addDays(_ d: DateKey, _ n: Int) -> DateKey {
         guard let toplam = gunSayisi(d) else { return d }

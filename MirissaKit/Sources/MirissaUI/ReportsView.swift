@@ -74,6 +74,7 @@ struct MonthlyReport: View {
             VergiKarti(month: period.month)
             VatCard(month: period.month)
             BalanceCard(month: period.month, sheet: $sheet)
+            TedarikciBorclariKarti()
             if result.units > 0 {
                 Card {
                     VStack(spacing: 9) {
