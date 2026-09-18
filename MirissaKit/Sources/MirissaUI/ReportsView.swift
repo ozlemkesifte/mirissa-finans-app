@@ -158,7 +158,9 @@ struct YearlyReport: View {
 }
 
 private struct MonthRowView: View {
+    @Environment(AppStore.self) private var store
     var result: CompanyMonthResult
+    private var satisGirilmedi: Bool { store.engine.satisGirilmedi(month: result.month) }
     var open: Bool
     var onTap: () -> Void
 
@@ -169,6 +171,10 @@ private struct MonthRowView: View {
                     Text(Dates.displayMonth(result.month))
                         .font(.subheadline)
                         .foregroundStyle(result.hasData ? Palette.ink : Palette.inkFaint)
+                    if satisGirilmedi {
+                        Text("satış girilmedi").font(.caption2.weight(.semibold))
+                            .foregroundStyle(Palette.uyari)
+                    }
                     Spacer(minLength: 8)
                     Text(result.gercekKar.tlCompact)
                         .font(.subheadline.weight(.semibold))

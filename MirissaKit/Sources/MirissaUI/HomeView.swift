@@ -34,6 +34,7 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
+                    AySonuKarti(sheet: $sheet)
                     YedekHatirlatmaKarti()
                     ButunlukKarti()
 

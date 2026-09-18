@@ -30,6 +30,7 @@ public enum AppSheet: Identifiable, Hashable {
     case addBalance
     case editBalance(Id)
     case settings
+    case aySonu(MonthKey)
 
     public var id: String {
         switch self {
@@ -61,6 +62,7 @@ public enum AppSheet: Identifiable, Hashable {
         case .addBalance: return "addBalance"
         case let .editBalance(i): return "editBalance-\(i)"
         case .settings: return "settings"
+        case let .aySonu(m): return "aySonu-\(m)"
         }
     }
 }
@@ -74,6 +76,7 @@ public extension View {
             case .purchaseFlow: PurchaseFlow()
             case .expenseFlow: ExpenseFlow()
             case .countFlow: CountFlow()
+            case let .aySonu(m): AySonuEkrani(month: m)
             case let .priceUpdate(i): PriceUpdateFlow(onUrunId: i)
             case let .channelWizard(i): ChannelSetupFlow(channelId: i)
             case .channelAdd: ChannelAddFlow()

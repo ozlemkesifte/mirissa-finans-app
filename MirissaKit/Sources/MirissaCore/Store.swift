@@ -522,6 +522,17 @@ public final class AppStore {
         apply(s)
     }
 
+    /// Ay sonu listesinde elle işaretlenen madde
+    public func aySonuIsaretle(_ month: MonthKey, _ madde: String, _ tamam: Bool) {
+        ekAyarla { ek in
+            var liste = Set(ek.aySonuIsaretleri?[month] ?? [])
+            if tamam { liste.insert(madde) } else { liste.remove(madde) }
+            var hepsi = ek.aySonuIsaretleri ?? [:]
+            hepsi[month] = liste.isEmpty ? nil : liste.sorted()
+            ek.aySonuIsaretleri = hepsi.isEmpty ? nil : hepsi
+        }
+    }
+
     public func restartSetup() { mutate { $0.settings.setupCompleted = false } }
 
     /// "Değişiklik yok" — fiyatlara dokunmaz, yalnızca son kontrol gününü işaretler.

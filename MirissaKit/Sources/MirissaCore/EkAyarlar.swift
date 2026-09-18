@@ -28,6 +28,9 @@ public struct EkAyarlar: Codable, Hashable, Sendable {
     // Hatırlatma
     public var hatirlatmalarAcik: Bool?
 
+    // Ay sonu: elle işaretlenen maddeler (ay → madde kodları)
+    public var aySonuIsaretleri: [MonthKey: [String]]?
+
     public init() {}
 
     public var kilitli: Set<MonthKey> { Set(kilitliAylar ?? []) }
