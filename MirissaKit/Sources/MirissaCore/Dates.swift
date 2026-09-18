@@ -110,6 +110,12 @@ public enum Dates {
         return String(format: "%@-%02d", ay, min(gun, son))
     }
 
+    /// Haftanın günü: 1 = pazar … 7 = cumartesi (1970-01-01 perşembe)
+    public static func weekday(of d: DateKey) -> Int {
+        guard let g = gunSayisi(d) else { return 1 }
+        return (((g + 4) % 7) + 7) % 7 + 1
+    }
+
     /// Bir güne n gün ekler.
     public static func addDays(_ d: DateKey, _ n: Int) -> DateKey {
         guard let toplam = gunSayisi(d) else { return d }
