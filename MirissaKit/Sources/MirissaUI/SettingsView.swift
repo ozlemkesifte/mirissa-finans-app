@@ -153,6 +153,16 @@ struct SettingsView: View {
 
                 YedeklemeBolumu()
 
+                Section {
+                    NavigationLink {
+                        DegisiklikGecmisi()
+                    } label: {
+                        Label("Değişiklik geçmişi (\(store.state.changeLog.count))", systemImage: "clock.arrow.circlepath")
+                    }
+                } footer: {
+                    Text("Hangi kaydın ne zaman eklendiği, değiştiği ya da silindiği. Son 1.000 değişiklik saklanır.")
+                }
+
                 if !faturalar.isEmpty {
                     Section {
                         ShareLink(items: faturalar) {

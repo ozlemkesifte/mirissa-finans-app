@@ -509,6 +509,19 @@ public final class AppStore {
         mutate { block(&$0.settings.ek) }
     }
 
+    /// KDV beyanı verilen ayı kilitler ya da kilidi açar
+    public func ayKilidi(_ month: MonthKey, kilitli: Bool) {
+        var s = state
+        var liste = Set(s.settings.ek.kilitliAylar ?? [])
+        if kilitli { liste.insert(month) } else { liste.remove(month) }
+        s.settings.ek.kilitliAylar = liste.isEmpty ? nil : liste.sorted()
+        s.changeLog = Array((s.changeLog + [ChangeLogEntry(
+            zaman: ISO8601DateFormatter().string(from: Date()), tur: .degisti, alan: "Ay kilidi",
+            aciklama: "\(Dates.displayMonth(month)) " + (kilitli ? "kilitlendi" : "kilidi açıldı"))])
+            .suffix(DegisiklikGunlugu.enFazla))
+        apply(s)
+    }
+
     public func restartSetup() { mutate { $0.settings.setupCompleted = false } }
 
     /// "Değişiklik yok" — fiyatlara dokunmaz, yalnızca son kontrol gününü işaretler.

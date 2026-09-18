@@ -52,6 +52,7 @@ struct VatCard: View {
                                 .fixedSize(horizontal: false, vertical: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        AyKilidiSatiri(month: month)
                         Text("Bu bir tahmindir, beyanname değildir. Tutarlar girdiğin kayıtlardan hesaplanır; kâr hesabına KDV karışmaz.")
                             .font(.caption2)
                             .foregroundStyle(Palette.inkFaint)

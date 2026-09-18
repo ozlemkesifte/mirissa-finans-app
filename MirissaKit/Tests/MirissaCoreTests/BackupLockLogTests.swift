@@ -132,3 +132,21 @@ struct BackupLockLogTests {
         #expect(s.settings.ek == EkAyarlar())
     }
 }
+
+@Suite("Ay kilidi: kilitle ve aç")
+@MainActor
+struct AyKilidiAcKapaTests {
+    @Test func kilitlenenAyAcilincaYenidenDegisir() {
+        let st = AppStore.inMemory(Golden.senaryo())
+        let ay = st.state.sales[0].month
+        st.ayKilidi(ay, kilitli: true)
+        #expect(st.state.settings.ek.kilitli.contains(ay))
+        let once = st.state.sales.count
+        st.deleteSale(st.state.sales[0].id)
+        #expect(st.state.sales.count == once)
+        st.ayKilidi(ay, kilitli: false)
+        st.deleteSale(st.state.sales[0].id)
+        #expect(st.state.sales.count == once - 1)
+        #expect(st.state.changeLog.contains { $0.alan == "Ay kilidi" })
+    }
+}
