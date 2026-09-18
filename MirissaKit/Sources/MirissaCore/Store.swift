@@ -369,6 +369,29 @@ public final class AppStore {
         }
     }
 
+    /// "Her ay" girilmiş ama aslında yılda bir ödenen gider: tutar yıllık ödeme sayılır,
+    /// kâra her ay 1/12'si yazılır. Yalnızca ödeme aylarına (yıldönümü) ait aya özel tutarlar korunur.
+    public func giderYillikYap(_ id: Id) {
+        mutate { s in
+            guard let i = s.expenses.firstIndex(where: { $0.id == id }),
+                  s.expenses[i].recurrence == .aylik else { return }
+            let bas = s.expenses[i].startMonth
+            s.expenses[i].recurrence = .yillik
+            s.expenses[i].overrides = s.expenses[i].overrides.filter {
+                Dates.monthsBetween(bas, $0.key) % 12 == 0
+            }
+        }
+    }
+
+    /// Tek seferlik gideri kâra `ay` aya bölerek yazar (1 = tamamı ödendiği ay)
+    public func giderAylaraBol(_ id: Id, ay: Int) {
+        mutate { s in
+            guard let i = s.expenses.firstIndex(where: { $0.id == id }),
+                  s.expenses[i].recurrence == .tek else { return }
+            s.expenses[i].yayilanAy = ay > 1 ? ay : nil
+        }
+    }
+
     public func deleteExpense(_ id: Id) {
         mutate { $0.expenses.removeAll { $0.id == id } }
         pruneAttachments()

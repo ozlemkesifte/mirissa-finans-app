@@ -26,6 +26,10 @@ struct ExpenseForm: View {
     @State private var showStopConfirm = false
     @State private var showDeleteConfirm = false
     @State private var onlyThisMonth = false
+    /// Tek seferlik gider kâra kaç aya bölünerek yazılsın (1 = tamamı ödendiği ay)
+    @State private var yayilanAy = 1
+
+    private var yayilan: Int? { recurrence == .tek && yayilanAy > 1 ? yayilanAy : nil }
 
     init(month: MonthKey) {
         self.editingId = nil
@@ -73,6 +77,12 @@ struct ExpenseForm: View {
                     ForEach(Recurrence.allCases) { r in Text(r.displayName).tag(r) }
                 }
                 .pickerStyle(.segmented)
+                if recurrence == .tek {
+                    Picker("Kâra nasıl yazılsın?", selection: $yayilanAy) {
+                        Text("Tamamı bu ay").tag(1)
+                        ForEach([3, 6, 12, 24], id: \.self) { n in Text("\(n) aya böl").tag(n) }
+                    }
+                }
                 if editing?.isRecurring == true && recurrence == editing?.recurrence {
                     Toggle(recurrence == .yillik ? "Sadece bu yılın tutarını değiştir" : "Sadece bu ayın tutarını değiştir",
                            isOn: $onlyThisMonth)
@@ -85,6 +95,12 @@ struct ExpenseForm: View {
                          + "para ve KDV ödeme ayında (tarihteki ay) çıkar.")
                 } else if recurrence == .aylik {
                     Text("Bir kez gir, her ay otomatik eklensin. İstediğin zaman durdurabilirsin.")
+                } else if recurrence == .tek && yayilanAy > 1 {
+                    Text("Kâra \(yayilanAy) ay boyunca her ay \(Money.roundHalfAwayFromZero(Double(amount) / Double(yayilanAy)).tl) yazılır; "
+                         + "para ve KDV ödediğin ayda çıkar. Web sitesi, ekipman, yıllık yazılım gibi "
+                         + "birkaç ay işine yarayan büyük harcamalar tek bir ayı zarara sokmasın diye.")
+                } else if recurrence == .tek {
+                    Text("Birkaç ay işine yarayacak büyük bir harcamaysa aylara bölmek başa baş hesabını gerçekçi yapar.")
                 } else if editing?.isRecurring == true && onlyThisMonth {
                     Text("Sadece \(Dates.displayMonth(contextMonth)) ayı değişir, diğer aylar aynı kalır.")
                 }
@@ -183,6 +199,7 @@ struct ExpenseForm: View {
         amount = ov?.amount ?? e.amount
         // Düzenli giderlerde varsayılan "sadece bu ay": geçmiş aylar kazara bozulmasın
         onlyThisMonth = e.isRecurring
+        yayilanAy = e.yayilanAy ?? 1
     }
 
     private var taslak: Expense {
@@ -195,7 +212,8 @@ struct ExpenseForm: View {
             vendor: vendor.isEmpty ? nil : vendor,
             behavior: behavior,
             vatRate: store.state.settings.vatEnabled ? vatRate : nil,
-            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+            vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil,
+            yayilanAy: yayilan
         )
     }
 
@@ -233,6 +251,7 @@ struct ExpenseForm: View {
                 // yoksa eski ayların kârı ve KDV'si kendiliğinden değişirdi.
                 updated.vatRate = store.state.settings.vatEnabled ? vatRate : updated.vatRate
                 updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : updated.vatIncluded
+                updated.yayilanAy = yayilan
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
                 store.updateExpense(updated)
             }
@@ -245,7 +264,8 @@ struct ExpenseForm: View {
                 vendor: vendor.isEmpty ? nil : vendor,
                 behavior: behavior,
                 vatRate: store.state.settings.vatEnabled ? vatRate : nil,
-                vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil
+                vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil,
+                yayilanAy: yayilan
             )
             store.addExpense(yeni)
             hedefId = yeni.id

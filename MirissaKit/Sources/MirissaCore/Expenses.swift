@@ -48,6 +48,9 @@ public enum Expenses {
 
         for e in s.expenses {
             switch e.recurrence {
+            case .tek where (e.yayilanAy ?? 1) > 1:
+                out += tekAylaraBol(e, aySayisi: e.yayilanAy!, from: from, to: to)
+
             case .tek:
                 let m = e.startMonth
                 guard m >= from, m <= to else { continue }
@@ -162,10 +165,42 @@ public enum Expenses {
     }
 
     /// Yıllık tutarın `sira`'ncı ayın payı: eşit bölünür, artan kuruşlar ilk aylara (toplam birebir tutar)
-    static func onIkideBiri(_ t: Kurus, _ sira: Int) -> Kurus {
-        let taban = t / 12
-        let artan = t - taban * 12
+    static func onIkideBiri(_ t: Kurus, _ sira: Int) -> Kurus { esitPay(t, 12, sira) }
+
+    /// `t` tutarını `n` eşit paya böler; artan kuruşlar ilk paylara (paylar toplamı birebir `t`)
+    static func esitPay(_ t: Kurus, _ n: Int, _ sira: Int) -> Kurus {
+        let taban = t / n
+        let artan = t - taban * n
         return taban + (sira < abs(artan) ? (artan > 0 ? 1 : -1) : 0)
+    }
+
+    /// Tek seferlik gider N aya bölünür: kâra her ay 1/N'i yazılır; para ve KDV ödeme ayında.
+    private static func tekAylaraBol(_ e: Expense, aySayisi n: Int, from: MonthKey, to: MonthKey) -> [ExpenseInstance] {
+        let start = e.startMonth
+        let ov = e.overrides[start]
+        if ov?.skipped == true { return [] }
+        let tutar = ov?.amount ?? e.amount
+        let bolum = Vat.split(tutar, rate: ov?.vatRate ?? e.resolvedVatRate,
+                              included: ov?.vatIncluded ?? e.resolvedVatIncluded)
+        let anchorDay = Dates.day(of: e.date)
+        var out: [ExpenseInstance] = []
+        for sira in 0..<min(n, 600) {
+            let m = Dates.addMonths(start, sira)
+            guard m >= from else { continue }
+            if m > to { break }
+            let odemeAyinda = sira == 0
+            out.append(ExpenseInstance(
+                id: odemeAyinda ? e.id : "\(e.id)#\(m)", templateId: e.id, sourceKind: .tekSeferlik,
+                date: odemeAyinda ? e.date : Dates.dateIn(month: m, dayOfMonth: anchorDay), month: m,
+                name: (ov?.name ?? e.name) + " (\(sira + 1)/\(n). ay payı)",
+                amount: esitPay(tutar, n, sira), category: e.category, scope: e.scope,
+                behavior: e.resolvedBehavior,
+                attachment: odemeAyinda ? (ov?.attachment ?? e.attachment) : nil,
+                net: esitPay(bolum.net, n, sira), inputVat: odemeAyinda ? bolum.vat : 0,
+                capitalized: false, editable: true,
+                nakitTutari: odemeAyinda ? bolum.net + bolum.vat : 0))
+        }
+        return out
     }
 
     private static func instance(_ e: Expense, month: MonthKey, date: DateKey) -> ExpenseInstance {

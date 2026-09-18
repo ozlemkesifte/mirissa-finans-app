@@ -964,6 +964,9 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     /// KDV oranı. `nil` eski kayıtlar için "KDV yok" sayılır.
     public var vatRate: VatRate?
     public var vatIncluded: Bool?
+    /// Tek seferlik büyük bir gider kaç aya bölünerek kâra yazılsın (ör. 12 = bir yıla).
+    /// Para ve KDV ödeme ayında çıkar. nil / 1 = tamamı ödendiği ayda.
+    public var yayilanAy: Int? = nil
 
     public init(
         id: Id = Ids.make(.expense),
@@ -981,8 +984,10 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
         behavior: CostBehavior? = nil,
         attachment: String? = nil,
         vatRate: VatRate? = nil,
-        vatIncluded: Bool? = nil
+        vatIncluded: Bool? = nil,
+        yayilanAy: Int? = nil
     ) {
+        self.yayilanAy = yayilanAy
         self.id = id
         self.date = date
         self.name = name

@@ -27,6 +27,7 @@ struct HedefKarti: View {
                     }
                     KarHedefiGirisi(month: month)
                     notlar(p)
+                    SabitGiderDokumuBolumu(month: month, planSabit: p.fixedCosts)
                     katkiOzeti
                     ReklamHedefiBolumu(month: month)
                 } else {
@@ -330,6 +331,103 @@ struct KarHedefiGirisi: View {
                         .font(.footnote.weight(.semibold))
                 }
             }
+        }
+    }
+}
+
+/// Başa baş hedefini oluşturan sabit giderler, tek tek.
+/// Hedef yüksek görünüyorsa sebebi buradan görülür ve yerinde düzeltilir.
+struct SabitGiderDokumuBolumu: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+    /// Başa baş hesabında kullanılan sabit gider
+    var planSabit: Kurus
+    @State private var acik = false
+    @State private var yillikSoru: SabitGiderSatiri?
+
+    var body: some View {
+        let d = store.engine.sabitGiderDokumu(month: month)
+        VStack(alignment: .leading, spacing: 10) {
+            Divider().overlay(Palette.separator)
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { acik.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Bu hedefi hangi giderler oluşturuyor?")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink)
+                        Text("Bu ayın sabit giderleri: \(planSabit.tl)")
+                            .font(.caption).foregroundStyle(Palette.inkSoft)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: acik ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold)).foregroundStyle(Palette.inkFaint)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if acik {
+                if d.satirlar.isEmpty && planSabit == 0 {
+                    Text("Bu ay sabit gider yok.").font(.caption).foregroundStyle(Palette.inkFaint)
+                }
+                ForEach(d.satirlar) { s in satir(s) }
+                if planSabit != d.toplam {
+                    LabeledRow("Satışa bağlı aylık giderler", (planSabit - d.toplam).tl, tone: Palette.inkSoft)
+                    Text("Henüz satış olmadığı için satışa bağlı giderler de aylık tutar olarak karşılanıyor.")
+                        .font(.caption2).foregroundStyle(Palette.inkFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Yılda bir ödediğin bir gideri \"Her ay\" girdiysen \"Yılda bir ödüyorum\"a dokun: "
+                     + "kâra her ay 1/12'si yazılır. Birkaç ay işine yarayan büyük bir harcamayı aylara bölebilirsin. "
+                     + "Para ve KDV yine ödediğin ayda çıkar.")
+                    .font(.caption2).foregroundStyle(Palette.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .confirmationDialog(yillikSoru.map { "\($0.ad) yılda bir mi ödeniyor?" } ?? "",
+                            isPresented: Binding(get: { yillikSoru != nil }, set: { if !$0 { yillikSoru = nil } }),
+                            titleVisibility: .visible) {
+            Button("Evet, yılda bir ödüyorum") {
+                if let id = yillikSoru?.expenseId { store.giderYillikYap(id) }
+                yillikSoru = nil
+            }
+            Button("Vazgeç", role: .cancel) { yillikSoru = nil }
+        } message: {
+            if let s = yillikSoru, let e = s.expenseId.flatMap({ id in store.state.expenses.first { $0.id == id } }) {
+                Text("Girdiğin \(e.amount.tl) yılda bir ödenen tutar sayılacak; kâra her ay \(Money.roundHalfAwayFromZero(Double(e.amount) / 12).tl) yazılacak. "
+                     + "Bu giderin geçmiş ayları da buna göre düzelir.")
+            }
+        }
+    }
+
+    private func satir(_ s: SabitGiderSatiri) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.ad).font(.footnote).foregroundStyle(Palette.ink)
+                Text(s.aciklama).font(.caption2)
+                    .foregroundStyle(s.tur == .tekSeferlik ? Palette.uyari : Palette.inkFaint)
+                if let id = s.expenseId {
+                    if s.tur == .herAy {
+                        Button("Yılda bir ödüyorum") { yillikSoru = s }
+                            .font(.caption2.weight(.semibold)).buttonStyle(.plain)
+                            .foregroundStyle(Palette.accent)
+                    } else if s.tur == .tekSeferlik || s.tur == .yayilmis {
+                        Menu(s.tur == .tekSeferlik ? "Aylara böl" : "Bölmeyi değiştir") {
+                            ForEach([3, 6, 12, 24], id: \.self) { n in
+                                Button("\(n) aya böl") { store.giderAylaraBol(id, ay: n) }
+                            }
+                            if s.tur == .yayilmis {
+                                Button("Tamamı ödendiği ay") { store.giderAylaraBol(id, ay: 1) }
+                            }
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Palette.accent)
+                    }
+                }
+            }
+            Spacer(minLength: 8)
+            Text(s.tutar.tl).font(.footnote.weight(.medium)).foregroundStyle(Palette.ink)
         }
     }
 }
