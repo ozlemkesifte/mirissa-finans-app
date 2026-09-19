@@ -41,9 +41,9 @@ struct ExpenseForm: View {
 
     /// Kâra her ay yazılan pay: KDV hariç tutarın 1/n'i
     private func aylikPay(_ n: Int) -> Kurus {
-        let net = store.state.settings.vatEnabled
-            ? Vat.net(amount, rate: vatRate, included: vatIncluded) : amount
-        return Money.roundHalfAwayFromZero(Double(net) / Double(n))
+        store.state.settings.vatEnabled
+            ? Expenses.aylikKarPayi(amount, rate: vatRate, included: vatIncluded, aySayisi: n)
+            : Expenses.aylikKarPayi(amount, rate: .yok, included: true, aySayisi: n)
     }
     private var kdvNotu: String {
         store.state.settings.vatEnabled && vatRate != .yok ? ", KDV hariç" : ""
@@ -70,9 +70,7 @@ struct ExpenseForm: View {
         guard let e = editing else { return contextMonth }
         switch e.recurrence {
         case .aylik: return contextMonth
-        case .yillik:
-            let k = max(Dates.monthsBetween(e.startMonth, contextMonth), 0)
-            return Dates.addMonths(e.startMonth, (k / 12) * 12)
+        case .yillik: return e.yillikOdemeAyi(contextMonth)
         case .tek: return e.startMonth
         }
     }

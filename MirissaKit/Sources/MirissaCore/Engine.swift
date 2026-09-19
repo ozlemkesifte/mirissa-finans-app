@@ -79,12 +79,18 @@ public final class Engine {
     private var costCache: [String: CostBreakdown] = [:]
     private var tarihliUrunCache: [DateKey: [Id: Product]] = [:]
     private var tarihliMalzemeCache: [DateKey: [Id: StockMaterial]] = [:]
+    /// Ürün|kanal → satışların (ay, KDV oranı) listesi, aya göre sıralı: son satışın oranı bir kez taranır
+    lazy var satisKdvDizini: [String: [(ay: MonthKey, oran: VatRate?)]] = {
+        var d: [String: [(ay: MonthKey, oran: VatRate?)]] = [:]
+        for e in state.sales { d["\(e.productId)|\(e.channelId)", default: []].append((e.month, e.vatRate)) }
+        return d.mapValues { $0.sorted { $0.ay < $1.ay } }
+    }()
+    private lazy var receteGecmisiVar = state.products.contains { !($0.eskiReceteler ?? []).isEmpty }
+    private lazy var malzemeGecmisiVar = state.materials.contains { !($0.eskiAyarlar ?? []).isEmpty }
 
     /// O gün geçerli ayarlarıyla malzemeler (geçmiş ay eski "sipariş başına" / paket ayarıyla)
     func malzemeler(asOf: DateKey?) -> [Id: StockMaterial] {
-        guard let d = asOf, state.materials.contains(where: { !($0.eskiAyarlar ?? []).isEmpty }) else {
-            return materialsById
-        }
+        guard let d = asOf, malzemeGecmisiVar else { return materialsById }
         if let c = tarihliMalzemeCache[d] { return c }
         let m = state.malzemelerTarihli(d)
         tarihliMalzemeCache[d] = m
@@ -93,9 +99,7 @@ public final class Engine {
 
     /// O gün geçerli reçete ve set içerikleriyle ürünler (geçmiş ay eski reçeteyle hesaplanır)
     func urunler(asOf: DateKey?) -> [Id: Product] {
-        guard let d = asOf, state.products.contains(where: { !($0.eskiReceteler ?? []).isEmpty }) else {
-            return productsById
-        }
+        guard let d = asOf, receteGecmisiVar else { return productsById }
         if let c = tarihliUrunCache[d] { return c }
         let u = state.urunlerTarihli(d)
         tarihliUrunCache[d] = u
@@ -394,8 +398,7 @@ public final class Engine {
         let oranlar = ch.rates(on: asOf ?? Dates.monthEnd(month))
         // Komisyon tabanı: bazı pazaryerleri KDV hariç fiyattan hesaplayıp üstüne KDV ekler
         let komisyonTabani = ch.komisyonKdvHaric(on: asOf ?? Dates.monthEnd(month))
-            ? Double(max(r.netSales, 0)) * (kkdv.dahil
-                ? 1 + Double(kkdv.oran.rawValue) / 100 : 1)
+            ? Double(max(r.netSales, 0)) * ch.kesintiKdvCarpani(on: Dates.monthEnd(month))
             : taban
         r.commission = kesinti(cm?.commissionActual,
                                auto: komisyonTabani * oranlar.commissionPct / 100 + taban * oranlar.paymentPct / 100)
@@ -548,14 +551,7 @@ public final class Engine {
         return t
     }
 
-    /// Kanalın son iz bıraktığı ay: son satışı, son ay kaydı ya da son gideri
-    func kanalSonAyi(_ ch: Channel) -> MonthKey? {
-        let sonSatis = state.sales.filter { $0.channelId == ch.id }.map(\.month).max()
-        let sonAy = state.channelMonths.filter { $0.channelId == ch.id }.map(\.month).max()
-        let sonGider = state.expenses.filter { $0.scope.channelId == ch.id }
-            .map { Dates.month(of: $0.date) }.max()
-        return [sonSatis, sonAy, sonGider].compactMap { $0 }.max()
-    }
+    func kanalSonAyi(_ ch: Channel) -> MonthKey? { state.kanalSonAyi(ch.id) }
 
     /// Kanalın ilk göründüğü ay: ilk satışı veya tarihli ilk ayar kaydı
     func kanalBaslangicAyi(_ ch: Channel) -> MonthKey? {

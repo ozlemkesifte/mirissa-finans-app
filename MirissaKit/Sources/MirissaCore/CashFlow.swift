@@ -81,25 +81,23 @@ public extension Engine {
             kalemler.append(NakitKalemi(id: "g:\(i.id)", gun: i.date, ad: i.name,
                                         tutar: -i.cashAmount, tahmini: false))
         }
-        // 2) Alacak ve borçlar (vadesi olanlar)
+        // 2) Alacak ve borçlar (vadesi olanlar). Vadesi geçmiş ama kapanmamış olan ilk güne yazılır.
+        let ilkGun = Dates.addDays(bas, 1)
         for b in state.balances where !b.settled {
-            guard let v = b.dueDate, pencerede(v) else { continue }
-            kalemler.append(NakitKalemi(id: "b:\(b.id)", gun: v, ad: b.name,
+            guard let v = b.dueDate, v <= son else { continue }
+            let gecikmis = v <= bas
+            kalemler.append(NakitKalemi(id: "b:\(b.id)", gun: gecikmis ? ilkGun : v,
+                                        ad: gecikmis ? "\(b.name) (vadesi geçti)" : b.name,
                                         tutar: b.kind == .alacak ? b.amount : -b.amount, tahmini: false))
         }
-        // 1b) Vadesi geçmiş ama ödenmemiş taksitler ve borç/alacaklar: ilk gün, "gecikmiş" diye
-        let ilkGun = Dates.addDays(bas, 1)
+        // 1b) Vadesi geçmiş ama ödenmemiş taksitler: ilk gün, "gecikmiş" diye (vadesi pencerede
+        // olanlar zaten 1. adımdaki gider satırlarında)
         for p in state.purchases where !p.excludeFromExpenses {
             for t in p.odeme?.taksitler ?? [] where !t.odendi && t.vade <= bas && t.tutar != 0 {
                 kalemler.append(NakitKalemi(id: "gecikmis:\(p.id):\(t.id)", gun: ilkGun,
                                             ad: "\(state.itemName(p.item)) alımı taksiti (vadesi geçti)",
                                             tutar: -t.tutar, tahmini: false))
             }
-        }
-        for b in state.balances where !b.settled {
-            guard let v = b.dueDate, v <= bas else { continue }
-            kalemler.append(NakitKalemi(id: "b:\(b.id)", gun: ilkGun, ad: "\(b.name) (vadesi geçti)",
-                                        tutar: b.kind == .alacak ? b.amount : -b.amount, tahmini: false))
         }
         let ort = nakitOrtalamalari(bugun: bugun)
         // 3) KDV: bir ayın KDV'si izleyen ayın 28'inde ödenir. Satışları henüz tam girilmemiş

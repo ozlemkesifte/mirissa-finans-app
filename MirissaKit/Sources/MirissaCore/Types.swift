@@ -67,9 +67,7 @@ public struct StockMaterial: Codable, Identifiable, Hashable, Sendable {
 
     /// O gün geçerli ayarlarla malzeme. Tarih yoksa bugünkü hali.
     public func tarihli(_ date: DateKey?) -> StockMaterial {
-        guard let d = date,
-              let v = (eskiAyarlar ?? []).filter({ $0.gecerliSon >= d })
-                .min(by: { $0.gecerliSon < $1.gecerliSon }) else { return self }
+        guard let v = (eskiAyarlar ?? []).surum(on: date) else { return self }
         var m = self
         m.perOrder = v.perOrder
         m.packSizesRaw = v.packSizesRaw
@@ -236,14 +234,31 @@ public struct ReceteSurumu: Codable, Hashable, Sendable {
 public extension Product {
     /// O gün geçerli reçete ve set içeriğiyle ürün. Tarih yoksa bugünkü hali.
     func tarihli(_ date: DateKey?) -> Product {
-        guard let d = date,
-              let v = (eskiReceteler ?? []).filter({ $0.gecerliSon >= d })
-                .min(by: { $0.gecerliSon < $1.gecerliSon }) else { return self }
+        guard let v = (eskiReceteler ?? []).surum(on: date) else { return self }
         var p = self
         p.recipe = v.recipe
         p.components = v.components
         if let b = v.isBundle { p.isBundle = b }
         return p
+    }
+}
+
+/// "Şu güne kadar geçerli" eski ayar sürümü (reçete, malzeme ayarı)
+public protocol GecerliSonlu { var gecerliSon: DateKey { get } }
+extension ReceteSurumu: GecerliSonlu {}
+extension MalzemeSurumu: GecerliSonlu {}
+
+public extension Array where Element: GecerliSonlu {
+    /// Verilen günü kapsayan en eski sürüm; yoksa (ya da tarih yoksa) bugünkü hal geçerlidir
+    func surum(on date: DateKey?) -> Element? {
+        guard let d = date else { return nil }
+        return filter { $0.gecerliSon >= d }.min { $0.gecerliSon < $1.gecerliSon }
+    }
+
+    /// Eski hali sürüm olarak ekler; aynı gün ikinci kez düzenlenince ilk (daha eski) sürüm korunur
+    func sakla(_ surum: Element) -> [Element] {
+        (contains { $0.gecerliSon == surum.gecerliSon } ? self : self + [surum])
+            .sorted { $0.gecerliSon < $1.gecerliSon }
     }
 }
 
@@ -256,22 +271,21 @@ public extension AppState {
     /// "Sipariş başına" ya da paket boyutu değişen malzemenin eski ayarını sürüm olarak saklar
     /// (geçmişte stok hareketi ya da satış varsa)
     mutating func malzemeGecmisiniKoru(eski: AppState, bugun: DateKey) {
+        guard materials != eski.materials else { return }
         let dun = Dates.addDays(bugun, -1)
-        let gecmisSatis = sales.contains { Dates.monthEnd($0.month) <= dun }
+        let eskiler = Dictionary(eski.materials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        lazy var gecmisSatis = sales.contains { Dates.monthEnd($0.month) <= dun }
         for i in materials.indices {
             let m = materials[i]
-            guard let o = eski.material(m.id),
+            guard let o = eskiler[m.id],
                   o.perOrder != m.perOrder || o.packSizesRaw != m.packSizesRaw else { continue }
             let hareket = gecmisSatis
                 || purchases.contains { $0.item.id == m.id && $0.date <= dun }
                 || adjustments.contains { $0.item.id == m.id && $0.date <= dun }
                 || counts.contains { $0.item.id == m.id && $0.date <= dun }
             guard hareket else { continue }
-            var surumler = o.eskiAyarlar ?? []
-            if !surumler.contains(where: { $0.gecerliSon == dun }) {
-                surumler.append(MalzemeSurumu(gecerliSon: dun, perOrder: o.perOrder, packSizesRaw: o.packSizesRaw))
-            }
-            materials[i].eskiAyarlar = surumler.sorted { $0.gecerliSon < $1.gecerliSon }
+            materials[i].eskiAyarlar = (o.eskiAyarlar ?? [])
+                .sakla(MalzemeSurumu(gecerliSon: dun, perOrder: o.perOrder, packSizesRaw: o.packSizesRaw))
         }
     }
 
@@ -284,6 +298,7 @@ public extension AppState {
     /// Yalnızca geçmiş (bitmiş) aylarda satışı olan ürünler için: satışı olmayan ürünün
     /// reçetesi düzeltilince baştan geçerli olur.
     mutating func receteGecmisiniKoru(eski: AppState, bugun: DateKey) {
+        guard products != eski.products else { return }
         let dun = Dates.addDays(bugun, -1)
         let eskiler = Dictionary(eski.products.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for i in products.indices {
@@ -297,13 +312,8 @@ public extension AppState {
                         || (eskiler[e.productId]?.components.contains { $0.productId == p.id } ?? false))
             }
             guard gecmisSatis else { continue }
-            var surumler = o.eskiReceteler ?? []
-            // Bugün ikinci kez düzenleniyorsa dünkü sürüm zaten saklandı
-            if !surumler.contains(where: { $0.gecerliSon == dun }) {
-                surumler.append(ReceteSurumu(gecerliSon: dun, recipe: o.recipe, components: o.components,
-                                             isBundle: o.isBundle))
-            }
-            products[i].eskiReceteler = surumler.sorted { $0.gecerliSon < $1.gecerliSon }
+            products[i].eskiReceteler = (o.eskiReceteler ?? [])
+                .sakla(ReceteSurumu(gecerliSon: dun, recipe: o.recipe, components: o.components, isBundle: o.isBundle))
         }
     }
 }
@@ -317,21 +327,26 @@ public struct KapaliDonem: Codable, Hashable, Sendable {
 }
 
 public extension AppState {
+    /// Kanalın son iz bıraktığı ay: son satışı, son ay kaydı ya da son gideri
+    func kanalSonAyi(_ channelId: Id) -> MonthKey? {
+        [sales.filter { $0.channelId == channelId }.map(\.month).max(),
+         channelMonths.filter { $0.channelId == channelId }.map(\.month).max(),
+         expenses.filter { $0.scope.channelId == channelId }.map { Dates.month(of: $0.date) }.max()]
+            .compactMap { $0 }.max()
+    }
+
     /// Kanal arşive alınınca / geri açılınca kapalı dönemi işler: bu ay hâlâ açık sayılır,
     /// kapanış bir sonraki aydan başlar. Böylece arşivlemek geçmiş ayların ücretini silmez.
     mutating func kanalArsivDonemleriniKoru(eski: AppState, buAy: MonthKey) {
+        guard channels != eski.channels else { return }
+        let eskiler = Dictionary(eski.channels.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for i in channels.indices {
-            guard let o = eski.channel(channels[i].id), o.archived != channels[i].archived else { continue }
+            guard let o = eskiler[channels[i].id], o.archived != channels[i].archived else { continue }
             var d = channels[i].kapaliDonemler ?? []
-            let id = channels[i].id
             if !channels[i].archived, channels[i].kapaliDonemler == nil {
                 // Önceki sürümde (tarihsiz) arşivlenmiş kanal geri açılıyor: arşivde geçen aylar
                 // (son izinden sonrası) ücretsiz kalsın, geçmiş aylara ücret eklenmesin
-                let son = [sales.filter { $0.channelId == id }.map(\.month).max(),
-                           channelMonths.filter { $0.channelId == id }.map(\.month).max(),
-                           expenses.filter { $0.scope.channelId == id }.map { Dates.month(of: $0.date) }.max()]
-                    .compactMap { $0 }.max()
-                if let son, Dates.addMonths(son, 1) <= Dates.addMonths(buAy, -1) {
+                if let son = kanalSonAyi(channels[i].id), Dates.addMonths(son, 1) <= Dates.addMonths(buAy, -1) {
                     d.append(KapaliDonem(bas: Dates.addMonths(son, 1), son: Dates.addMonths(buAy, -1)))
                 }
                 channels[i].kapaliDonemler = d
@@ -361,6 +376,8 @@ public struct StopajDonemi: Codable, Hashable, Sendable {
         self.son = son
         self.oran = oran
     }
+
+    public func icinde(_ ay: MonthKey) -> Bool { KapaliDonem(bas: bas, son: son).icinde(ay) }
 
     /// Kanalın ekrandaki stopaj ayarını (düz alanlar) geçmişi bozmadan dönemlere işler.
     /// Oran değişikliği ve kapatma bu aydan başlar; yeniden açmak aradaki ayları kesilmiş saymaz.
@@ -678,13 +695,8 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
 
     /// O ay kesilen stopaj oranı (%); kesilmiyorsa nil
     public func stopajOrani(month: MonthKey) -> Double? {
-        if let d = stopajDonemleri {
-            return d.first { $0.bas <= month && ($0.son.map { month <= $0 } ?? true) && $0.oran > 0 }?.oran
-        }
-        guard let oran = stopajPct, oran > 0,
-              month >= Dates.month(of: stopajBaslangic ?? "2025-01-01") else { return nil }
-        if let son = stopajBitis, month > son { return nil }
-        return oran
+        // Dönem kaydı olmayan (önceki sürümden kalan) ayar aynı kuralla döneme çevrilip okunur
+        (stopajDonemleri ?? StopajDonemi.eskiAlanlardan(self)).first { $0.icinde(month) && $0.oran > 0 }?.oran
     }
     /// Stopaj bugün açık mı
     public var stopajAcik: Bool { (stopajPct ?? 0) > 0 && stopajBitis == nil }
@@ -806,6 +818,27 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public func kesintiKdv(on date: DateKey) -> (oran: VatRate, dahil: Bool) {
         let r = rates(on: date)
         return (r.feeVatRate ?? resolvedFeeVatRate, r.feesIncludeVat ?? resolvedFeesIncludeVat)
+    }
+
+    /// O gün girilen bir kesinti tutarının KDV hariç / KDV'si ayrımı
+    public func kesintiSplit(_ tutar: Kurus, on date: DateKey) -> VatSplit {
+        let k = kesintiKdv(on: date)
+        return Vat.split(tutar, rate: k.oran, included: k.dahil)
+    }
+
+    /// Kesinti tutarları KDV dahil giriliyorsa (1 + kesinti KDV'si), değilse 1.
+    /// Komisyon KDV hariç fiyattan alınıyorsa tabanı bu çarpanla KDV dahile taşınır.
+    public func kesintiKdvCarpani(on date: DateKey) -> Double {
+        let k = kesintiKdv(on: date)
+        return k.dahil ? 1 + k.oran.multiplier : 1
+    }
+
+    /// Hiç kurulmamış (oranı girilmemiş) kanal: ilk girilen ayarlar baştan geçerli sayılır
+    var hicKurulmamis: Bool {
+        (rateHistory ?? []).isEmpty && setupCompleted != true
+            && commissionPct == 0 && paymentPct == 0 && shippingPerOrder == 0
+            && serviceFeePerOrder == 0 && platformFeeMonthly == 0
+            && otherDeductionPct == 0 && otherDeductionMonthly == 0
     }
 
     /// O gün komisyonun KDV hariç fiyattan alınıp alınmadığı (tarihli)
@@ -943,6 +976,16 @@ public struct ChannelRates: Codable, Identifiable, Hashable, Sendable {
         self.otherDeductionMonthly = otherDeductionMonthly
         self.extras = extras
         self.unknownFields = unknownFields
+    }
+
+    /// Kanalın ayarını devralan (boş) alanlara kanalın şimdiki değeri kalıcı yazılır: ayar
+    /// değişince bu kaydın dönemi eski ayarla kalır
+    func ayarlariSabitle(_ kanal: Channel) -> ChannelRates {
+        var r = self
+        r.komisyonKdvHaric = r.komisyonKdvHaric ?? kanal.komisyonKdvHaric ?? false
+        r.feeVatRate = r.feeVatRate ?? kanal.resolvedFeeVatRate
+        r.feesIncludeVat = r.feesIncludeVat ?? kanal.resolvedFeesIncludeVat
+        return r
     }
 
     /// Otomatik hesaba girmeyen, yalnızca elle girilecek kesintiler

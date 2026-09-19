@@ -184,8 +184,8 @@ struct StopajKomisyonTests {
 
     @Test func urunKdvOraniYeniSatisaVarsayilanOlur() {
         let s = fiyatli(kdv: .on)
-        #expect(s.satisKdvOrani(Fx.sampuanId) == .on)
-        #expect(s.satisKdvOrani(Fx.serumId) == .yirmi)
+        #expect(s.varsayilanSatisKdvOrani(Fx.sampuanId) == .on)
+        #expect(s.varsayilanSatisKdvOrani(Fx.serumId) == .yirmi)
     }
 }
 

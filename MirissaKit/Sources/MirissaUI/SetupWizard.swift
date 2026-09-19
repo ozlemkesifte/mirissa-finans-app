@@ -271,7 +271,7 @@ public struct SetupWizard: View {
             ileri: {
                 let t = urunTaslak(i)
                 // Kayıttaki (KDV'si zaten düşülmüş) maliyet değişmediyse KDV bir daha sorulmaz
-                if t.maliyet > 0, t.maliyet == t.kayitliNet {
+                if t.maliyet > 0, !t.maliyetDegisti {
                     ileri(.ambalajDahil(i))
                     return
                 }
@@ -755,8 +755,7 @@ public struct SetupWizard: View {
                                 get: { g.odemeAyi ?? Dates.currentMonth() }, set: { g.odemeAyi = $0 }))
                         }
                         if g.yillik == true, g.tutar > 0 {
-                            let net = Vat.net(g.tutar, rate: g.kdv ?? .yok, included: true)
-                            Text("Kâra her ay 1/12'si yazılır: ayda \(Money.roundHalfAwayFromZero(Double(net) / 12).tl)"
+                            Text("Kâra her ay 1/12'si yazılır: ayda \(Expenses.aylikKarPayi(g.tutar, rate: g.kdv ?? .yok, included: true, aySayisi: 12).tl)"
                                  + ((g.kdv ?? .yok) == .yok ? "" : " (KDV hariç)")
                                  + ". Para ve KDV ödeme ayında çıkar.")
                                 .font(.caption).foregroundStyle(Palette.inkFaint)
@@ -1134,6 +1133,7 @@ public struct SetupWizard: View {
         if urunler.isEmpty { urunler = [UrunTaslak(ad: "")] }
         let receteler = s.products.flatMap(\.recipe)
         malzemeler = s.materials.map { m in
+            let siparisBasi = receteler.filter { $0.materialId == m.id }.map(\.qty).max() ?? 0
             var t = MalzemeTaslak(id: m.id, ad: m.name, birim: m.baseUnit,
                                   secili: !m.archived,
                                   stok: m.openingQty ?? 0,
@@ -1141,12 +1141,8 @@ public struct SetupWizard: View {
                                   // Kayıttaki açılış maliyeti KDV hariçtir
                                   maliyetKdvDahil: (m.openingUnitCost ?? 0) > 0 ? false : nil,
                                   maliyetKdvOrani: .yok,
-                                  siparisBasi: receteler
-                                    .filter { $0.materialId == m.id }
-                                    .map(\.qty).max() ?? 0,
-                                  ilkSiparisBasi: receteler
-                                    .filter { $0.materialId == m.id }
-                                    .map(\.qty).max() ?? 0)
+                                  siparisBasi: siparisBasi,
+                                  ilkSiparisBasi: siparisBasi)
             t.kayitliNet = m.openingUnitCost ?? 0
             t.kayitliStok = m.openingQty ?? 0
             return t
@@ -1183,7 +1179,7 @@ public struct SetupWizard: View {
                     Self.fiyatlariUygula(&p, liste: t.listeFiyat, kanal: t.kanalFiyat)
                     // Açılış stoğu ve açılış maliyeti yalnızca açılış stoğu değiştirildiyse yazılır;
                     // bugünkü maliyet açılış maliyetinin yerine geçmez (geçmiş aylar değişmesin)
-                    if t.kayitliStok == nil || t.stok != t.kayitliStok {
+                    if t.stokDegisti {
                         p.openingQty = t.stok > 0 ? t.stok : nil
                         p.openingUnitCost = t.stok > 0
                             ? (p.openingUnitCost ?? (t.maliyet > 0 ? t.netMaliyet : nil)) : nil
@@ -1192,7 +1188,7 @@ public struct SetupWizard: View {
                     p.openingDate = p.openingDate ?? ay
                     // Maliyet değişikliği geçmiş raporları bozmaz:
                     // eski kalem kapatılır, yenisi bugünden başlar. Değişmediyse dokunulmaz.
-                    if t.maliyet > 0, t.kayitliNet == nil || t.maliyet != t.kayitliNet {
+                    if t.maliyet > 0, t.maliyetDegisti {
                         let mevcut = p.costLines(on: nil).first
                         p.applyCostLines(
                             [CostLine(id: mevcut?.id ?? Ids.make(.costLine),
@@ -1274,10 +1270,10 @@ public struct SetupWizard: View {
                     m.archived = !t.secili
                     // Arşive alınan malzemenin açılış stoğu silinmez (geçmiş stok ve maliyet korunur);
                     // değerler yalnızca değiştirildiyse yazılır
-                    if t.secili, t.kayitliStok == nil || t.stok != t.kayitliStok {
+                    if t.secili, t.stokDegisti {
                         m.openingQty = t.stok > 0 ? t.stok : nil
                     }
-                    if t.secili, t.kayitliNet == nil || t.maliyet != t.kayitliNet {
+                    if t.secili, t.maliyetDegisti {
                         m.openingUnitCost = t.maliyet > 0 ? t.netMaliyet : nil
                     }
                     m.openingDate = m.openingDate ?? ay
@@ -1401,6 +1397,9 @@ struct UrunTaslak: Identifiable, Codable {
     var kayitliNet: Kurus?
     var kayitliStok: Double?
     var kayitliAmbalajDahil: Bool?
+    /// Yeni ürün ya da kayıttaki değerden farklı (kurulum yeniden açıldığında yalnız bunlar yazılır)
+    var maliyetDegisti: Bool { kayitliNet == nil || maliyet != kayitliNet }
+    var stokDegisti: Bool { kayitliStok == nil || stok != kayitliStok }
 
     /// Kâr ve stok hesabında kullanılan KDV hariç maliyet
     var netMaliyet: Kurus {
@@ -1440,6 +1439,8 @@ struct MalzemeTaslak: Identifiable, Codable {
     /// Kurulum yeniden açıldığında kayıttaki net birim maliyet ve açılış stoğu
     var kayitliNet: Kurus?
     var kayitliStok: Double?
+    var maliyetDegisti: Bool { kayitliNet == nil || maliyet != kayitliNet }
+    var stokDegisti: Bool { kayitliStok == nil || stok != kayitliStok }
 
     /// KDV hariç birim maliyet
     var netMaliyet: Kurus {

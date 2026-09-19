@@ -91,7 +91,7 @@ public extension Engine {
             if yuzde != 0 {
                 out.append(BirimMaliyetKalemi(
                     id: "kesinti", tur: .kesinti, ad: "\(ch.name) komisyon ve kesintiler",
-                    detay: "\(Money.format(u.price)) satış fiyatının %\(RoasFormat.format(r.commissionPct + r.paymentPct + r.otherDeductionPct).replacingOccurrences(of: ",00", with: "")), KDV'siz",
+                    detay: "\(Money.format(u.price)) satış fiyatının \(Money.formatPercentKisa(r.commissionPct + r.paymentPct + r.otherDeductionPct)), KDV'siz",
                     tutar: yuzde))
             }
             if u.perOrderFees != 0 {

@@ -120,6 +120,9 @@ public extension Engine {
                          bugun: DateKey? = nil) -> ConsumptionRate {
         let buAy = Dates.month(of: bugun ?? Dates.today())
         let istenen = month ?? buAy
+        // Önce istek anahtarıyla önbelleğe bakılır: kalemin hareketleri yalnızca ilk seferde taranır
+        let istekAnahtari = "\(item.id)|\(istenen)|\(buAy)"
+        if let c = consumptionCache[istekAnahtari] { return c }
         let satirlar = ledger.rows(for: item)
         // Kalem ilk kez ne zaman göründü: yeni ürünün oranı, henüz yokken geçen
         // aylarla sulandırılmasın
@@ -130,7 +133,7 @@ public extension Engine {
             .map { Dates.month(of: $0.date) }.min()
         let end = istenen >= buAy && (ilkSatisAy ?? istenen) < buAy ? Dates.addMonths(buAy, -1) : istenen
         let key = "\(item.id)|\(end)"
-        if let c = consumptionCache[key] { return c }
+        if let c = consumptionCache[key] { consumptionCache[istekAnahtari] = c; return c }
 
         var result = ConsumptionRate.none
         for window in [state.settings.consumptionWindowMonths, 6, 12] where window > 0 {
@@ -156,6 +159,7 @@ public extension Engine {
             break
         }
         consumptionCache[key] = result
+        consumptionCache[istekAnahtari] = result
         return result
     }
 

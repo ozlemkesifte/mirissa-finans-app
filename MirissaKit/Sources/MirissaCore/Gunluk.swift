@@ -51,18 +51,23 @@ public enum DegisiklikGunlugu {
 /// Kilitli bir aya ait satış, gider, alım, stok kaydı ya da o ayın KDV'si değişemez.
 public enum AyKilidi {
     /// Değişiklik kilitli bir ayı etkiliyorsa kullanıcıya gösterilecek açıklama
-    public static func ihlal(eski: AppState, yeni: AppState) -> String? {
+    /// `eskiMotor` / `yeniMotor` verilirse yeniden kurulmaz (mağaza zaten elinde tutuyor)
+    public static func ihlal(eski: AppState, yeni: AppState,
+                             eskiMotor: Engine? = nil, yeniMotor: Engine? = nil) -> String? {
         let aylar = eski.settings.ek.kilitli.intersection(yeni.settings.ek.kilitli)
         guard !aylar.isEmpty else { return nil }
         for ay in aylar.sorted() {
-            func ayin<T: Hashable>(_ a: [T], _ m: (T) -> MonthKey) -> Set<T> { Set(a.filter { m($0) == ay }) }
-            if ayin(eski.sales, \.month) != ayin(yeni.sales, \.month)
-                || ayin(eski.channelMonths, \.month) != ayin(yeni.channelMonths, \.month)
+            // Dokunulmamış liste karşılaştırılmaz (aynı depolama: eşitlik hemen döner)
+            func degisti<T: Hashable>(_ a: [T], _ b: [T], _ m: (T) -> MonthKey) -> Bool {
+                a != b && Set(a.filter { m($0) == ay }) != Set(b.filter { m($0) == ay })
+            }
+            if degisti(eski.sales, yeni.sales, \.month)
+                || degisti(eski.channelMonths, yeni.channelMonths, \.month)
                 // Ödeme planı alımın ayına değil taksitin ödendiği aya aittir (aşağıda gider satırlarıyla bakılır)
-                || ayin(eski.purchases.map(\.odemesiz), { Dates.month(of: $0.date) })
-                    != ayin(yeni.purchases.map(\.odemesiz), { Dates.month(of: $0.date) })
-                || ayin(eski.adjustments, { Dates.month(of: $0.date) }) != ayin(yeni.adjustments, { Dates.month(of: $0.date) })
-                || ayin(eski.counts, { Dates.month(of: $0.date) }) != ayin(yeni.counts, { Dates.month(of: $0.date) })
+                || (eski.purchases != yeni.purchases
+                    && degisti(eski.purchases.map(\.odemesiz), yeni.purchases.map(\.odemesiz), { Dates.month(of: $0.date) }))
+                || degisti(eski.adjustments, yeni.adjustments, { Dates.month(of: $0.date) })
+                || degisti(eski.counts, yeni.counts, { Dates.month(of: $0.date) })
                 // Taksit yalnızca nakit hareketidir (KDV'si alım ayında): ödendi işaretlemek kilitli ayı bozmaz
                 || Expenses.instances(eski, from: ay, to: ay).filter({ $0.sourceKind != .taksit })
                     != Expenses.instances(yeni, from: ay, to: ay).filter({ $0.sourceKind != .taksit }) {
@@ -74,7 +79,7 @@ public enum AyKilidi {
         // kanal ayarı ya da reçete geçmişe uzanabilir. Kilitli ayın beyan rakamları birebir korunur.
         // Yalnız beyan edilen KDV korunur: sonradan girilen bir alımın geçmiş satışa maliyet olarak
         // yansıması gibi KDV'yi değiştirmeyen düzeltmeler engellenmez.
-        let e1 = Engine(eski), e2 = Engine(yeni)
+        let e1 = eskiMotor ?? Engine(eski), e2 = yeniMotor ?? Engine(yeni)
         for ay in aylar.sorted() {
             if e1.vatStatus(ay) != e2.vatStatus(ay) {
                 return "\(Dates.displayMonth(ay)) kilitli (KDV beyanı verildi). Bu değişiklik o ayın KDV'sini "

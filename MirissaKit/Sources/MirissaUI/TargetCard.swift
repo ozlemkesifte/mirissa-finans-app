@@ -27,9 +27,7 @@ struct HedefKarti: View {
                     }
                     KarHedefiGirisi(month: month)
                     notlar(p)
-                    SabitGiderDokumuBolumu(month: month, planSabit: p.fixedCosts,
-                                           satisaBagliDahil: p.basis == .beklenenDagilim,
-                                           gerceklesen: p.basis == .ayinKendisi)
+                    SabitGiderDokumuBolumu(plan: p)
                     katkiOzeti
                     ReklamHedefiBolumu(month: month)
                 } else {
@@ -341,18 +339,16 @@ struct KarHedefiGirisi: View {
 /// Hedef yüksek görünüyorsa sebebi buradan görülür ve yerinde düzeltilir.
 struct SabitGiderDokumuBolumu: View {
     @Environment(AppStore.self) private var store
-    var month: MonthKey
-    /// Başa baş hesabında kullanılan sabit gider
-    var planSabit: Kurus
-    /// Hedef kurulum verisinden (satış yok) mi: o zaman satışa bağlı giderler de aylık sayılır
-    var satisaBagliDahil: Bool = false
-    /// Ayın gerçekleşen sonucu mu gösteriliyor (henüz satışı olmayan kanalın ücreti hedefe eklenmez)
-    var gerceklesen: Bool = false
+    var plan: BreakevenPlan
     @State private var acik = false
     @State private var yillikSoru: SabitGiderSatiri?
 
+    /// Başa baş hesabında kullanılan sabit gider
+    private var planSabit: Kurus { plan.fixedCosts }
+    /// Hedef kurulum verisinden (satış yok) mi: o zaman satışa bağlı giderler de aylık sayılır
+    private var satisaBagliDahil: Bool { plan.basis == .beklenenDagilim }
+
     var body: some View {
-        let d = store.engine.sabitGiderDokumu(month: month, planli: !gerceklesen)
         VStack(alignment: .leading, spacing: 10) {
             Divider().overlay(Palette.separator)
             Button {
@@ -374,6 +370,9 @@ struct SabitGiderDokumuBolumu: View {
             .buttonStyle(.plain)
 
             if acik {
+                // Döküm yalnızca açılınca hesaplanır. Ayın gerçekleşen sonucu gösteriliyorsa henüz
+                // satışı olmayan kanalın ücreti eklenmez (başlıktaki toplamla aynı temel)
+                let d = store.engine.sabitGiderDokumu(month: plan.month, planli: plan.basis != .ayinKendisi)
                 if d.satirlar.isEmpty && planSabit == 0 {
                     Text("Bu ay sabit gider yok.").font(.caption).foregroundStyle(Palette.inkFaint)
                 }
@@ -404,7 +403,7 @@ struct SabitGiderDokumuBolumu: View {
             Button("Vazgeç", role: .cancel) { yillikSoru = nil }
         } message: {
             if let s = yillikSoru, let e = s.expenseId.flatMap({ id in store.state.expenses.first { $0.id == id } }) {
-                Text("Girdiğin \(e.amount.tl) yılda bir ödenen tutar sayılacak; kâra her ay \(Money.roundHalfAwayFromZero(Double(Vat.net(e.amount, rate: e.resolvedVatRate, included: e.resolvedVatIncluded)) / 12).tl)\(e.resolvedVatRate != .yok ? " (KDV hariç)" : "") yazılacak. "
+                Text("Girdiğin \(e.amount.tl) yılda bir ödenen tutar sayılacak; kâra her ay \(Expenses.aylikKarPayi(e.amount, rate: e.resolvedVatRate, included: e.resolvedVatIncluded, aySayisi: 12).tl)\(e.resolvedVatRate != .yok ? " (KDV hariç)" : "") yazılacak. "
                      + "Bu giderin geçmiş ayları da buna göre düzelir.")
             }
         }

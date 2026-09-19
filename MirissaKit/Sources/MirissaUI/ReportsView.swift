@@ -215,19 +215,20 @@ struct ChannelReport: View {
     @Environment(Period.self) private var period
     var onEdit: (Id) -> Void
 
+    /// Dönemin kanal toplamları, her kanal için bir kez. Arşivlenmiş kanal da dönemde satışı ya da
+    /// gideri varsa görünür (toplamlar ana sayfayı tutsun)
+    private var kanallar: [(Channel, ChannelMonthResult)] {
+        store.state.channels.compactMap { ch in
+            let r = store.engine.channelTotals(from: period.from, to: min(period.to, Dates.currentMonth()),
+                                               channelId: ch.id)
+            return !ch.archived || r.totalCost != 0 || r.netSales != 0 ? (ch, r) : nil
+        }
+    }
+
     var body: some View {
         VStack(spacing: Metrics.gap) {
             PeriodPicker(period: period)
-            // Arşivlenmiş kanal da dönemde satışı ya da gideri varsa görünür (toplamlar ana sayfayı tutsun)
-            ForEach(store.state.channels.filter { ch in
-                !ch.archived || store.engine.channelTotals(from: period.from, to: min(period.to, Dates.currentMonth()),
-                                                           channelId: ch.id).totalCost != 0
-                    || store.engine.channelTotals(from: period.from, to: min(period.to, Dates.currentMonth()),
-                                                  channelId: ch.id).netSales != 0
-            }) { ch in
-                let r = store.engine.channelTotals(from: period.from,
-                                                   to: min(period.to, Dates.currentMonth()),
-                                                   channelId: ch.id)
+            ForEach(kanallar, id: \.0.id) { ch, r in
                 Card {
                     VStack(spacing: 10) {
                         HStack {

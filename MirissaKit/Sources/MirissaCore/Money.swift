@@ -61,6 +61,11 @@ public enum Money {
     }
 
     /// %28,6
+    /// Oran yazımı, gereksiz ",00" olmadan: %20 · %1,5 · %2,75
+    public static func formatPercentKisa(_ pct: Double) -> String {
+        "%" + RoasFormat.format(pct).replacingOccurrences(of: ",00", with: "")
+    }
+
     public static func formatPercent(_ pct: Double, digits: Int = 1) -> String {
         guard pct.isFinite else { return "%0" }
         // Türkçede yüzde işareti sayıdan önce gelir; eksi işareti en başta durur.

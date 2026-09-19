@@ -169,8 +169,12 @@ struct ChannelMonthForm: View {
     @State private var payout: Kurus?
     @State private var note = ""
     @State private var loaded = false
+    /// Otomatik değerler yalnızca sipariş sayıları değişince yeniden hesaplanır (her tuşta motor kurulmasın)
+    @State private var otomatik: ChannelMonthResult?
 
-    private var auto: ChannelMonthResult {
+    private var auto: ChannelMonthResult { otomatik ?? otomatikHesapla() }
+
+    private func otomatikHesapla() -> ChannelMonthResult {
         // Elle girilen TUTARLAR olmadan otomatik değerler; sipariş sayısı korunur,
         // yoksa kargo ve koli önerisi adetten tahmin edilir ve yanlış çıkar.
         var s = store.state
@@ -277,7 +281,12 @@ struct ChannelMonthForm: View {
                 TextField("Not (isteğe bağlı)", text: $note)
             }
         }
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            otomatik = otomatikHesapla()
+        }
+        .onChange(of: orderCount) { _, _ in otomatik = otomatikHesapla() }
+        .onChange(of: bigOrderCount) { _, _ in otomatik = otomatikHesapla() }
     }
 
     private func load() {

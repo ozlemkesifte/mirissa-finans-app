@@ -74,21 +74,21 @@ public extension Engine {
         let satisOrani = satisKdvOrani(productId: productId, channelId: channelId, on: date)
         let (feeRate, dahil) = ch.kesintiKdv(on: date)
 
-        func yuzde(_ v: Double) -> String { "%" + RoasFormat.format(v).replacingOccurrences(of: ",00", with: "") }
+        let yuzde = Money.formatPercentKisa
         var kalemler: [HakedisKalemi] = []
+        /// `tahmini`: tutar ayarın yerine ayın gerçek (elle girilmiş) tutarından türetildi
         func ekle(_ id: String, _ ad: String, _ detay: String, _ ham: Double, tahmini: Bool = false) {
             let tutar = Money.roundHalfAwayFromZero(ham)
             guard tutar != 0 else { return }
             let s = Vat.split(tutar, rate: feeRate, included: dahil)
-            kalemler.append(HakedisKalemi(id: id, ad: ad, detay: detay, brut: s.net + s.vat,
-                                          net: s.net, tahmini: tahmini))
+            kalemler.append(HakedisKalemi(id: id, ad: ad, detay: detay + (tahmini ? " · aylık gerçek tutarından" : ""),
+                                          brut: s.net + s.vat, net: s.net, tahmini: tahmini))
         }
         let fiyatYazi = Money.format(u.price)
 
         // Komisyon (ve ödeme komisyonu)
         if let t = ek.komisyonYuzde {
-            ekle("komisyon", "Komisyon", "\(yuzde(t)) × \(fiyatYazi) · aylık gerçek tutarından",
-                 fiyat * t / 100, tahmini: true)
+            ekle("komisyon", "Komisyon", "\(yuzde(t)) × \(fiyatYazi)", fiyat * t / 100, tahmini: true)
         } else {
             let carpan = komisyonTabanCarpani(ch, on: date, satisKdv: satisOrani)
             let taban = ch.komisyonKdvHaric(on: date) ? "KDV hariç fiyatın" : fiyatYazi
@@ -98,13 +98,11 @@ public extension Engine {
                  fiyat * r.paymentPct / 100)
         }
         let diger = ek.digerYuzde ?? r.otherDeductionPct
-        ekle("diger", "Diğer kesinti", "\(yuzde(diger)) × \(fiyatYazi)"
-             + (ek.digerYuzde != nil ? " · aylık gerçek tutarından" : ""),
+        ekle("diger", "Diğer kesinti", "\(yuzde(diger)) × \(fiyatYazi)",
              fiyat * diger / 100, tahmini: ek.digerYuzde != nil)
-        ekle("kargo", "Kargo", "sipariş başına" + (ek.kargoSiparisBasi != nil ? " · aylık gerçek tutarından" : ""),
+        ekle("kargo", "Kargo", "sipariş başına",
              ek.kargoSiparisBasi ?? Double(r.shippingPerOrder), tahmini: ek.kargoSiparisBasi != nil)
-        ekle("hizmet", "Platform hizmet bedeli",
-             "sipariş başına" + (ek.hizmetSiparisBasi != nil ? " · aylık gerçek tutarından" : ""),
+        ekle("hizmet", "Platform hizmet bedeli", "sipariş başına",
              ek.hizmetSiparisBasi ?? Double(r.serviceFeePerOrder), tahmini: ek.hizmetSiparisBasi != nil)
 
         var aylik: [AylikSabitKesinti] = []

@@ -34,15 +34,15 @@ public extension Engine {
     func kesintiGirisi(brutFark: Kurus, channelId: Id, month: MonthKey) -> Kurus {
         guard let ch = state.channel(channelId) else { return brutFark }
         let k = ch.kesintiKdv(on: Dates.monthEnd(month))
-        guard !k.dahil, k.oran != .yok else { return brutFark }
-        return Money.roundHalfAwayFromZero(Double(brutFark) / (1 + Double(k.oran.rawValue) / 100))
+        return k.dahil ? brutFark : Vat.net(brutFark, rate: k.oran, included: true)
     }
 
     /// Net bir kesinti tutarının faturadaki (KDV dahil) karşılığı — kanal ayarına göre
     func kesintiBrut(_ net: Kurus, channelId: Id, month: MonthKey? = nil) -> Kurus {
         guard let ch = state.channel(channelId) else { return net }
         let k = ch.kesintiKdv(on: month.map(Dates.monthEnd) ?? Dates.today())
-        guard k.dahil, k.oran != .yok else { return net }
-        return net + Money.roundHalfAwayFromZero(Double(net) * Double(k.oran.rawValue) / 100)
+        guard k.dahil else { return net }
+        let s = Vat.split(net, rate: k.oran, included: false)
+        return s.net + s.vat
     }
 }

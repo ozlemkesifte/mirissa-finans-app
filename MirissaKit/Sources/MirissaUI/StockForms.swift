@@ -11,6 +11,7 @@ struct PurchaseForm: View {
     var editingId: Id?
 
     @State private var item: ItemRef?
+    @State private var oncekiBakiye: ItemBalance?
     @State private var date: DateKey = Dates.today()
     @State private var qty: Double = 0
     @State private var unit: UnitCode = .adet
@@ -59,11 +60,7 @@ struct PurchaseForm: View {
 
     /// Alım sonrası oluşacak yeni ağırlıklı ortalama maliyet
     private var newAverage: Kurus {
-        guard let item, baseQty > 0 else { return 0 }
-        // Düzenlenen alım mevcut stokta zaten var: onsuz bakiyeye eklenir (iki kez sayılmasın)
-        var s = store.state
-        if let id = editingId { s.purchases.removeAll { $0.id == id } }
-        let b = editingId == nil ? store.engine.balance(item) : Engine(s).balance(item)
+        guard let b = oncekiBakiye, baseQty > 0 else { return 0 }
         let existingQty = max(b.qty, 0)
         let total = Double(b.value) + Double(netTotal)
         return Money.roundHalfAwayFromZero(total / (existingQty + baseQty))
@@ -129,10 +126,24 @@ struct PurchaseForm: View {
                 }
             }
         }
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            oncekiBakiyeyiHesapla()
+        }
         .onChange(of: item) { _, _ in
             if !allowedUnits.contains(unit) { unit = baseUnit }
+            oncekiBakiyeyiHesapla()
         }
+    }
+
+    /// Bu alım olmadan kalemin bakiyesi. Kalem seçilince bir kez hesaplanır (her tuşta stok
+    /// defteri yeniden katlanmasın). Düzenlenen alım mevcut stokta zaten var: onsuz hesaplanır.
+    private func oncekiBakiyeyiHesapla() {
+        guard let item else { oncekiBakiye = nil; return }
+        guard let id = editingId else { oncekiBakiye = store.engine.balance(item); return }
+        var s = store.state
+        s.purchases.removeAll { $0.id == id }
+        oncekiBakiye = Engine(s).balance(item)
     }
 
     private func load() {

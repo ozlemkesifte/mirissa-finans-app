@@ -51,7 +51,7 @@ struct ReportImportTests {
         for k in kalemler { eslesme[k.urunAnahtari] = RaporIceAktarma.eslestirmeOnerisi(k.urunAnahtari, ad: k.urunAdi, urunler: u) }
         #expect(eslesme["SMP-250"] == "s")
         #expect(eslesme["SRM-30"] == "r")
-        let r = RaporIceAktarma.donustur(kalemler, kanalId: "shopify", eslesme: eslesme, mevcutAylar: [], kdvOrani: .yirmi)
+        let r = RaporIceAktarma.donustur(kalemler, kanalId: "shopify", eslesme: eslesme, mevcutAylar: [], urunKdvOrani: { _ in .yirmi })
         #expect(r.iptalSiparis == 1)
         let agustosSampuan = r.satislar.first { $0.month == "2026-08" && $0.productId == "s" }!
         #expect(agustosSampuan.qty == 3)                     // 2 + 1
@@ -68,7 +68,7 @@ struct ReportImportTests {
         let sutun = RaporIceAktarma.sutunlariBul(t.basliklar)
         let (kalemler, _) = RaporIceAktarma.kalemler(t, sutun: sutun)
         let r = RaporIceAktarma.donustur(kalemler, kanalId: "ty", eslesme: ["8690001": "s"],
-                                         mevcutAylar: [], kdvOrani: .yirmi)
+                                         mevcutAylar: [], urunKdvOrani: { _ in .yirmi })
         let s = r.satislar.first!
         #expect(s.qty == 4)
         #expect(s.grossSales == tl(4_199.60))
@@ -84,7 +84,7 @@ struct ReportImportTests {
         let t = RaporIceAktarma.oku(trendyol)
         let (kalemler, _) = RaporIceAktarma.kalemler(t, sutun: RaporIceAktarma.sutunlariBul(t.basliklar))
         let r = RaporIceAktarma.donustur(kalemler, kanalId: ChannelIds.trendyol,
-                                         eslesme: ["8690001": Fx.sampuanId], mevcutAylar: [], kdvOrani: .yirmi)
+                                         eslesme: ["8690001": Fx.sampuanId], mevcutAylar: [], urunKdvOrani: { _ in .yirmi })
         st.raporuKaydet(r, kanalId: ChannelIds.trendyol)
         st.raporuKaydet(r, kanalId: ChannelIds.trendyol)
         #expect(st.state.sales.filter { $0.channelId == ChannelIds.trendyol }.count == 1)

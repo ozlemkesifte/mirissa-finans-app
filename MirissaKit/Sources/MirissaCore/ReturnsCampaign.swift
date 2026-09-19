@@ -83,10 +83,7 @@ public extension Engine {
         var sabit = Double(plannedFixedCosts(month: ay))
         var degiskenSiparisBasi = 0.0
         if let m = temelAy {
-            let r = companyMonth(m)
-            let toplam = r.ortakGiderDegisken
-                + r.channels.reduce(0) { $0 + $1.adsVariable + $1.otherChannelExpensesVariable }
-            degiskenSiparisBasi = Double(max(toplam, 0)) / Double(r.orders)
+            degiskenSiparisBasi = Double(max(satisaBagliAylikGiderler(month: m), 0)) / Double(companyMonth(m).orders)
         } else {
             sabit += Double(satisaBagliAylikGiderler(month: ay))
         }

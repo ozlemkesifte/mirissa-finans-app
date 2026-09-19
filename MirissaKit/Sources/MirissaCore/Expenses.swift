@@ -40,6 +40,29 @@ public struct ExpenseInstance: Identifiable, Hashable, Sendable {
     public var cashAmount: Kurus { nakitTutari ?? (net + inputVat) }
 }
 
+public extension Expense {
+    /// Düzenli gideri `ay`dan itibaren ikiye böler: bu kayıt bir önceki ayda biter, devamı
+    /// (yeni kimlikle, `yeniHali` bilgileriyle) o aydan başlar. O aydan sonraki aya özel tutarlar devama geçer.
+    func bol(ay: MonthKey, yeniHali: Expense) -> (eski: Expense, devam: Expense) {
+        var eski = self
+        var devam = yeniHali
+        devam.id = Ids.make(.expense)
+        devam.date = Dates.dateIn(month: ay, dayOfMonth: Dates.day(of: date))
+        devam.overrides = overrides.filter { $0.key >= ay }
+        devam.devamId = nil
+        eski.overrides = overrides.filter { $0.key < ay }
+        eski.endMonth = Dates.addMonths(ay, -1)
+        eski.devamId = devam.id
+        return (eski, devam)
+    }
+
+    /// Yıllık giderde verilen ayın ait olduğu ödeme ayı (başlangıçtan itibaren her 12 ayda bir).
+    /// O yılın tutarı ve aya özel değişiklikleri bu aya bağlıdır.
+    func yillikOdemeAyi(_ ay: MonthKey) -> MonthKey {
+        Dates.addMonths(startMonth, (max(Dates.monthsBetween(startMonth, ay), 0) / 12) * 12)
+    }
+}
+
 public enum Expenses {
     /// Verilen ay aralığı için tüm gider satırlarını üretir.
     public static func instances(_ s: AppState, from: MonthKey, to: MonthKey) -> [ExpenseInstance] {
@@ -137,8 +160,7 @@ public enum Expenses {
         let payBitisi = e.endMonth.map { son -> MonthKey in
             // Başlamadan durdurulduysa hiç ödenmedi
             if son < start { return Dates.addMonths(start, -1) }
-            let sonOdeme = Dates.addMonths(start, (max(Dates.monthsBetween(start, son), 0) / 12) * 12)
-            return Dates.addMonths(sonOdeme, 11)
+            return Dates.addMonths(e.yillikOdemeAyi(son), 11)
         }
         let hardEnd = payBitisi.map { min($0, to) } ?? to
         guard from <= hardEnd else { return [] }
@@ -146,9 +168,8 @@ public enum Expenses {
         var out: [ExpenseInstance] = []
         var m = max(from, start)
         while m <= hardEnd {
-            let k = Dates.monthsBetween(start, m)
-            let odemeAyi = Dates.addMonths(start, (k / 12) * 12)
-            let sira = k % 12
+            let odemeAyi = e.yillikOdemeAyi(m)
+            let sira = Dates.monthsBetween(odemeAyi, m)
             defer { m = Dates.addMonths(m, 1) }
             let ov = e.overrides[odemeAyi]
             if ov?.skipped == true { continue }
@@ -170,6 +191,12 @@ public enum Expenses {
             if out.count > 2400 { break }
         }
         return out
+    }
+
+    /// Kâra her ay yazılan pay: KDV hariç tutarın 1/n'i, motorla aynı bölme (ilk ayın payı).
+    /// Ekranlardaki "ayda X" açıklamaları bunu kullanır.
+    public static func aylikKarPayi(_ tutar: Kurus, rate: VatRate, included: Bool, aySayisi n: Int) -> Kurus {
+        esitPay(Vat.net(tutar, rate: rate, included: included), max(n, 1), 0)
     }
 
     /// Yıllık tutarın `sira`'ncı ayın payı: eşit bölünür, artan kuruşlar ilk aylara (toplam birebir tutar)

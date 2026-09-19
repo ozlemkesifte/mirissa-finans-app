@@ -128,7 +128,7 @@ struct SatisHakedisListesi: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("E-ticaret stopajı").font(.footnote).foregroundStyle(Palette.ink)
-                        Text("%\(RoasFormat.format(d.stopajOrani ?? 0).replacingOccurrences(of: ",00", with: "")) × KDV hariç satış · gider değil, vergiden düşülür")
+                        Text("\(Money.formatPercentKisa(d.stopajOrani ?? 0)) × KDV hariç satış · gider değil, vergiden düşülür")
                             .font(.caption2).foregroundStyle(Palette.inkFaint)
                     }
                     Spacer(minLength: 8)

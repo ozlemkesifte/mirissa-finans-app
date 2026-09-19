@@ -600,10 +600,10 @@ public extension Validation {
         let kdvNotu = bolum.vat > 0 ? " (KDV hariç)" : ""
         let yayilan = draft.recurrence == .tek ? max(draft.yayilanAy ?? 1, 1) : 1
         if draft.recurrence == .yillik {
-            lines.append("Kâra her ay \(Money.format(Money.roundHalfAwayFromZero(Double(bolum.net) / 12)))\(kdvNotu) "
+            lines.append("Kâra her ay \(Money.format(Expenses.esitPay(bolum.net, 12, 0)))\(kdvNotu) "
                          + "gider (yıllık \(Money.format(bolum.net)) ÷ 12)")
         } else if yayilan > 1 {
-            lines.append("Kâra \(yayilan) ay boyunca her ay \(Money.format(Money.roundHalfAwayFromZero(Double(bolum.net) / Double(yayilan))))\(kdvNotu) gider")
+            lines.append("Kâra \(yayilan) ay boyunca her ay \(Money.format(Expenses.esitPay(bolum.net, yayilan, 0)))\(kdvNotu) gider")
         } else {
             lines.append("\(Money.format(bolum.net)) kâra gider\(kdvNotu)")
         }

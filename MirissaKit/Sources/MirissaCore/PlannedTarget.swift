@@ -149,10 +149,8 @@ public extension Engine {
             case .aylikSabit, .elleAylik: break   // sipariş başına değil
             }
         }
-        func net(_ v: Double) -> Kurus {
-            let k = ch.kesintiKdv(on: date)
-            return Vat.net(Money.roundHalfAwayFromZero(v), rate: k.oran, included: k.dahil)
-        }
+        let k = ch.kesintiKdv(on: date)
+        func net(_ v: Double) -> Kurus { Vat.net(Money.roundHalfAwayFromZero(v), rate: k.oran, included: k.dahil) }
         let toplam = net(komisyonHam) + net(kargoHam) + net(hizmetHam) + net(digerHam)
         let siparisBasi = min(net(kargoHam) + net(hizmetHam) + net(ekSiparisBasi), toplam)
         return ((toplam, siparisBasi), ek.tahmin, ek.eksik)
@@ -165,14 +163,11 @@ public extension Engine {
     func satisKdvOrani(productId: Id, channelId: Id, on date: DateKey,
                        today: DateKey = Dates.today()) -> VatRate {
         let ay = Dates.month(of: date)
-        let sonSatis = state.sales
-            .filter { $0.productId == productId && $0.channelId == channelId && $0.month <= ay }
-            .max { $0.month < $1.month }
-        let urunOrani = state.settings.vatEnabled ? productsById[productId]?.kdvOrani : nil
-        let gecmis = ay < Dates.month(of: today)
-        if gecmis, let o = sonSatis?.vatRate { return o }
-        if let o = urunOrani { return o }
-        return sonSatis?.vatRate
+        // O aya kadarki son satışın oranı (ürün + kanal başına, aya göre sıralı dizinden)
+        let sonOran = satisKdvDizini["\(productId)|\(channelId)"]?.last { $0.ay <= ay }?.oran
+        if ay < Dates.month(of: today), let o = sonOran { return o }
+        return (state.settings.vatEnabled ? productsById[productId]?.kdvOrani : nil)
+            ?? sonOran
             ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok)
     }
 
@@ -180,10 +175,7 @@ public extension Engine {
     /// Varsayılan 1; "komisyon KDV hariç fiyattan" seçiliyse (1 + kesinti KDV'si) / (1 + satış KDV'si).
     func komisyonTabanCarpani(_ ch: Channel, on date: DateKey, satisKdv: VatRate) -> Double {
         guard ch.komisyonKdvHaric(on: date) else { return 1 }
-        let satis = 1 + Double(satisKdv.rawValue) / 100
-        let k = ch.kesintiKdv(on: date)
-        let kesinti = k.dahil ? 1 + Double(k.oran.rawValue) / 100 : 1
-        return kesinti / satis
+        return ch.kesintiKdvCarpani(on: date) / (1 + satisKdv.multiplier)
     }
 
     /// Bu kanalda bir siparişte ortalama kaç ürün çıkıyor.
@@ -323,7 +315,6 @@ public extension Engine {
         // 2) Kullanıcının onayladığı yaklaşık dağılım.
         //    Bir SKU o kanalda satılmıyorsa dağılıma girmez.
         if let mix = state.settings.salesMix, mix.confirmed {
-            let gun = Dates.monthEnd(month)
             let hepsi = mix.agirliklar(state: state)
             // Yalnızca kullanıcının açıkça "bu kanalda şunları satıyorum"
             // dediği liste süzer. Fiyatı henüz girilmemiş bir SKU dağılımdan

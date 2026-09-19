@@ -483,7 +483,7 @@ struct SaleFlow: View {
                 returnsAmount: iadeTutarlari[i],
                 returnsQty: iadeAdetleri[i],
                 returnsRestock: iadeSatilabilir,
-                vatRate: store.state.satisKdvOrani(satir.urunId),
+                vatRate: store.state.varsayilanSatisKdvOrani(satir.urunId),
                 vatIncluded: store.state.settings.defaultVatIncluded
             )
         }

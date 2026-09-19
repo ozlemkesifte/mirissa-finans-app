@@ -250,21 +250,13 @@ public enum RaporIceAktarma {
         public var iadeEklenecek: [SalesEntry] = []
     }
 
-    /// Kalemleri ay × ürün satışlarına ve ay kayıtlarına (sipariş sayısı, 3+ ürünlü sipariş) çevirir.
-    /// `eslesme`: rapor ürün anahtarı → uygulama ürünü (nil = atla).
-    public static func donustur(_ kalemler: [Kalem], kanalId: Id, eslesme: [String: Id],
-                                mevcutAylar: [ChannelMonth], kdvOrani: VatRate?) -> Sonuc {
-        donustur(kalemler, kanalId: kanalId, eslesme: eslesme, mevcutAylar: mevcutAylar,
-                 urunKdvOrani: { _ in kdvOrani })
-    }
-
     /// Kanal-ay kayıtları; satışı silinmiş ayın "aktarılmış sipariş" listesi yok sayılır
     /// (satışları elle silinen ay yeniden aktarılabilsin)
     public static func satisiOlanAylar(_ s: AppState, kanalId: Id) -> [ChannelMonth] {
-        s.channelMonths.map { cm in
+        let satisliAylar = Set(s.sales.filter { $0.channelId == kanalId }.map(\.month))
+        return s.channelMonths.map { cm in
             var c = cm
-            if cm.channelId == kanalId,
-               !s.sales.contains(where: { $0.channelId == kanalId && $0.month == cm.month }) {
+            if cm.channelId == kanalId, !satisliAylar.contains(cm.month) {
                 c.iceAktarilanSiparisler = nil
                 c.iadesiAlinanSiparisler = nil
             }
@@ -272,6 +264,8 @@ public enum RaporIceAktarma {
         }
     }
 
+    /// Kalemleri ay × ürün satışlarına ve ay kayıtlarına (sipariş sayısı, 3+ ürünlü sipariş) çevirir.
+    /// `eslesme`: rapor ürün anahtarı → uygulama ürünü (nil = atla).
     /// `urunKdvOrani`: ürünün satış KDV oranı (ürüne özel oran ya da varsayılan; KDV kapalıysa nil)
     public static func donustur(_ kalemler: [Kalem], kanalId: Id, eslesme: [String: Id],
                                 mevcutAylar: [ChannelMonth], urunKdvOrani: (Id) -> VatRate?) -> Sonuc {
@@ -279,77 +273,81 @@ public enum RaporIceAktarma {
         let iptal = Set(kalemler.filter(\.iptal).map(\.siparisNo)).count
         var atlanan = 0
         struct Anahtar: Hashable { var ay: MonthKey; var urun: Id }
-        var toplam: [Anahtar: (adet: Double, tutar: Kurus, indirim: Kurus)] = [:]
-        var iadeToplam: [Anahtar: (adet: Double, tutar: Kurus)] = [:]
-        var sonradanIade: [Anahtar: (adet: Double, tutar: Kurus)] = [:]
+        struct Toplam {
+            var adet = 0.0, tutar: Kurus = 0, indirim: Kurus = 0
+            /// İadede müşterinin ödediği (indirim düşülmüş) tutar toplanır
+            mutating func ekle(_ k: Kalem, odenen: Bool = false) {
+                adet += k.adet
+                if odenen { tutar += max(k.tutar - k.indirim, 0) } else { tutar += k.tutar; indirim += k.indirim }
+            }
+        }
+        var toplam: [Anahtar: Toplam] = [:]
+        var iadeToplam: [Anahtar: Toplam] = [:]
+        var sonradanIade: [Anahtar: Toplam] = [:]
+        var geri: [Anahtar: Toplam] = [:]
         var iadesiAlinan: [MonthKey: Set<String>] = [:]
         var siparisAdet: [MonthKey: [String: Double]] = [:]
-        func mevcut(_ ay: MonthKey) -> ChannelMonth? {
-            mevcutAylar.first { $0.month == ay && $0.channelId == kanalId }
+        var iptalEdilen: [MonthKey: [String: Double]] = [:]
+        let mevcutlar = Dictionary(mevcutAylar.filter { $0.channelId == kanalId }.map { ($0.month, $0) },
+                                   uniquingKeysWith: { a, _ in a })
+        // Ay başına daha önce aktarılmış / iadesi alınmış siparişler (her ay bir kez kurulur)
+        var alinmisCache: [MonthKey: Set<String>] = [:], iadeCache: [MonthKey: Set<String>] = [:]
+        func alinmis(_ ay: MonthKey) -> Set<String> {
+            if let c = alinmisCache[ay] { return c }
+            let c = Set(mevcutlar[ay]?.iceAktarilanSiparisler ?? []); alinmisCache[ay] = c; return c
         }
-        var onceki: [MonthKey: Set<String>] = [:]
+        func oncekiIade(_ ay: MonthKey) -> Set<String> {
+            if let c = iadeCache[ay] { return c }
+            let c = Set(mevcutlar[ay]?.iadesiAlinanSiparisler ?? []); iadeCache[ay] = c; return c
+        }
         var tekrar = Set<String>()
         for k in gecerli {
             guard let urun = eslesme[k.urunAnahtari] else { atlanan += 1; continue }
             let ay = Dates.month(of: k.tarih)
-            let alinmis = onceki[ay] ?? Set(mevcut(ay)?.iceAktarilanSiparisler ?? [])
-            onceki[ay] = alinmis
             let a = Anahtar(ay: ay, urun: urun)
-            let oncekiIade = Set(mevcut(ay)?.iadesiAlinanSiparisler ?? [])
             // Bu sipariş daha önce aktarıldı: tekrar sayılmaz; o zamandan beri iade edildiyse iadesi eklenir
-            if alinmis.contains(k.siparisNo) {
+            if alinmis(ay).contains(k.siparisNo) {
                 tekrar.insert(k.siparisNo)
-                if k.iade, !oncekiIade.contains(k.siparisNo) {
-                    var r = sonradanIade[a] ?? (0, 0)
-                    r.adet += k.adet; r.tutar += max(k.tutar - k.indirim, 0)
-                    sonradanIade[a] = r
+                if k.iade, !oncekiIade(ay).contains(k.siparisNo) {
+                    sonradanIade[a, default: Toplam()].ekle(k, odenen: true)
                     iadesiAlinan[ay, default: []].insert(k.siparisNo)
                 }
                 continue
             }
             if k.iade {
-                var r = iadeToplam[a] ?? (0, 0)
-                r.adet += k.adet; r.tutar += max(k.tutar - k.indirim, 0)
-                iadeToplam[a] = r
+                iadeToplam[a, default: Toplam()].ekle(k, odenen: true)
                 iadesiAlinan[ay, default: []].insert(k.siparisNo)
             }
-            var t = toplam[a] ?? (0, 0, 0)
-            t.adet += k.adet; t.tutar += k.tutar; t.indirim += k.indirim
-            toplam[a] = t
+            toplam[a, default: Toplam()].ekle(k)
             siparisAdet[ay, default: [:]][k.siparisNo, default: 0] += k.adet
         }
-        // Önceki aktarımda alınmış ama bu raporda iptal/iade görünen siparişler geri alınır
-        var geri: [Anahtar: (adet: Double, tutar: Kurus, indirim: Kurus)] = [:]
-        var iptalEdilen: [MonthKey: [String: Double]] = [:]
+        // Önceki aktarımda alınmış ama bu raporda iptal görünen siparişler geri alınır
         for k in kalemler where k.iptal {
             guard let urun = eslesme[k.urunAnahtari] else { continue }
             let ay = Dates.month(of: k.tarih)
-            guard Set(mevcut(ay)?.iceAktarilanSiparisler ?? []).contains(k.siparisNo) else { continue }
-            let a = Anahtar(ay: ay, urun: urun)
-            var t = geri[a] ?? (0, 0, 0)
-            t.adet += k.adet; t.tutar += k.tutar; t.indirim += k.indirim
-            geri[a] = t
+            guard alinmis(ay).contains(k.siparisNo) else { continue }
+            geri[Anahtar(ay: ay, urun: urun), default: Toplam()].ekle(k)
             iptalEdilen[ay, default: [:]][k.siparisNo, default: 0] += k.adet
         }
-        let satislar = toplam.keys.sorted { ($0.ay, $0.urun) < ($1.ay, $1.urun) }.map { a -> SalesEntry in
-            let t = toplam[a]!
+        func satirlar(_ d: [Anahtar: Toplam], _ yap: (Anahtar, Toplam) -> SalesEntry) -> [SalesEntry] {
+            d.keys.sorted { ($0.ay, $0.urun) < ($1.ay, $1.urun) }.map { yap($0, d[$0]!) }
+        }
+        let satislar = satirlar(toplam) { a, t in
             let r = iadeToplam[a]
             return SalesEntry(month: a.ay, channelId: kanalId, productId: a.urun, qty: t.adet,
                               grossSales: t.tutar, discount: min(t.indirim, t.tutar),
                               returnsAmount: r?.tutar ?? 0, returnsQty: r?.adet ?? 0,
                               vatRate: urunKdvOrani(a.urun), vatIncluded: true)
         }
-        let iadeEklenecek = sonradanIade.keys.sorted { ($0.ay, $0.urun) < ($1.ay, $1.urun) }.map { a -> SalesEntry in
-            let r = sonradanIade[a]!
-            return SalesEntry(month: a.ay, channelId: kanalId, productId: a.urun, qty: 0, grossSales: 0,
-                              returnsAmount: r.tutar, returnsQty: r.adet,
-                              vatRate: urunKdvOrani(a.urun), vatIncluded: true)
+        let iadeEklenecek = satirlar(sonradanIade) { a, r in
+            SalesEntry(month: a.ay, channelId: kanalId, productId: a.urun, qty: 0, grossSales: 0,
+                       returnsAmount: r.tutar, returnsQty: r.adet,
+                       vatRate: urunKdvOrani(a.urun), vatIncluded: true)
         }
-        let geriAlinacak = geri.keys.sorted { ($0.ay, $0.urun) < ($1.ay, $1.urun) }.map { a -> SalesEntry in
-            let t = geri[a]!
-            return SalesEntry(month: a.ay, channelId: kanalId, productId: a.urun, qty: t.adet,
-                              grossSales: t.tutar, discount: min(t.indirim, t.tutar),
-                              vatRate: urunKdvOrani(a.urun), vatIncluded: true)
+        let geriAlinacak = satirlar(geri) { a, t in
+            SalesEntry(month: a.ay, channelId: kanalId, productId: a.urun, qty: t.adet,
+                       grossSales: t.tutar, discount: min(t.indirim, t.tutar),
+                       vatRate: urunKdvOrani(a.urun), vatIncluded: true)
         }
         var aylar: [ChannelMonth] = []
         var eklenen: [MonthKey] = []
@@ -358,7 +356,7 @@ public enum RaporIceAktarma {
         for ay in degisenAylar {
             let siparisler = siparisAdet[ay] ?? [:]
             let iptaller = iptalEdilen[ay] ?? [:]
-            var cm = mevcut(ay) ?? ChannelMonth(month: ay, channelId: kanalId)
+            var cm = mevcutlar[ay] ?? ChannelMonth(month: ay, channelId: kanalId)
             let buyuk = siparisler.values.filter(buyukMu).count
             let alinmis = cm.iceAktarilanSiparisler ?? []
             if alinmis.isEmpty {

@@ -298,7 +298,9 @@ public extension AppState {
     func material(_ id: Id) -> StockMaterial? { materials.first { $0.id == id } }
     func product(_ id: Id) -> Product? { products.first { $0.id == id } }
     /// Ürünün satış KDV oranı: ürüne özel oran, yoksa ayarlardaki varsayılan. KDV kapalıysa nil.
-    func satisKdvOrani(_ productId: Id) -> VatRate? {
+    /// Yeni satış girişinde önerilen KDV: ürüne özel oran, yoksa ayarlardaki varsayılan (KDV kapalıysa nil).
+    /// Motorun geçmiş satışlara da bakan `satisKdvOrani(productId:channelId:on:)` kuralından ayrıdır.
+    func varsayilanSatisKdvOrani(_ productId: Id) -> VatRate? {
         guard settings.vatEnabled else { return nil }
         return product(productId)?.kdvOrani ?? settings.defaultVatRate
     }

@@ -554,8 +554,7 @@ public extension Engine {
             let ek = o.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
                 .reduce(0.0) { $0 + $1.value }
             let ham = o.platformFeeMonthly + o.otherDeductionMonthly + Money.roundHalfAwayFromZero(ek)
-            let kkdv = ch.kesintiKdv(on: Dates.monthEnd(month))
-            toplam += Vat.net(ham, rate: kkdv.oran, included: kkdv.dahil)
+            toplam += ch.kesintiSplit(ham, on: Dates.monthEnd(month)).net
         }
         return toplam
     }
