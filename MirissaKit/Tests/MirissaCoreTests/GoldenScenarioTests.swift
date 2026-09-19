@@ -209,8 +209,11 @@ struct GoldenScenarioTests {
         // sabit gideri ve satışı olmayan Oca–Ağu 0. Yıllık = 4 × 20 = 80
         #expect(basaBas?.ordersPerYear == 80)
         #expect(basaBas?.aylik == ["2026-09": 20, "2026-10": 20, "2026-11": 20, "2026-12": 20])
-        #expect(basaBas?.ordersPerMonth == 20)          // en yoğun ay
-        #expect(basaBas?.ordersPerDay == 1)             // ceil(20/30)
+        // Yıl geneli ortalama: ceil(80/12) = 7, ceil(80/365) = 1
+        #expect(basaBas?.ordersPerMonth == 7)
+        #expect(basaBas?.ordersPerDay == 1)
+        #expect(basaBas?.aktifAyOrtalamasi == 20)       // 80 / 4 aktif ay
+        #expect(basaBas?.enYogunAy?.siparis == 20)
     }
 
     /// Yıllık kâr hedefleri de aynı katkıyla hesaplanır
@@ -224,8 +227,13 @@ struct GoldenScenarioTests {
         // (Eski tek-katkılı formül ceil(54.000.000 / 50.088,2353) = 1079 veriyordu; fark ay ay yukarı yuvarlamadan)
         #expect(ozel?.ordersPerYear == 1080)
         #expect(ozel?.aylikAralik == 270...270)
-        #expect(ozel?.ordersPerMonth == 270)            // en yoğun ay
-        #expect(ozel?.ordersPerDay == 9)                // Eylül: ceil(270/30)
+        // Yıl geneli ortalama: ceil(1080/12) = 90, ceil(1080/365) = 3 — en yoğun ay değil
+        #expect(ozel?.ordersPerMonth == 90)
+        #expect(ozel?.ordersPerDay == 3)
+        #expect(ozel?.aktifAyOrtalamasi == 270)         // 1080 / 4 aktif ay
+        // En yoğun ay ayrı bilgi: Eylül 270 kargo, ceil(270/30) = 9 günde
+        #expect(ozel?.enYogunAy?.siparis == 270)
+        #expect(ozel?.enYogunAy?.gunluk == 9)
     }
 
     // MARK: 8 — Grafik rapor motoruyla aynı

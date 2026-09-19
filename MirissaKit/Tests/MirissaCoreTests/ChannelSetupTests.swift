@@ -256,7 +256,8 @@ struct YearlyPlanTests {
         let be = try? #require(plan.targets.first { $0.isBreakeven })
         #expect(be?.ordersPerYear ?? 0 > 0)
         #expect(be!.ordersPerYear == be!.aylik.values.reduce(0, +))
-        #expect(be!.ordersPerMonth == (be!.aylik.values.max() ?? 0))
+        #expect(be!.ordersPerMonth == Int(ceil(Double(be!.ordersPerYear) / 12)))
+        #expect(be!.ordersPerDay == Int(ceil(Double(be!.ordersPerYear) / 365)))
     }
 
     @Test func yillikSabitGiderOnIkiAyinToplami() {

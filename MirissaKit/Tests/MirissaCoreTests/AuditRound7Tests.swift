@@ -105,9 +105,16 @@ struct AuditRound7Tests {
         // Eki–Ara ceil(80.000 / 800) = 100; Ağustos satışlı ama sabit gidersiz: 0 (aralığa girmez)
         #expect(be.aylik["2026-08"] == 0)
         #expect(be.aylikAralik == 100...100)
-        #expect(be.ordersPerMonth == 100)
-        #expect(be.ordersPerDay == 4)          // Kasım: ceil(100 / 30)
         #expect(be.ordersPerYear == 300)
+        // Ana ekran yıl geneli ortalamayı gösterir: ceil(300/12) = 25, ceil(300/365) = 1
+        #expect(be.ordersPerMonth == 25)
+        #expect(be.ordersPerDay == 1)
+        // Aktif ay ortalaması ayrı: 300 / 4 aktif ay (Ağu–Ara; Ağustos satışlı) = 75
+        #expect(be.aktifAySayisi == 4)
+        #expect(be.aktifAyOrtalamasi == 75)
+        // En yoğun ay ayrı operasyon bilgisi: Ekim 100 kargo, ceil(100 / 31) = 4 günde
+        #expect(be.enYogunAy?.siparis == 100)
+        #expect(be.enYogunAy?.gunluk == 4)
     }
 
     // MARK: 2 — Olağandışı gerçekleşme oranı
@@ -356,14 +363,37 @@ struct AuditRound7Tests {
         #expect(Engine(s).companyMonth("2026-08").maliyetiDegisenUrunler == ["Şampuan"])
     }
 
-    @Test func kucukOrtalamaMaliyetOynamasiUyariUretmez() {
+    @Test func kucukYuzdeliMaliyetDegisimiDeYaklasikDenir() {
         var s = Fx.base()
         s.settings.vatEnabled = false
         s.products[0].recipe = []
         s.addPurchase("p1", "2026-07-01", .product(Fx.sampuanId), qty: 100, paid: tl(1_000))
         s.addPurchase("p2", "2026-08-20", .product(Fx.sampuanId), qty: 100, paid: tl(1_010))
         s.addSale("a", "2026-08", channel: ChannelIds.trendyol, product: Fx.sampuanId, qty: 10, gross: tl(1_000))
-        // 10,00 → 10,05 TL (%0,5): yaklaşık denmez
+        // 10,00 → 10,05 TL (%0,5): gizli yüzde eşiği yok, yaklaşık denir
+        let r = Engine(s).companyMonth("2026-08")
+        #expect(r.maliyetiDegisenUrunler == ["Şampuan"])
+        #expect(r.maliyetDegisimUyarisi?.contains("satışlar aylık toplam girildiği için kârlılık yaklaşık hesaplanmıştır") == true)
+    }
+
+    @Test func kucukYuzdeliMaliyetKaleminde() {
+        var s = yillikDurum()
+        s.products[0].costLines = [
+            CostLine(id: "c1", label: "Üretim", amount: tl(200), validTo: "2026-08-14"),
+            CostLine(id: "c2", label: "Üretim", amount: 20_001, validFrom: "2026-08-15"),
+        ]
+        // 200,00 → 200,01 TL (%0,005): yine yaklaşık
+        #expect(Engine(s).companyMonth("2026-08").maliyetiDegisenUrunler == ["Şampuan"])
+    }
+
+    @Test func kurusAltiOrtalamaFarkiUyariUretmez() {
+        var s = Fx.base()
+        s.settings.vatEnabled = false
+        s.products[0].recipe = []
+        s.addPurchase("p1", "2026-07-01", .product(Fx.sampuanId), qty: 100, paid: tl(1_000))
+        // Birim 10,00 TL → ortalama 1.000,04 kuruş: kuruşa yuvarlanınca aynı (teknik fark)
+        s.addPurchase("p2", "2026-08-20", .product(Fx.sampuanId), qty: 100, paid: tl(1_000) + 8)
+        s.addSale("a", "2026-08", channel: ChannelIds.trendyol, product: Fx.sampuanId, qty: 10, gross: tl(1_000))
         #expect(Engine(s).companyMonth("2026-08").maliyetiDegisenUrunler.isEmpty)
     }
 

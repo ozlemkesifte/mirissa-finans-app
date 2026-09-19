@@ -95,17 +95,25 @@ struct YearlyCard: View {
                 .foregroundStyle(Palette.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text(aylikYazi(t) + " · en yoğun ayda günde \(t.ordersPerDay)")
+            Text("Yıl geneli ortalama: ≈ \(t.ordersPerMonth) kargo / ay · ≈ \(t.ordersPerDay) kargo / gün")
                 .font(.footnote)
                 .foregroundStyle(Palette.uyari)
+                .fixedSize(horizontal: false, vertical: true)
+            if let a = t.aktifAyOrtalamasi {
+                Text("Aktif ay ortalaması: \(a) kargo / aktif ay (\(t.aktifAySayisi) ay)")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Ortalama değil, operasyon bilgisi: ayrı etiketlenir
+            if let y = t.enYogunAy, y.siparis > t.ordersPerMonth {
+                Text("En yoğun ay hedefi (\(Dates.displayMonth(y.ay))): \(y.siparis) kargo / yaklaşık \(y.gunluk) kargo gün")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Her ayın hedefi kendi fiyat ve maliyetleriyle hesaplandığı için aylar farklı olabilir
-    private func aylikYazi(_ t: YearlyTarget) -> String {
-        guard let r = t.aylikAralik else { return "ayda \(t.ordersPerMonth)" }
-        return r.lowerBound == r.upperBound ? "ayda \(r.lowerBound)" : "ayda \(r.lowerBound)–\(r.upperBound)"
     }
 
     @ViewBuilder

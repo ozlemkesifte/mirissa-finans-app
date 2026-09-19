@@ -212,8 +212,8 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
     public var maliyetDegisimUyarisi: String? {
         let u = maliyetiDegisenUrunler
         guard !u.isEmpty else { return nil }
-        return "Bu ay maliyet değişti (\(u.joined(separator: ", "))); kârlılık yaklaşık hesaplanmıştır. "
-            + "Ayın bütün satışı ay sonu maliyetiyle hesaplandı."
+        return "Bu ay maliyet değişti (\(u.joined(separator: ", "))); satışlar aylık toplam girildiği için "
+            + "kârlılık yaklaşık hesaplanmıştır. Ayın bütün satışı ay sonu maliyetiyle hesaplandı."
     }
 
     /// Satışlardan doğan KDV

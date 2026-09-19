@@ -640,9 +640,9 @@ public struct YearlyTarget: Hashable, Sendable, Identifiable {
     public var isBreakeven: Bool
     public var isCustom: Bool
     public var ordersPerYear: Int
-    /// En yoğun ayın hedefi (her ay kendi katkısıyla)
+    /// Yıl geneli aylık ortalama: yıllık hedef ÷ 12, yukarı yuvarlanır
     public var ordersPerMonth: Int
-    /// En yoğun ayda günde gereken sipariş: o ayın hedefi ÷ o ayın gün sayısı, yukarı yuvarlanır
+    /// Yıl geneli günlük ortalama: yıllık hedef ÷ 365 (artık yılda 366), yukarı yuvarlanır
     public var ordersPerDay: Int
     public var revenue: Kurus
     /// Ay ay gereken sipariş (yalnızca faaliyetteki aylar); yıllık hedef bunların toplamıdır
@@ -653,6 +653,22 @@ public struct YearlyTarget: Hashable, Sendable, Identifiable {
         let v = aylik.values.filter { $0 > 0 }
         guard let a = v.min(), let b = v.max() else { return nil }
         return a...b
+    }
+
+    /// Faaliyetteki ay sayısı (sabit gideri ya da satışı olan aylar)
+    public var aktifAySayisi: Int { aylik.count }
+
+    /// Yalnızca yılın bir kısmında faaliyet varsa: yıllık hedef ÷ faaliyetteki ay sayısı, yukarı yuvarlanır
+    public var aktifAyOrtalamasi: Int? {
+        guard aktifAySayisi > 0, aktifAySayisi < 12 else { return nil }
+        return Int(ceil(Double(ordersPerYear) / Double(aktifAySayisi)))
+    }
+
+    /// Operasyon bilgisi (ortalama değildir): en yoğun ayın hedefi
+    public var enYogunAy: (ay: MonthKey, siparis: Int, gunluk: Int)? {
+        guard let (ay, n) = aylik.max(by: { ($0.value, $1.key) < ($1.value, $0.key) }), n > 0 else { return nil }
+        let gun = Dates.daysInMonth(year: Dates.year(of: ay), month: Dates.monthNumber(of: ay))
+        return (ay, n, Int(ceil(Double(n) / Double(gun))))
     }
 
     public var id: String { "\(targetProfit)-\(isCustom)" }
@@ -784,7 +800,6 @@ public extension Engine {
         func hedef(_ label: String, kar: Kurus, breakeven: Bool, custom: Bool) -> YearlyTarget? {
             let ayKari = Double(kar) / Double(aktif.count)
             var aylik: [MonthKey: Int] = [:]
-            var gunluk = 0
             var ciro = 0.0
             for i in aktif {
                 let p = planlar[i]
@@ -792,7 +807,6 @@ public extension Engine {
                 guard gereken.isFinite, gereken < 1_000_000 else { return nil }
                 let n = Int(ceil(max(gereken, 0)))
                 aylik[p.month] = n
-                gunluk = max(gunluk, Int(ceil(Double(n) / Double(p.daysInMonth))))
                 ciro += Double(n) * p.revenuePerOrder
             }
             let yillik = aylik.values.reduce(0, +)
@@ -800,8 +814,8 @@ public extension Engine {
                 label: label, targetProfit: kar,
                 isBreakeven: breakeven, isCustom: custom,
                 ordersPerYear: yillik,
-                ordersPerMonth: aylik.values.max() ?? 0,
-                ordersPerDay: gunluk,
+                ordersPerMonth: Int(ceil(Double(yillik) / 12)),
+                ordersPerDay: Int(ceil(Double(yillik) / Double(Dates.isLeap(y) ? 366 : 365))),
                 revenue: Money.roundHalfAwayFromZero(ciro),
                 aylik: aylik
             )

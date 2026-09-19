@@ -255,7 +255,7 @@ struct PlannedTargetTests {
         let basaBas = plan.targets.first { $0.isBreakeven }
         #expect((basaBas?.ordersPerYear ?? 0) > 0)
         #expect(basaBas?.ordersPerYear == basaBas?.aylik.values.reduce(0, +))
-        #expect(basaBas?.ordersPerMonth == basaBas?.aylik.values.max())
+        #expect(basaBas?.ordersPerMonth == Int(ceil(Double(basaBas!.ordersPerYear) / 12)))
         #expect(plan.missing.isEmpty)
     }
 
