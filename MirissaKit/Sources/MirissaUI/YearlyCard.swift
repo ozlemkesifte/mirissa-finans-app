@@ -59,7 +59,7 @@ struct YearlyCard: View {
                         }
                     }
                     if p.isApproximate {
-                        Text("Yaklaşık. Kanal ve ürün karışımının gerçek ortalaması kullanıldı.")
+                        Text("Yaklaşık. Her ay, o ayda geçerli fiyat ve maliyetlerle ayrı hesaplandı; yıllık hedef ayların toplamı.")
                             .font(.caption)
                             .foregroundStyle(Palette.inkFaint)
                             .fixedSize(horizontal: false, vertical: true)
@@ -95,11 +95,17 @@ struct YearlyCard: View {
                 .foregroundStyle(Palette.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text("≈ ayda \(t.ordersPerMonth) · günde \(t.ordersPerDay)")
+            Text(aylikYazi(t) + " · en yoğun ayda günde \(t.ordersPerDay)")
                 .font(.footnote)
                 .foregroundStyle(Palette.uyari)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Her ayın hedefi kendi fiyat ve maliyetleriyle hesaplandığı için aylar farklı olabilir
+    private func aylikYazi(_ t: YearlyTarget) -> String {
+        guard let r = t.aylikAralik else { return "ayda \(t.ordersPerMonth)" }
+        return r.lowerBound == r.upperBound ? "ayda \(r.lowerBound)" : "ayda \(r.lowerBound)–\(r.upperBound)"
     }
 
     @ViewBuilder

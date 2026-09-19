@@ -84,6 +84,13 @@ struct ReklamHedefiBolumu: View {
                       renk: Palette.uyari, zemin: Palette.uyariYumusak)
             }
 
+            let olagandisi = e.olagandisiGerceklesmeler(month: month)
+            if !olagandisi.isEmpty {
+                uyari("\(AdTarget.olagandisiMetni) \(olagandisi.joined(separator: ", ")): temel alınan ayın satış tutarı "
+                      + "liste fiyatıyla uyuşmuyor. Satış tutarını ve adedini kontrol et.",
+                      renk: Palette.zarar, zemin: Palette.zararYumusak)
+            }
+
             birakSorusu
 
             if let k = karisik ?? (liste.count == 1 ? liste.first : nil) {
@@ -94,6 +101,8 @@ struct ReklamHedefiBolumu: View {
                 } else {
                     cumle("Ortak hedef, maliyeti girilmemiş ürünler yüzünden şu an hesaplanamıyor.")
                 }
+            } else if !olagandisi.isEmpty {
+                cumle("Ortak hedef, olağandışı gerçekleşme oranı yüzünden hesaplanamıyor.")
             } else {
                 Text("Hangi üründen ne kadar sattığın belli olmadığı için tek bir ortak hedef çıkaramıyorum. "
                      + "Aşağıda her ürünün kendi hedefi var.")
@@ -166,7 +175,9 @@ struct ReklamHedefiBolumu: View {
                 .tracking(0.4)
                 .foregroundStyle(Palette.inkFaint)
 
-            if k.reklamsizZarar {
+            if k.gerceklesmeOlagandisi {
+                uyari(AdTarget.olagandisiMetni, renk: Palette.zarar, zemin: Palette.zararYumusak)
+            } else if k.reklamsizZarar {
                 uyari("Bir sipariş ortalama \(Money.format(k.orderValue)). Reklam olmadan bile her siparişte "
                       + "\(Money.format(-k.beforeAds)) zarar ediliyor. Bu durumda reklam zararı büyütür. "
                       + "Önce fiyatı ya da maliyetleri düzeltmek gerekir.",
@@ -181,14 +192,14 @@ struct ReklamHedefiBolumu: View {
                       + "Bir siparişe \(Money.format(k.beforeAds)) üstünde reklam harcanırsa zarar başlar.")
 
                 if let birak, birak > 0 {
-                    if let hedef = k.targetROAS {
+                    if let hedef = k.targetROAS, let cpa = k.gecerliMaxCPA {
                         buyukSatir("Hedef", "ROAS \(RoasFormat.format(hedef))", renk: Palette.kar)
-                        buyukSatir("Sipariş başı en fazla", Money.format(k.maxCPA), renk: Palette.kar)
+                        buyukSatir("Sipariş başı en fazla", Money.format(cpa), renk: Palette.kar)
                         cumle("Her siparişte \(Money.format(birak)) kalması için \(panel(k, tek: tek)) ROAS en az "
                               + "\(RoasFormat.format(hedef)) olmalı. Başka bir deyişle sipariş (satın alma) başına "
-                              + "reklam maliyeti \(Money.format(k.maxCPA)) tutarını geçmemeli.")
+                              + "reklam maliyeti \(Money.format(cpa)) tutarını geçmemeli.")
                     } else {
-                        uyari("Seçtiğin \(Money.format(birak)) bu siparişlerde kalamaz: reklamdan önce "
+                        uyari("\(AdTarget.hedefMumkunDegil) Seçtiğin \(Money.format(birak)) bu siparişlerde kalamaz: reklamdan önce "
                               + "zaten \(Money.format(k.beforeAds)) kalıyor. Daha düşük bir tutar seç "
                               + "ya da fiyatı gözden geçir.",
                               renk: Palette.uyari, zemin: Palette.uyariYumusak)
@@ -207,7 +218,7 @@ struct ReklamHedefiBolumu: View {
 
     @ViewBuilder
     private func butceBolumu(_ e: Engine, hedef k: AdTarget) -> some View {
-        if !k.reklamsizZarar, k.maxCPA > 0 {
+        if !k.reklamsizZarar, k.gecerliMaxCPA != nil {
             let harcanan = e.adPerformance(month: month).adSpend
             VStack(alignment: .leading, spacing: 8) {
                 Divider().overlay(Palette.separator)
@@ -271,6 +282,9 @@ struct ReklamHedefiBolumu: View {
                         uyari("Zarar sınırının üstündesin ama hedef olan \(RoasFormat.format(h))'e ulaşmadın. "
                               + "Reklam zarar ettirmiyor, ama istediğin kadar da bırakmıyor.",
                               renk: Palette.uyari, zemin: Palette.uyariYumusak)
+                    } else if k.hedefiKaldirmiyor {
+                        uyari("Zarar sınırının üstündesin. \(AdTarget.hedefMumkunDegil)",
+                              renk: Palette.uyari, zemin: Palette.uyariYumusak)
                     } else {
                         uyari("Zarar sınırının üstündesin. Hedef seçersen hedefe göre de söylerim.",
                               renk: Palette.kar, zemin: Palette.karYumusak)
@@ -324,16 +338,18 @@ struct ReklamHedefiBolumu: View {
         if !t.missingCostProducts.isEmpty {
             return "Maliyeti girilmediği için hesaplanamıyor: \(t.missingCostProducts.joined(separator: ", "))"
         }
+        if t.gerceklesmeOlagandisi { return AdTarget.olagandisiMetni }
         guard let bb = t.breakevenROAS else {
-            return "Reklamsız bile siparişte \(Money.format(-t.beforeAds)) zarar. Reklam verme."
+            return t.reklamsizZarar ? "Reklamsız bile siparişte \(Money.format(-t.beforeAds)) zarar. Reklam verme."
+                : "Sipariş değeri girilmemiş; ROAS hesaplanamıyor."
         }
         var s = "Sipariş \(Money.format(t.orderValue))"
         if t.unitsPerOrder > 1.001 { s += " (ort. \(adetMetni(t.unitsPerOrder)) ürün)" }
         s += " · zarar sınırı ROAS \(RoasFormat.format(bb))"
-        if let h = t.targetROAS, let birak, birak > 0 {
-            s += " · hedef ROAS \(RoasFormat.format(h)) · siparişe en fazla \(Money.format(t.maxCPA)) reklam"
+        if let h = t.targetROAS, let cpa = t.gecerliMaxCPA, let birak, birak > 0 {
+            s += " · hedef ROAS \(RoasFormat.format(h)) · siparişe en fazla \(Money.format(cpa)) reklam"
         } else if t.hedefiKaldirmiyor {
-            s += " · seçtiğin tutarı bırakamaz, en fazla \(Money.format(t.beforeAds)) kalıyor"
+            s += " · \(AdTarget.hedefMumkunDegil) En fazla \(Money.format(t.beforeAds)) kalıyor"
         } else {
             s += " · siparişe en fazla \(Money.format(t.beforeAds)) reklam"
         }

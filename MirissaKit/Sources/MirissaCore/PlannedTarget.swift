@@ -229,9 +229,12 @@ public extension Engine {
                                            channelId: a.channelId, on: gun) else { continue }
             // Geçmiş aydan geliyorsa gerçekte satılan fiyat esas alınır:
             // indirim ve iadeler liste fiyatını olduğundan iyi gösterir.
-            let oran = temelAy.map {
-                gerceklesmeOrani(channelId: a.channelId, productId: a.productId, month: $0)
-            } ?? 1
+            var oran = 1.0
+            if let temelAy {
+                // Olağandışı oranda 1 varsayılmaz: karışık hedef hesaplanamaz
+                guard let o = gerceklesmeOrani(channelId: a.channelId, productId: a.productId, month: temelAy) else { return nil }
+                oran = o
+            }
             // Yüzdeye bağlı kesintiler fiyatla birlikte küçülür, sipariş başı olanlar küçülmez
             let yuzdeKesinti = Double(u.channelFees - u.perOrderFees) * oran
             let birimKalan = Double(u.netRevenue) * oran - yuzdeKesinti
@@ -365,7 +368,9 @@ public extension Engine {
 
     /// Temel alınan ayda bu SKU gerçekte liste fiyatının yüzde kaçına satılmış.
     /// İndirim ve iadeler düşülür: hedef, gerçekte eline geçen tutara göre kurulur.
-    func gerceklesmeOrani(channelId: Id, productId: Id, month: MonthKey) -> Double {
+    /// O ayda satış ya da liste fiyatı yoksa 1 (liste fiyatı). Oran olağandışıysa (%20'nin altı ya da
+    /// %150'nin üstü) veri hatasıdır: `nil` döner, 1 varsayılmaz — hedef hesaplanmaz, uyarı verilir.
+    func gerceklesmeOrani(channelId: Id, productId: Id, month: MonthKey) -> Double? {
         let satirlar = state.sales.filter {
             $0.month == month && $0.channelId == channelId && $0.productId == productId
         }
@@ -378,8 +383,16 @@ public extension Engine {
             return toplam + b.net + b.vat
         }
         let oran = Double(kdvDahil) / (adet * Double(fiyat))
-        // Aşırı değerler veri hatasıdır; hedefi bozmasın
-        return (oran > 0.2 && oran < 1.5) ? oran : 1
+        return (oran > 0.2 && oran < 1.5) ? oran : nil
+    }
+
+    /// Hedefin temel aldığı ayda gerçekleşme oranı olağandışı olan SKU'lar ("Ürün (Kanal)").
+    /// Boş değilse karışık sipariş hedefi hesaplanmaz.
+    func olagandisiGerceklesmeler(month: MonthKey) -> [String] {
+        let (agirliklar, _, temelAy) = targetMix(month: month)
+        guard let temelAy else { return [] }
+        return agirliklar.filter { gerceklesmeOrani(channelId: $0.channelId, productId: $0.productId, month: temelAy) == nil }
+            .map { "\(productsById[$0.productId]?.name ?? "Ürün") (\(state.channel($0.channelId)?.name ?? "kanal"))" }
     }
 
     /// Temel ayda reklam dışı, satışa bağlı giderlerin sipariş başına düşen payı

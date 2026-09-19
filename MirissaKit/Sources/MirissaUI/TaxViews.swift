@@ -10,7 +10,7 @@ struct VergiKarti: View {
         if let v = store.engine.vergiKarsiligi(month: month) {
             Card {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Vergi karşılığı (tahmini)", systemImage: "building.columns")
+                    Label("Tahmini vergi karşılığı", systemImage: "building.columns")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Palette.ink)
                     LabeledRow("\(v.yil) başından bu yana vergi öncesi kâr", v.yilBasindanKar.tl)
@@ -27,7 +27,7 @@ struct VergiKarti: View {
                         LabeledRow("Bu ayın payı", v.ayinPayi.tl, tone: Palette.inkSoft)
                     }
                     if v.ceyrekGeciciVergi > 0 {
-                        LabeledRow("\(v.ceyrek). çeyrek geçici vergi (son gün \(Dates.displayDateShort(v.ceyrekSonOdeme)))",
+                        LabeledRow("\(v.ceyrek). çeyrek tahmini geçici vergi (son gün \(Dates.displayDateShort(v.ceyrekSonOdeme)))",
                                    v.ceyrekGeciciVergi.tl, tone: Palette.inkSoft)
                     } else if v.ceyrek == 4 {
                         Text("4. çeyrek için geçici vergi yok; yıllık beyanda ödenir.")
@@ -67,7 +67,7 @@ struct VergiAyari: View {
                 Button("Kurumlar vergisi %25 kullan") { oran = 25 }
             }
         } header: {
-            Text("Vergi karşılığı")
+            Text("Tahmini vergi karşılığı")
         } footer: {
             Text("Gerçek kâr vergi öncesidir. Oranı girersen, kârın ne kadarını kenara ayırman gerektiğini ve "
                  + "geçici vergi tahminini gösteririm. Şahıs şirketinde oranı muhasebecine sor. Boş bırakırsan tahmin yapılmaz.")

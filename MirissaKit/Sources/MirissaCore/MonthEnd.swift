@@ -17,13 +17,28 @@ public struct AySonuMaddesi: Identifiable, Hashable, Sendable {
     public var elle: Bool = false
 }
 
+/// Bir ayın satış verisi durumu. "0 satış" ile "henüz girilmedi" ayrı tutulur: satışsız ay
+/// kullanıcı ay sonu listesinde "bu ay satış olmadı" diye işaretlemedikçe girilmemiş sayılır.
+public enum SatisDurumu: Sendable, Hashable {
+    case girildi
+    /// Satış girilmedi ama ay "0 satış" olarak işaretlendi: gerçek sıfır
+    case sifirSatis
+    case girilmedi
+}
+
 public extension Engine {
 
-    /// Geçmiş (ya da içinde bulunulan) bir ayda gider var ama hiç satış girilmemiş
+    func satisDurumu(_ month: MonthKey) -> SatisDurumu {
+        if satisliAylar.contains(month) { return .girildi }
+        return (state.settings.ek.aySonuIsaretleri?[month] ?? []).contains(AySonuMaddesi.Eylem.satis.rawValue)
+            ? .sifirSatis : .girilmedi
+    }
+
+    /// Geçmiş (ya da içinde bulunulan) bir ayda gider var ama satış verisi girilmemiş
+    /// ("0 satış" olarak işaretlenen ay girilmiş sayılır)
     func satisGirilmedi(month: MonthKey, today: DateKey = Dates.today()) -> Bool {
         guard month <= Dates.month(of: today) else { return false }
-        let r = companyMonth(month)
-        return !state.sales.contains { $0.month == month } && r.toplamGider != 0
+        return satisDurumu(month) == .girilmedi && companyMonth(month).toplamGider != 0
     }
 
     func aySonuListesi(month: MonthKey, today: DateKey = Dates.today()) -> [AySonuMaddesi] {
@@ -36,12 +51,18 @@ public extension Engine {
             .filter { id in state.channel(id).map { !$0.archived } ?? false }
         let girilen = Set(satislar.map(\.channelId))
         let eksikKanallar = beklenen.subtracting(girilen).compactMap { state.channel($0)?.name }.sorted()
+        // Satış yoksa "bu ay satış olmadı" elle işaretlenir: işaretlenmeyen ay "girilmedi" sayılır
+        // (tahminlerde atlanır), işaretlenen ay gerçek sıfırdır
+        let sifirIsaretli = isaretler.contains(AySonuMaddesi.Eylem.satis.rawValue)
         out.append(AySonuMaddesi(
-            eylem: .satis, baslik: "Satışlar girildi",
-            aciklama: satislar.isEmpty ? "Bu ay hiç satış girilmedi."
+            eylem: .satis, baslik: satislar.isEmpty ? "Satışlar girildi (ya da bu ay satış olmadı)" : "Satışlar girildi",
+            aciklama: satislar.isEmpty
+                ? (sifirIsaretli ? "Bu ay satış olmadı olarak işaretlendi (0 satış)."
+                   : "Bu ay hiç satış girilmedi. Gerçekten satış olmadıysa işaretle; yoksa tahminler bu ayı atlar.")
                 : (eksikKanallar.isEmpty ? "\(girilen.count) kanalın satışı girildi."
                    : "Satışı eksik görünen kanal: \(eksikKanallar.joined(separator: ", "))."),
-            tamam: !satislar.isEmpty && eksikKanallar.isEmpty))
+            tamam: satislar.isEmpty ? sifirIsaretli : eksikKanallar.isEmpty,
+            elle: satislar.isEmpty))
 
         let siparissiz = girilen.filter { (state.channelMonth(month: month, channelId: $0)?.orderCount ?? 0) == 0 }
         out.append(AySonuMaddesi(

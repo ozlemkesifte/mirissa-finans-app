@@ -58,6 +58,7 @@ struct HomeView: View {
                         headline
                     }
                     EksikBilgiNotu(uyari: result.yaklasikUyarisi)
+                    EksikBilgiNotu(uyari: result.maliyetDegisimUyarisi)
                     if !satisGirilmedi || period.scope == .year {
                         VergiKarti(month: period.scope == .month ? period.month : min(period.to, Dates.currentMonth()))
                     }

@@ -31,6 +31,8 @@ public struct UrunGideri: Identifiable, Hashable, Sendable {
 public struct GiderAyrimi: Hashable, Sendable {
     public var urunBasina: [GiderKalemi]
     public var genel: [GiderKalemi]
+    /// İki grubun açıklayamadığı fark (0 olmalı); 0 değilse hesap tutarsızdır
+    public var tutarsizlik: Kurus
     public var urunler: [UrunGideri]
     public var urunBasinaToplam: Kurus { urunBasina.reduce(0) { $0 + $1.tutar } }
     public var genelToplam: Kurus { genel.reduce(0) { $0 + $1.tutar } }
@@ -91,12 +93,9 @@ public extension Engine {
         if kanalSabit != 0 {
             genel.append(GiderKalemi(ad: "Kanala ait sabit giderler", tutar: kanalSabit, aciklama: nil))
         }
-        // İki grup her zaman toplam gideri tutsun (eksi tutarlı giderlerde kalan fark)
+        // İki grubun toplamı toplam gideri tutmalı. Tutmuyorsa fark sahte bir kalemle kapatılmaz:
+        // tutarsızlık olarak bildirilir (bu rakamlara güvenilmez)
         let fark = r.toplamGider - ub.reduce(0) { $0 + $1.tutar } - genel.reduce(0) { $0 + $1.tutar }
-        if fark != 0 {
-            genel.append(GiderKalemi(ad: "Diğer / düzeltme", tutar: fark,
-                                     aciklama: "Eksi tutarlı ya da iade edilen giderlerden kalan fark"))
-        }
 
         // Ürün bazında doğrudan maliyetler
         var urunler: [Id: UrunGideri] = [:]
@@ -113,7 +112,7 @@ public extension Engine {
             urunler[s.productId]!.kesinti += s.kesinti - s.sabitKesinti
             urunler[s.productId]!.kargo += s.kargo
         }
-        return GiderAyrimi(urunBasina: ub, genel: genel,
+        return GiderAyrimi(urunBasina: ub, genel: genel, tutarsizlik: fark,
                            urunler: sira.compactMap { urunler[$0] }.sorted { $0.toplam > $1.toplam })
     }
 }

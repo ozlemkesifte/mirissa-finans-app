@@ -377,15 +377,17 @@ struct SabitGiderDokumuBolumu: View {
                     Text("Bu ay sabit gider yok.").font(.caption).foregroundStyle(Palette.inkFaint)
                 }
                 ForEach(d.satirlar) { s in satir(s) }
-                if planSabit != d.toplam {
-                    LabeledRow(satisaBagliDahil ? "Satışa bağlı aylık giderler" : "Diğer / düzeltme",
-                               (planSabit - d.toplam).tl, tone: Palette.inkSoft)
-                    if satisaBagliDahil {
-                        Text("Henüz satış olmadığı için satışa bağlı giderler de aylık tutar olarak karşılanıyor.")
-                            .font(.caption2).foregroundStyle(Palette.inkFaint)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                // Hedef kurulum verisinden hesaplanıyorsa satışa bağlı giderler de aylık sayılır (açıklanan fark);
+                // bunun dışında kalan her fark hesap tutarsızlığıdır, bir kaleme yazılmaz
+                let satisaBagli = satisaBagliDahil ? planSabit - (d.toplam + d.tutarsizlik) : 0
+                let tutarsiz = planSabit - d.toplam - satisaBagli
+                if satisaBagli != 0 {
+                    LabeledRow("Satışa bağlı aylık giderler", satisaBagli.tl, tone: Palette.inkSoft)
+                    Text("Henüz satış olmadığı için satışa bağlı giderler de aylık tutar olarak karşılanıyor.")
+                        .font(.caption2).foregroundStyle(Palette.inkFaint)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                if tutarsiz != 0 { TutarsizlikUyarisi(tutar: tutarsiz) }
                 Text("Yılda bir ödediğin bir gideri \"Her ay\" girdiysen \"Yılda bir ödüyorum\"a dokun: "
                      + "kâra her ay 1/12'si yazılır. Birkaç ay işine yarayan büyük bir harcamayı aylara bölebilirsin. "
                      + "Para ve KDV yine ödediğin ayda çıkar.")

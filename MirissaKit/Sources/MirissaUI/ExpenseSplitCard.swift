@@ -13,6 +13,7 @@ struct GiderAyrimiKarti: View {
         let g = store.engine.giderAyrimi(from: period.from, to: min(period.to, Dates.currentMonth()))
         if g.urunBasinaToplam != 0 || g.genelToplam != 0 {
             VStack(spacing: Metrics.gap) {
+                if g.tutarsizlik != 0 { TutarsizlikUyarisi(tutar: g.tutarsizlik) }
                 grup("Satışa bağlı giderler — \(donem) toplamı",
                      "Satış adedi arttıkça artan giderler. Bu, \(donem) içindeki bütün satışların toplamıdır; "
                         + "tek bir satışın maliyeti değildir (onu yukarıda ürün ürün görebilirsin).",
@@ -98,5 +99,23 @@ struct GiderAyrimiKarti: View {
             Text(adet > 0 ? "\(Money.roundHalfAwayFromZero(Double(tutar) / adet).tl) / adet" : tutar.tl)
                 .font(.caption).foregroundStyle(Palette.inkSoft)
         }
+    }
+}
+
+/// Hesabın kendi içinde tutmadığı durum. Fark hiçbir kaleme yazılmaz; kullanıcı rakamlara
+/// güvenmemesi gerektiğini açıkça görür.
+struct TutarsizlikUyarisi: View {
+    var tutar: Kurus
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(Palette.zarar)
+            Text("Hesap tutarsızlığı: \(tutar.tl) kalemlerle açıklanamıyor. Bu rakamlara güvenme.")
+                .font(.caption.weight(.semibold)).foregroundStyle(Palette.zarar)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.zararYumusak, in: RoundedRectangle(cornerRadius: 10))
     }
 }

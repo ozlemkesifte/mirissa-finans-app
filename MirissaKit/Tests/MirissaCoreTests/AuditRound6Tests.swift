@@ -329,6 +329,8 @@ struct AuditRound6Tests {
         #expect(st.state.sales.filter { $0.productId == Fx.serumId }.reduce(0) { $0 + $1.qty } == 1)
     }
 
+    /// Denetim 7 (#4): "0 satış" ile "henüz girilmedi" ayrı durumdur. Tarihe (ayın 10'u) bakılmaz:
+    /// kullanıcı ay sonunda "bu ay satış olmadı" diye işaretlediyse Ağustos'un KDV'si tahmin edilmez.
     @Test func gercektenSatissizGecenAyAyinOnundanSonraTahminEdilmez() throws {
         var s = Fx.base()
         s.settings.vatEnabled = true
@@ -340,8 +342,9 @@ struct AuditRound6Tests {
         for i in s.sales.indices { s.sales[i].vatRate = .yirmi; s.sales[i].vatIncluded = true }
         s.settings.ek.kasaBakiye = tl(100_000)
         s.settings.ek.kasaTarih = "2026-09-20"
+        s.settings.ek.aySonuIsaretleri = ["2026-08": ["satis"]]
         let t = try #require(Engine(s).nakitTahmini(bugun: "2026-09-20"))
-        // 20 Eylül: Ağustos'ta satış yok sayılır (girilmemiş değil), KDV'si 0
+        // Ağustos "0 satış" olarak işaretlendi: KDV'si tahmin edilmez
         #expect(!t.bilinenKalemler.contains { $0.id == "kdv:2026-08" })
     }
 

@@ -132,15 +132,7 @@ public extension Engine {
         // bakılır. Kalem bu ay ilk kez satıldıysa elde yalnızca bu ay vardır, o kullanılır.
         let ilkSatisAy = satirlar.filter { $0.movement.source == .sales && $0.kind == .satis }
             .map { Dates.month(of: $0.date) }.min()
-        var end = istenen >= buAy && (ilkSatisAy ?? istenen) < buAy ? Dates.addMonths(buAy, -1) : istenen
-        // Geçen ayın satışları henüz girilmediyse (ayın ilk günleri) o ay boş sayılıp oranı düşürmesin
-        let satisAylari = Set(satirlar.filter { $0.movement.source == .sales && $0.kind == .satis }
-            .map { Dates.month(of: $0.date) })
-        // Şirketin o ay hiç satışı yoksa henüz girilmemiştir; yalnız bu kalem satılmadıysa gerçek sıfırdır
-        if end == Dates.addMonths(buAy, -1), !satisAylari.contains(end), let ilk = ilkSatisAy, ilk < end,
-           !state.sales.contains(where: { $0.month == end }) {
-            end = Dates.addMonths(end, -1)
-        }
+        let end = istenen >= buAy && (ilkSatisAy ?? istenen) < buAy ? Dates.addMonths(buAy, -1) : istenen
         // Bu ay pencerede ise sonuç ayın gününe bağlıdır
         let key = end >= buAy ? "\(item.id)|\(end)|\(gun)" : "\(item.id)|\(end)"
         if let c = consumptionCache[key] { consumptionCache[istekAnahtari] = c; return c }
@@ -150,7 +142,10 @@ public extension Engine {
             // Pencere ilk satıştan başlar: alındığı ama satılmadığı aylar oranı sulandırmasın
             let start = max(Dates.addMonths(end, -(window - 1)), ilkSatisAy ?? ilkAy ?? end)
             guard start <= end else { continue }
-            let months = Set(Dates.monthRange(from: start, to: end))
+            // Satış verisi girilmemiş ay (satış yok ve "0 satış" işaretlenmemiş) pencereden çıkar: boş ay
+            // sıfır sayılıp oranı düşürmesin. "0 satış" işaretli ay gerçek sıfır olarak sayılır.
+            let months = Set(Dates.monthRange(from: start, to: end).filter { $0 == buAy || satisDurumu($0) != .girilmedi })
+            guard !months.isEmpty else { continue }
             // Satışın net tüketimi: stoğa geri dönen iadeler düşülür.
             // Fire, numune ve sayım farkı katılmaz — yoksa oran şişer.
             var used = 0.0

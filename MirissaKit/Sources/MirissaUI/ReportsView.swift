@@ -71,6 +71,7 @@ struct MonthlyReport: View {
                 kar: result.gercekKar,
                 marj: result.karMarjiPct
             )
+            EksikBilgiNotu(uyari: result.maliyetDegisimUyarisi)
             ExpenseBreakdownCard(breakdown: result.expenseBreakdown, total: result.toplamGider)
             VergiKarti(month: period.month)
             VatCard(month: period.month)

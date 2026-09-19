@@ -205,10 +205,12 @@ struct GoldenScenarioTests {
         // Muhasebeci Eylül'de başlıyor: Eyl+Eki+Kas+Ara = 4 ay × 10.000 = 40.000
         #expect(plan.fixedCosts == tl(40_000))
         let basaBas = plan.targets.first { $0.isBreakeven }
-        // ceil(4.000.000 / 50.088,2353) = ceil(79,86) = 80
+        // Her ay kendi katkısıyla: Eyl–Ara her biri ceil(1.000.000 / 50.088,2353) = ceil(19,96) = 20;
+        // sabit gideri ve satışı olmayan Oca–Ağu 0. Yıllık = 4 × 20 = 80
         #expect(basaBas?.ordersPerYear == 80)
-        #expect(basaBas?.ordersPerMonth == 7)           // ceil(80/12)
-        #expect(basaBas?.ordersPerDay == 1)             // ceil(80/365)
+        #expect(basaBas?.aylik == ["2026-09": 20, "2026-10": 20, "2026-11": 20, "2026-12": 20])
+        #expect(basaBas?.ordersPerMonth == 20)          // en yoğun ay
+        #expect(basaBas?.ordersPerDay == 1)             // ceil(20/30)
     }
 
     /// Yıllık kâr hedefleri de aynı katkıyla hesaplanır
@@ -217,10 +219,13 @@ struct GoldenScenarioTests {
         s.settings.yearlyProfitGoals = ["2026": tl(500_000)]
         let plan = Engine(s).yearlyPlan(year: 2026, today: "2026-10-01")
         let ozel = plan.targets.first { $0.isCustom }
-        // ceil((4.000.000 + 50.000.000) / 50.088,2353) = ceil(1078,10) = 1079
-        #expect(ozel?.ordersPerYear == 1079)
-        #expect(ozel?.ordersPerMonth == 90)             // ceil(1079/12)
-        #expect(ozel?.ordersPerDay == 3)                // ceil(1079/365)
+        // Kâr hedefi faaliyetteki 4 aya eşit: ayda 12.500.000 kuruş. Her ay
+        // ceil((1.000.000 + 12.500.000) / 50.088,2353) = ceil(269,52) = 270 → yıllık 4 × 270 = 1080
+        // (Eski tek-katkılı formül ceil(54.000.000 / 50.088,2353) = 1079 veriyordu; fark ay ay yukarı yuvarlamadan)
+        #expect(ozel?.ordersPerYear == 1080)
+        #expect(ozel?.aylikAralik == 270...270)
+        #expect(ozel?.ordersPerMonth == 270)            // en yoğun ay
+        #expect(ozel?.ordersPerDay == 9)                // Eylül: ceil(270/30)
     }
 
     // MARK: 8 — Grafik rapor motoruyla aynı

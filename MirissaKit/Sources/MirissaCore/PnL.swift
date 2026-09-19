@@ -59,6 +59,9 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var koliTahmini: Bool = false
     /// Kurulumda "bilmiyorum" denen ve hesaba katılamayan kalemler
     public var eksikBilgiler: [String] = []
+    /// Birim maliyeti ay içinde değişen satılmış ürünler. Satışlar ay sonuna tarihlendiği için
+    /// ayın bütün satışı ay sonu maliyetiyle hesaplanır: bu ürünlerin kârlılığı yaklaşıktır.
+    public var maliyetiDegisenUrunler: [String] = []
 
     public var id: String { "\(channelId)#\(month)" }
 
@@ -199,6 +202,20 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
         return "Bu sonuç yaklaşık; \(liste)\(devam) henüz girilmedi."
     }
 
+    /// Ay içinde birim maliyeti değişen ürünler (bütün kanallarda)
+    public var maliyetiDegisenUrunler: [String] {
+        var gorulen = Set<String>()
+        return channels.flatMap(\.maliyetiDegisenUrunler).filter { gorulen.insert($0).inserted }
+    }
+
+    /// "Bu ay maliyet değişti; kârlılık yaklaşık hesaplanmıştır."
+    public var maliyetDegisimUyarisi: String? {
+        let u = maliyetiDegisenUrunler
+        guard !u.isEmpty else { return nil }
+        return "Bu ay maliyet değişti (\(u.joined(separator: ", "))); kârlılık yaklaşık hesaplanmıştır. "
+            + "Ayın bütün satışı ay sonu maliyetiyle hesaplandı."
+    }
+
     /// Satışlardan doğan KDV
     public var hesaplananKdv: Kurus { channels.reduce(0) { $0 + $1.outputVat } }
     /// Gider, alım ve kanal kesintilerinden indirilebilecek KDV
@@ -286,6 +303,7 @@ public extension Array where Element == ChannelMonthResult {
             r.koliSayisi += c.koliSayisi
             r.stopaj += c.stopaj
             for e in c.eksikBilgiler where !r.eksikBilgiler.contains(e) { r.eksikBilgiler.append(e) }
+            for u in c.maliyetiDegisenUrunler where !r.maliyetiDegisenUrunler.contains(u) { r.maliyetiDegisenUrunler.append(u) }
             r.koliTahmini = r.koliTahmini || c.koliTahmini
             for (k, v) in c.otherChannelExpenses { r.otherChannelExpenses[k, default: 0] += v }
         }

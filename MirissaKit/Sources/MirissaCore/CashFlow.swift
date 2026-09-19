@@ -47,19 +47,17 @@ public extension Engine {
     private func tahminBasi(bugun: DateKey) -> MonthKey {
         let buAy = Dates.month(of: bugun)
         let gecen = Dates.addMonths(buAy, -1)
-        // Yalnız ayın ilk günlerinde (satış girişi hatırlatması ayın 2'sinde): sonrasında satışsız geçen ay
-        // gerçekten satışsız sayılır
-        let girilmedi = Dates.day(of: bugun) <= 10
-            && !state.sales.contains { $0.month == gecen }
-            && state.sales.contains { $0.month < gecen && $0.month >= Dates.addMonths(gecen, -3) }
-        return girilmedi ? gecen : buAy
+        // Satış verisi girilmemişse (satış yok, "0 satış" da işaretlenmemiş) tahmin edilir; "0 satış"
+        // işaretliyse gerçek sıfırdır
+        return satisDurumu(gecen) == .girilmedi && !state.sales.isEmpty ? gecen : buAy
     }
 
     /// Tahmin başından önceki son 3 tamamlanmış (satışı girilmiş) ayın aylık ortalamaları
     private func nakitOrtalamalari(bugun: DateKey)
     -> (tahsilat: Kurus, duzensiz: Kurus, stok: Kurus, hesaplanan: Kurus, indirilecek: Kurus) {
         let bas = tahminBasi(bugun: bugun)
-        let aylar = (1...3).map { Dates.addMonths(bas, -$0) }
+        // Satış verisi girilmemiş aylar ortalamaya katılmaz ("0 satış" işaretli ay katılır)
+        let aylar = (1...3).map { Dates.addMonths(bas, -$0) }.filter { satisDurumu($0) != .girilmedi }
         var tahsilat = 0, duzensiz = 0, stok = 0, hesaplanan = 0, indirilecek = 0
         for m in aylar {
             let r = companyMonth(m)
@@ -78,7 +76,8 @@ public extension Engine {
                 }
             }
         }
-        return (tahsilat / 3, duzensiz / 3, stok / 3, hesaplanan / 3, indirilecek / 3)
+        let n = max(aylar.count, 1)
+        return (tahsilat / n, duzensiz / n, stok / n, hesaplanan / n, indirilecek / n)
     }
 
     func nakitTahmini(bugun: DateKey = Dates.today(), hafta: Int = 12) -> NakitTahmini? {

@@ -210,8 +210,10 @@ struct PropertyTests {
             let s = rastgeleDurum(&g)
             let plan = Engine(s).yearlyPlan(year: 2026, today: "2026-10-01")
             for t in plan.targets {
-                #expect(t.ordersPerMonth == Int(ceil(Double(t.ordersPerYear) / 12)), "tur \(tur)")
-                #expect(t.ordersPerDay == Int(ceil(Double(t.ordersPerYear) / 365)), "tur \(tur)")
+                // Yıllık hedef ayların toplamı; ayda/günde en yoğun ayın hedefi
+                #expect(t.ordersPerYear == t.aylik.values.reduce(0, +), "tur \(tur)")
+                #expect(t.ordersPerMonth == (t.aylik.values.max() ?? 0), "tur \(tur)")
+                #expect(t.ordersPerDay == t.aylik.map { Int(ceil(Double($0.value) / Double(Dates.daysInMonth(year: Dates.year(of: $0.key), month: Dates.monthNumber(of: $0.key))))) }.max() ?? 0, "tur \(tur)")
                 #expect(t.ordersPerYear >= 0, "tur \(tur)")
             }
         }

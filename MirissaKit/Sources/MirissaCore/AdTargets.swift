@@ -34,6 +34,8 @@ public struct AdTarget: Identifiable, Hashable, Sendable {
     public var missingFees: [String] = []
     /// Kanal pazaryeri mi (Trendyol gibi), kendi site mi
     public var isMarketplace: Bool = false
+    /// Temel aydaki gerçekleşen fiyat oranı olağandışı (veri hatası): hedef hesaplanmaz
+    public var gerceklesmeOlagandisi: Bool = false
 
     /// Hesap eksik bilgiye dayanıyor mu
     public var eksikBilgiVar: Bool { !missingCostProducts.isEmpty || !missingFees.isEmpty }
@@ -43,21 +45,30 @@ public struct AdTarget: Identifiable, Hashable, Sendable {
     /// Reklamsız bile zarar ediyor mu
     public var reklamsizZarar: Bool { beforeAds <= 0 }
 
+    /// Sipariş değeri ya da reklama kalan tutar 0 veya eksiyse ROAS üretilmez
     public var breakevenROAS: Double? {
-        beforeAds > 0 ? Double(orderValue) / Double(beforeAds) : nil
+        guard !gerceklesmeOlagandisi, orderValue > 0, beforeAds > 0 else { return nil }
+        return Double(orderValue) / Double(beforeAds)
     }
 
     /// Sipariş başına en fazla reklam harcaması. Hedef seçilmemişse başa baş sınırı.
     /// Bırakılacak tutar eksi olamaz: eksi bir hedef, zararı "hedef" gibi gösterirdi.
     public var maxCPA: Kurus { beforeAds - max(keepPerOrder ?? 0, 0) }
 
+    /// En fazla CPA 0 veya eksiyse ya da sipariş değeri yoksa hedef ROAS üretilmez
     public var targetROAS: Double? {
-        guard keepPerOrder != nil, maxCPA > 0 else { return nil }
+        guard keepPerOrder != nil, !gerceklesmeOlagandisi, orderValue > 0, maxCPA > 0 else { return nil }
         return Double(orderValue) / Double(maxCPA)
     }
 
-    /// Hedef seçilmiş ama bu ürün o kadarını bırakamıyor
+    /// Kullanılabilir en fazla CPA: yalnızca pozitifse ve veri güvenilirse
+    public var gecerliMaxCPA: Kurus? { !gerceklesmeOlagandisi && orderValue > 0 && maxCPA > 0 ? maxCPA : nil }
+
+    /// Hedef seçilmiş ama bu fiyat ve maliyetlerle o kadarı bırakılamıyor
     public var hedefiKaldirmiyor: Bool { keepPerOrder != nil && maxCPA <= 0 && beforeAds > 0 }
+
+    public static let hedefMumkunDegil = "Bu fiyat ve maliyetlerle bu kâr hedefi mümkün değil."
+    public static let olagandisiMetni = "Gerçekleşme oranı olağandışı. Bu hedef yaklaşık hesaplanamadı."
 }
 
 /// Bir ayın gerçekleşen reklam performansı (uygulamaya girilen verilerden)
@@ -99,8 +110,9 @@ public extension Engine {
         return unitContributions(on: date).map { u in
             let bilinen = unitsPerOrder(channelId: u.channelId, month: ay)
             let adet = bilinen ?? 1
-            let oran = temelAy.map { gerceklesmeOrani(channelId: u.channelId, productId: u.productId, month: $0) } ?? 1
-            var s = siparisBasina(u, urunAdedi: adet, ay: ay, oran: oran)
+            // Olağandışı gerçekleşme oranı: hedef üretilmez (1 varsayılmaz), satır uyarıyla gösterilir
+            let oran: Double? = temelAy.map { gerceklesmeOrani(channelId: u.channelId, productId: u.productId, month: $0) } ?? 1
+            var s = siparisBasina(u, urunAdedi: adet, ay: ay, oran: oran ?? 1)
             s.kalan -= digerDegisken
             let ch = state.channel(u.channelId)
             return AdTarget(productId: u.productId, productName: u.productName,
@@ -113,7 +125,8 @@ public extension Engine {
                             missingFees: (ch?.rates(on: date).eksikler ?? [])
                                 + u.missingFees.map { "\($0.lowercased(with: Locale(identifier: "tr_TR"))) tutarı girilmemiş" }
                                 + u.estimatedFees.map { "\($0.lowercased(with: Locale(identifier: "tr_TR"))) geçen ayın tutarından tahmin edildi" },
-                            isMarketplace: ch?.kind == .marketplace)
+                            isMarketplace: ch?.kind == .marketplace,
+                            gerceklesmeOlagandisi: oran == nil)
         }
         .sorted { ($0.breakevenROAS ?? .infinity) < ($1.breakevenROAS ?? .infinity) }
     }
@@ -174,14 +187,14 @@ public extension Engine {
 
     /// Bütçe hesabı: bu bütçeyle hedef CPA'da kaç sipariş gelmeli
     func ordersForBudget(_ budget: Kurus, target t: AdTarget) -> Int? {
-        guard t.maxCPA > 0 else { return nil }
-        return Int(ceil(Double(budget) / Double(t.maxCPA)))
+        guard let cpa = t.gecerliMaxCPA else { return nil }
+        return Int(ceil(Double(budget) / Double(cpa)))
     }
 
     /// Ters hesap: bu kadar reklam siparişi için en fazla ne kadar harcanabilir
     func budgetForOrders(_ orders: Int, target t: AdTarget) -> Kurus? {
-        guard t.maxCPA > 0 else { return nil }
-        return t.maxCPA * orders
+        guard let cpa = t.gecerliMaxCPA else { return nil }
+        return cpa * orders
     }
 }
 

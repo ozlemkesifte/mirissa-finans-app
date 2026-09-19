@@ -255,8 +255,8 @@ struct YearlyPlanTests {
         let plan = Fx.engine(Self.veriliDurum()).yearlyPlan(year: 2026, today: "2026-10-01")
         let be = try? #require(plan.targets.first { $0.isBreakeven })
         #expect(be?.ordersPerYear ?? 0 > 0)
-        #expect(be!.ordersPerMonth == Int(ceil(Double(be!.ordersPerYear) / 12)))
-        #expect(be!.ordersPerDay == Int(ceil(Double(be!.ordersPerYear) / 365)))
+        #expect(be!.ordersPerYear == be!.aylik.values.reduce(0, +))
+        #expect(be!.ordersPerMonth == (be!.aylik.values.max() ?? 0))
     }
 
     @Test func yillikSabitGiderOnIkiAyinToplami() {

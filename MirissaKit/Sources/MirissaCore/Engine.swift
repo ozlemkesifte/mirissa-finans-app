@@ -86,6 +86,9 @@ public final class Engine {
     private var costCache: [String: CostBreakdown] = [:]
     private var tarihliUrunCache: [DateKey: [Id: Product]] = [:]
     private var tarihliMalzemeCache: [DateKey: [Id: StockMaterial]] = [:]
+    /// Satışı girilmiş aylar
+    lazy var satisliAylar: Set<MonthKey> = Set(state.sales.map(\.month))
+
     /// Ürün|kanal → satışların (ay, KDV oranı) listesi, aya göre sıralı: son satışın oranı bir kez taranır
     lazy var satisKdvDizini: [String: [(ay: MonthKey, oran: VatRate?)]] = {
         // Aynı ay içinde satış listesindeki sıra korunur (sıralama sıra numarasıyla kararlı)
@@ -383,6 +386,18 @@ public final class Engine {
             r.packagingCost += Money.roundHalfAwayFromZero(Double(b.packaging) * e.qty)
         }
         r.netSales = netSatisNet
+        // Birim maliyet (ürün + ambalaj) ayın ilk günüyle son günü arasında %1'den fazla değiştiyse, ay sonu
+        // maliyetinin bütün aya uygulandığı açıkça söylenir. Maliyeti ayın başında bilinmeyen (0) ürün değişmiş
+        // sayılmaz; kuruş kesirli ortalama maliyet oynamaları uyarı üretmez.
+        let ayBasi = "\(month)-01"
+        var bakilan = Set<Id>()
+        for e in rows where e.netQty != 0 && bakilan.insert(e.productId).inserted {
+            let bas = birimUrunMaliyeti(e.productId, asOf: ayBasi) + Double(cost(of: e.productId, asOf: ayBasi).packaging)
+            let son = birimUrunMaliyeti(e.productId, asOf: asOf) + Double(cost(of: e.productId, asOf: asOf).packaging)
+            if bas > 0, abs(bas - son) >= max(0.5, bas * 0.01) {
+                r.maliyetiDegisenUrunler.append(productsById[e.productId]?.name ?? "Ürün")
+            }
+        }
 
         // Sipariş başına malzemeler (koli): ürün adedine değil gönderilen koli sayısına göre
         let siparisAmbalaji = OrderPackaging.hesapla(state, month: month, channelId: ch.id,
