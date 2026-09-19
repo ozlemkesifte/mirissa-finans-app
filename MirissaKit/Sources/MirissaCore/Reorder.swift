@@ -13,6 +13,8 @@ public struct SiparisOnerisi: Identifiable, Hashable, Sendable {
     public var sonSiparisGunu: DateKey
     /// Önerilen miktar (temel birim): tedarik süresi + 30 gün yetecek kadar, en az sipariş miktarından az değil
     public var miktar: Double
+    /// Son gün sipariş verilirse önerilen miktar (o güne kadar stok azalır; hatırlatma bunu söyler)
+    public var sonGundeMiktar: Double = 0
     /// Son gün geçti ya da bugün
     public var acil: Bool
     public var id: String { item.id }
@@ -44,9 +46,13 @@ public extension Engine {
         let sonGun = Dates.addDays(bugun, kalan - tetik)
         let ihtiyac = (hiz * Double(s + Engine.kapsamaGunu) - q).rounded(.up)
         let miktar = max(ihtiyac, moq ?? 0, hiz)   // en az bir günlük
-        return SiparisOnerisi(item: item, ad: ad, birim: birim, kalanGun: kalan,
-                              tedarikSuresiGun: s, sonSiparisGunu: sonGun, miktar: miktar,
-                              acil: sonGun <= bugun)
+        let sonGundeStok = max(q - hiz * Double(max(kalan - tetik, 0)), 0)
+        let sonGunIhtiyac = (hiz * Double(s + Engine.kapsamaGunu) - sonGundeStok).rounded(.up)
+        var o = SiparisOnerisi(item: item, ad: ad, birim: birim, kalanGun: kalan,
+                               tedarikSuresiGun: s, sonSiparisGunu: sonGun, miktar: miktar,
+                               acil: sonGun <= bugun)
+        o.sonGundeMiktar = max(sonGunIhtiyac, moq ?? 0, hiz)
+        return o
     }
 
     /// Bütün kalemlerin sipariş önerileri, en acili önce

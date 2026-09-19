@@ -52,6 +52,24 @@ public struct OdemePlani: Codable, Hashable, Sendable {
 public extension StockPurchase {
     /// Ödeme planı olmadan alım (kilit karşılaştırması için: taksit ödemek alımın ayını değiştirmez)
     var odemesiz: StockPurchase { var p = self; p.odeme = nil; return p }
+    /// Kilit karşılaştırması: KDV beyanını etkileyen alanlar (ödeme planı, fatura dosyası, not,
+    /// tedarikçi ve fatura no dışarıda)
+    var beyanAlanlari: StockPurchase {
+        var p = odemesiz; p.attachment = nil; p.note = nil; p.vendor = nil; p.invoiceNo = nil; return p
+    }
+}
+
+public extension ChannelMonth {
+    /// Kilit karşılaştırması: hakediş, not ve içe aktarma listeleri beyanı etkilemez
+    var beyanAlanlari: ChannelMonth {
+        var c = self; c.payoutActual = nil; c.note = nil
+        c.iceAktarilanSiparisler = nil; c.iadesiAlinanSiparisler = nil; return c
+    }
+}
+
+public extension ExpenseInstance {
+    /// Kilit karşılaştırması: ad ve fatura dosyası beyanı etkilemez
+    var beyanAlanlari: ExpenseInstance { var i = self; i.name = ""; i.attachment = nil; return i }
 }
 
 public struct Taksit: Codable, Hashable, Sendable, Identifiable {

@@ -25,8 +25,12 @@ struct ExpensesView: View {
             .sorted { $0.date > $1.date }
     }
 
+    /// Düzenli giderler; "bu aydan itibaren" bölünmüş bir giderin yalnız son (devam eden) parçası
+    /// gösterilir: bitmiş parça açılıp "sadece bu ay" değiştirilince hiçbir aya işlemezdi
     private var recurring: [Expense] {
-        store.state.expenses.filter(\.isRecurring)
+        let idler = Set(store.state.expenses.map(\.id))
+        return store.state.expenses
+            .filter { $0.isRecurring && !($0.devamId.map(idler.contains) ?? false) }
             .sorted { $0.amount > $1.amount }
     }
 

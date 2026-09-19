@@ -101,7 +101,10 @@ struct ExpenseFlow: View {
         adim = t.adim; gecmis = t.gecmis; secilenKategori = t.kategori
         ad = t.ad; tutar = t.tutar; kdvDahil = t.kdvDahil; kdvOrani = t.kdvOrani
         kdvSecildi = t.kdvSecildi; oranSecildi = t.oranSecildi
-        tekrar = t.tekrar; kapsam = t.kapsam; tarih = t.tarih
+        tekrar = t.tekrar; kapsam = t.kapsam
+        // Tarih akışta gösterilmez ve sorulmaz: kayıt tamamlandığı güne yazılır (taslak günler sonra
+        // tamamlanırsa eski, belki kilitli bir aya düşmesin)
+        tarih = Dates.today()
     }
 
     private func taslakKaydet() {
@@ -354,7 +357,10 @@ struct CountFlow: View {
     private func taslagiGeriYukle() {
         guard let t = taslakKaydi.oku(store, Kayit.self) else { return }
         adim = t.adim; gecmis = t.gecmis; kalem = t.kalem
-        sayilan = t.sayilan; sebep = t.sebep; tarih = t.tarih
+        sayilan = t.sayilan; sebep = t.sebep
+        // Tarih akışta gösterilmez ve sorulmaz: kayıt tamamlandığı güne yazılır (taslak günler sonra
+        // tamamlanırsa eski, belki kilitli bir aya düşmesin)
+        tarih = Dates.today()
     }
 
     private func taslakKaydet() {

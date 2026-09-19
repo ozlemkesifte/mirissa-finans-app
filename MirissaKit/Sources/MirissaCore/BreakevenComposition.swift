@@ -62,11 +62,12 @@ public extension Engine {
                 id: i.id, ad: kanal.map { "\(i.name) (\($0))" } ?? i.name,
                 tutar: i.expenseAmount, tur: tur, expenseId: e?.id))
         }
-        for kat in [ExpenseCategory.stokKaybi, .influencer] {
+        for kat in [ExpenseCategory.stokKaybi, .influencer, .ambalaj, .urunUretimi] {
             let t = stoktanGider(from: month, to: month, category: kat)
             if t != 0 {
-                satirlar.append(SabitGiderSatiri(id: "stok-\(kat.rawValue)", ad: kat.displayName,
-                                                 tutar: t, tur: .stokKaybi))
+                let ad = kat == .ambalaj || kat == .urunUretimi
+                    ? "Alım fiyat farkı (\(kat.displayName.lowercased(with: Locale(identifier: "tr_TR"))))" : kat.displayName
+                satirlar.append(SabitGiderSatiri(id: "stok-\(kat.rawValue)", ad: ad, tutar: t, tur: .stokKaybi))
             }
         }
         for c in r.channels {

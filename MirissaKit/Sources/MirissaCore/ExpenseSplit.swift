@@ -68,7 +68,8 @@ public extension Engine {
         where !i.capitalized && i.scope.channelId == nil && i.behavior == .sabit {
             ortakSabit[i.category, default: 0] += i.expenseAmount
         }
-        for kat in [ExpenseCategory.stokKaybi, .influencer] {
+        // Stoktan çıkan (fire, numune) ve eksi stoğu kapatan alımın fiyat farkı
+        for kat in [ExpenseCategory.stokKaybi, .influencer, .ambalaj, .urunUretimi] {
             let t = stoktanGider(from: from, to: to, category: kat)
             if t != 0 { ortakSabit[kat, default: 0] += t }
         }

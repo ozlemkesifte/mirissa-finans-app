@@ -110,7 +110,10 @@ struct PurchaseFlow: View {
         adim = t.adim; gecmis = t.gecmis; kalem = t.kalem; miktar = t.miktar
         birim = t.birim; tutar = t.tutar; kdvDahil = t.kdvDahil
         kdvOrani = t.kdvOrani; kdvSecildi = t.kdvSecildi
-        oranSecildi = t.oranSecildi; tarih = t.tarih
+        oranSecildi = t.oranSecildi
+        // Tarih akışta gösterilmez ve sorulmaz: kayıt tamamlandığı güne yazılır (taslak günler sonra
+        // tamamlanırsa eski, belki kilitli bir aya düşmesin)
+        tarih = Dates.today()
         vadeli = t.vadeli; pesinat = t.pesinat ?? 0; taksitSayisi = t.taksitSayisi ?? 1
         ilkVade = t.ilkVade ?? Dates.addMonthsToDate(Dates.today(), 1)
     }

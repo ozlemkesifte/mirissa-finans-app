@@ -36,7 +36,14 @@ struct ExpenseForm: View {
     /// "Sadece bu ay" modunda yalnızca ad, tutar ve KDV o aya özel değişir; diğer alanlar kilitlenir
     /// (değiştirilse bile kaydedilmeyecekleri için yanıltmasınlar)
     private var ayModu: Bool {
-        editing?.isRecurring == true && onlyThisMonth && recurrence == editing?.recurrence
+        editing?.isRecurring == true && onlyThisMonth && recurrence == editing?.recurrence && ayAralikta
+    }
+
+    /// Açılan ay bu giderin aylarından biri mi (başlamadan önceki ya da durdurulduktan sonraki
+    /// bir ay için "sadece bu ay" değişikliği hiçbir aya işlemez)
+    private var ayAralikta: Bool {
+        guard let e = editing else { return false }
+        return contextMonth >= e.startMonth && (e.endMonth.map { contextMonth <= $0 } ?? true)
     }
 
     /// Kâra her ay yazılan pay: KDV hariç tutarın 1/n'i
@@ -133,7 +140,7 @@ struct ExpenseForm: View {
                         ForEach([3, 6, 12, 24], id: \.self) { n in Text("\(n) aya böl").tag(n) }
                     }
                 }
-                if editing?.isRecurring == true && recurrence == editing?.recurrence {
+                if editing?.isRecurring == true && recurrence == editing?.recurrence && ayAralikta {
                     Toggle(recurrence == .yillik ? "Sadece bu yılın tutarını değiştir" : "Sadece bu ayın tutarını değiştir",
                            isOn: $onlyThisMonth)
                         .onChange(of: onlyThisMonth) { _, yeni in
@@ -264,8 +271,8 @@ struct ExpenseForm: View {
         invoiceNo = e.invoiceNo ?? ""
         vendor = e.vendor ?? ""
         // Düzenli giderlerde varsayılan "sadece bu ay": geçmiş aylar kazara bozulmasın
-        onlyThisMonth = e.isRecurring
-        degerleriYukle(e, ayaOzel: e.isRecurring)
+        onlyThisMonth = e.isRecurring && ayAralikta
+        degerleriYukle(e, ayaOzel: onlyThisMonth)
         yayilanAy = e.yayilanAy ?? 1
     }
 
@@ -291,7 +298,7 @@ struct ExpenseForm: View {
 
         if let e = editing {
             hedefId = e.id
-            if e.isRecurring && onlyThisMonth && recurrence == e.recurrence {
+            if ayModu {
                 // KDV bu ay farklı girildiyse o da aya özel saklanır
                 let kdvFarkli = store.state.settings.vatEnabled
                     && (vatRate != e.resolvedVatRate || vatIncluded != e.resolvedVatIncluded)
@@ -341,6 +348,9 @@ struct ExpenseForm: View {
             hedefId = yeni.id
         }
 
+        // Kayıt reddedildiyse (kilitli ay) fatura da eklenmez: sonraki başarılı işlem hatayı silip
+        // formu sessizce kapatırdı
+        guard store.sonHata == nil else { return }
         let ay: MonthKey? = ayaOzel ? hedefAy : nil
         if let p = picked {
             store.attachInvoice(data: p.data, ext: p.ext, toExpense: hedefId, month: ay)

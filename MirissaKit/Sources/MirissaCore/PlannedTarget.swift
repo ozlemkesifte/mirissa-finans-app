@@ -164,7 +164,10 @@ public extension Engine {
                        today: DateKey = Dates.today()) -> VatRate {
         let ay = Dates.month(of: date)
         // O aya kadarki son satışın oranı (ürün + kanal başına, aya göre sıralı dizinden)
-        let sonOran = satisKdvDizini["\(productId)|\(channelId)"]?.last { $0.ay <= ay }?.oran
+        // Ay içinde birden çok satır varsa o ayın ilk satırı (satış listesindeki sırayla)
+        let liste = satisKdvDizini["\(productId)|\(channelId)"] ?? []
+        let sonAy = liste.last { $0.ay <= ay }?.ay
+        let sonOran = sonAy.flatMap { a in liste.first { $0.ay == a }?.oran }
         if ay < Dates.month(of: today), let o = sonOran { return o }
         return (state.settings.vatEnabled ? productsById[productId]?.kdvOrani : nil)
             ?? sonOran
@@ -193,14 +196,17 @@ public extension Engine {
 
     /// Siparişte ortalama U ürün varsa o siparişin değeri ve bıraktığı tutar.
     /// Kargo ve hizmet bedeli siparişte bir kez; koli 1–2 ürüne 1, 3+ ürüne 2.
-    func siparisBasina(_ u: UnitContribution, urunAdedi adet: Double, ay: MonthKey)
+    /// `oran`: gerçekleşen fiyatın liste fiyatına oranı (indirim ve iadeler); yüzde kesintiler
+    /// fiyatla birlikte küçülür, sipariş başı olanlar küçülmez (karışık hedefle aynı hesap).
+    func siparisBasina(_ u: UnitContribution, urunAdedi adet: Double, ay: MonthKey, oran: Double = 1)
     -> (deger: Double, kalan: Double, ciro: Double) {
         let koli = OrderPackaging.koliPerSiparis(state, channelId: u.channelId, month: ay,
                                                  urunAdedi: adet)
-        return (Double(u.price) * adet,
-                Double(u.perUnitBeforeOrderFees) * adet - Double(u.perOrderFees)
-                    - Double(u.orderPackagingCost) * koli,
-                Double(u.netRevenue) * adet)
+        let birimKalan = Double(u.netRevenue) * oran - Double(u.channelFees - u.perOrderFees) * oran
+            - Double(u.productCost) - Double(u.packagingCost)
+        return (Double(u.price) * oran * adet,
+                birimKalan * adet - Double(u.perOrderFees) - Double(u.orderPackagingCost) * koli,
+                Double(u.netRevenue) * oran * adet)
     }
 
     /// Satış karışımına göre ortalama bir sipariş.

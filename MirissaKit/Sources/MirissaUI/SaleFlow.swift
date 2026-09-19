@@ -292,7 +292,8 @@ struct SaleFlow: View {
                                                         Double(fiyat) * adet)
                                                   }
                                               }))
-                BuyukParaAlani(baslik: "Toplam satış tutarı",
+                // Satış fiyatı ve müşterinin ödediği tutar KDV dahildir
+                BuyukParaAlani(baslik: store.state.settings.vatEnabled ? "Toplam satış tutarı (KDV dahil)" : "Toplam satış tutarı",
                                deger: Binding(get: { satirlar[i].tutar },
                                               set: { satirlar[i].tutar = $0 }))
                 if satirlar[i].adet > 0, satirlar[i].tutar > 0 {
@@ -484,7 +485,9 @@ struct SaleFlow: View {
                 returnsQty: iadeAdetleri[i],
                 returnsRestock: iadeSatilabilir,
                 vatRate: store.state.varsayilanSatisKdvOrani(satir.urunId),
-                vatIncluded: store.state.settings.defaultVatIncluded
+                // Tutar fiyattan (KDV dahil) dolar ve "KDV dahil" diye sorulur: ayar ne olursa olsun
+                // KDV dahil kaydedilir; yoksa ciro ve KDV %20 yüksek çıkardı
+                vatIncluded: true
             )
         }
     }
@@ -541,6 +544,7 @@ struct SaleFlow: View {
     }
 
     private func kaydet() {
+        store.hatayiKapat()
         for t in taslaklar() { store.addSale(t) }
         if gercekKesinti || siparisSayisi > 0 {
             // Var olan elle girilmiş tutarlar korunur; yalnızca bu akışta girilenler güncellenir
@@ -557,6 +561,8 @@ struct SaleFlow: View {
             }
             store.upsertChannelMonth(cm)
         }
+        // Kayıt reddedildiyse (kilitli ay) taslak silinmez, akış açık kalır: girilenler kaybolmasın
+        guard store.sonHata == nil else { return }
         taslakKaydi.sil(store)
         dismiss()
     }

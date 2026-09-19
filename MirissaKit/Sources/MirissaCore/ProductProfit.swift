@@ -97,8 +97,9 @@ public extension Engine {
             var maliyet: [Kurus] = [], birimAmbalaj: [Kurus] = []
             for p in urunler {
                 let b = cost(of: p, asOf: asOf)
+                let birim = birimUrunMaliyeti(p, asOf: asOf)
                 maliyet.append(satirlar.filter { $0.productId == p }.reduce(0) {
-                    $0 + Money.roundHalfAwayFromZero(Double(b.intrinsic) * $1.netQty) })
+                    $0 + Money.roundHalfAwayFromZero(birim * $1.netQty) })
                 birimAmbalaj.append(satirlar.filter { $0.productId == p }.reduce(0) {
                     $0 + Money.roundHalfAwayFromZero(Double(b.packaging) * $1.qty) })
             }

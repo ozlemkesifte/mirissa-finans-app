@@ -539,10 +539,8 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         let kanalKaydiVar = (priceHistory ?? []).contains { $0.channelId == channelId }
         guard amount > 0 else {
             // Kanal fiyatı silindi: bugünden itibaren etiket fiyatı geçerli olur (geçmiş korunur).
-            // Etiket fiyatı silinirse bir şey yapılmaz.
-            if let channelId, gecerliFiyat(channelId, today) != nil {
-                setPrice(0, channelId: channelId, from: today)
-            }
+            // Etiket fiyatı için 0 "girilmedi" demektir, silmez: bilerek silmek `fiyatiKaldir` ile yapılır.
+            if let channelId { fiyatiKaldir(channelId: channelId, today: today) }
             return
         }
         if mevcut == amount { return }
@@ -551,6 +549,12 @@ public struct Product: Codable, Identifiable, Hashable, Sendable {
         } else {
             setPrice(amount, channelId: channelId, from: today)
         }
+    }
+
+    /// Fiyatı bugünden itibaren kaldırır (geçmiş aylar eski fiyatla kalır)
+    public mutating func fiyatiKaldir(channelId: Id?, today: DateKey) {
+        guard gecerliFiyat(channelId, today) != nil else { return }
+        setPrice(0, channelId: channelId, from: today)
     }
 
     private func gecerliFiyat(_ channelId: Id?, _ date: DateKey) -> Kurus? {

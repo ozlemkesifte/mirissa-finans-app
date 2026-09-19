@@ -709,16 +709,44 @@ public struct SetupWizard: View {
         }
     }
 
+    /// Yeni girilen gider, kayıtlı (ya da listede tekrar eden) bir sabit giderin adını taşıyor mu
+    private var tekrarGiderAdi: String? {
+        let kayitli = store.state.expenses.filter { $0.isRecurring && !$0.isStopped }.map(\.name)
+        var gorulen = Set<String>()
+        for g in giderler where !NameCheck.isBlank(g.ad) {
+            let k = NameCheck.key(g.ad)
+            if kayitli.contains(where: { NameCheck.key($0) == k }) || !gorulen.insert(k).inserted { return g.ad }
+        }
+        return nil
+    }
+
     private var giderAdimi: some View {
         SoruAdimi(
             soru: "Bu giderler neler?",
             aciklama: "Adını, ödediğin tutarı (KDV dahil), faturadaki KDV'yi ve ayda mı yılda mı ödediğini yaz.",
-            ileriAktif: !store.state.settings.vatEnabled || giderler.allSatisfy {
+            ileriAktif: (!store.state.settings.vatEnabled || giderler.allSatisfy {
                 $0.ad.trimmingCharacters(in: .whitespaces).isEmpty || $0.tutar == 0 || $0.kdv != nil
-            },
+            }) && tekrarGiderAdi == nil,
             geri: geriGit,
             ileri: { ileri(.ozet) }
         ) {
+            // Kurulum yeniden açıldıysa kayıtlı sabit giderler gösterilir: aynısı tekrar girilip
+            // iki kez sayılmasın. Düzenleme ve durdurma Giderler ekranından yapılır.
+            let kayitli = store.state.expenses.filter { $0.isRecurring && !$0.isStopped }
+            if !kayitli.isEmpty {
+                Card {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("ZATEN KAYITLI").font(.caption.weight(.semibold)).tracking(0.6)
+                            .foregroundStyle(Palette.inkFaint)
+                        ForEach(kayitli) { e in
+                            LabeledRow(e.name, e.amount.tl + (e.recurrence == .yillik ? " / yıl" : " / ay"))
+                        }
+                        Text("Bunları değiştirmek ya da durdurmak için Giderler ekranını kullan. Burada yalnız yeni gider ekle.")
+                            .font(.caption2).foregroundStyle(Palette.inkFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
             ForEach($giderler) { $g in
                 Card {
                     VStack(spacing: 10) {
@@ -737,6 +765,11 @@ public struct SetupWizard: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         MoneyField(g.yillik == true ? "Yıllık tutar" : "Aylık tutar", value: $g.tutar)
+                        if tekrarGiderAdi.map({ NameCheck.key($0) == NameCheck.key(g.ad) }) == true {
+                            Text("Bu adla bir sabit gider zaten kayıtlı; iki kez sayılır.")
+                                .font(.caption).foregroundStyle(Palette.uyari)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                         if store.state.settings.vatEnabled {
                             Picker("Faturadaki KDV", selection: Binding(get: { g.kdv }, set: { g.kdv = $0 })) {
                                 Text("Seç").tag(VatRate?.none)
@@ -939,8 +972,14 @@ public struct SetupWizard: View {
         }
         let g = giderler.filter { !$0.ad.trimmingCharacters(in: .whitespaces).isEmpty && $0.tutar > 0 }
         if !g.isEmpty {
-            satirlar.append("\(g.count) sabit gider her ay otomatik eklenecek "
-                + "(toplam \(Money.format(g.reduce(0) { $0 + $1.tutar })))")
+            // Yıllık giderin aylık payı (KDV hariç) sayılır; yıllık tutar aylık toplama eklenmez
+            let aylik = g.reduce(0) { t, x in
+                t + (x.yillik == true
+                     ? Expenses.aylikKarPayi(x.tutar, rate: x.kdv ?? .yok, included: true, aySayisi: 12)
+                     : Vat.net(x.tutar, rate: x.kdv ?? .yok, included: true))
+            }
+            satirlar.append("\(g.count) sabit gider otomatik eklenecek; kâra ayda toplam \(Money.format(aylik))"
+                + (store.state.settings.vatEnabled ? " (KDV hariç)" : ""))
         }
         let k = kanallar.filter(\.acik)
         if !k.isEmpty {
@@ -1233,10 +1272,21 @@ public struct SetupWizard: View {
                     p.name = ad
                     p.isBundle = true
                     p.components = bilesenler
-                    p.recipe = recete
-                    // Bileşen maliyeti ikinci kez yazılmaz. Geçmiş kalemler
-                    // silinmez, bugünden itibaren geçersiz kılınır: eski aylar bozulmaz.
-                    p.applyCostLines([], today: Dates.today())
+                    // Mevcut reçete satırları korunur (birim, "maliyete dahil / stoktan düşmez" işaretleri):
+                    // yalnız miktarı değişen satır güncellenir, yeni malzeme eklenir, sıfırlanan çıkarılır
+                    var korunan: [RecipeLine] = []
+                    for line in p.recipe {
+                        guard let yeniMiktar = t.ambalaj[line.materialId], yeniMiktar > 0 else { continue }
+                        var l = line
+                        if yeniMiktar != line.qty {
+                            l.qty = yeniMiktar
+                            l.unit = s.materials.first { $0.id == line.materialId }?.baseUnit ?? line.unit
+                        }
+                        korunan.append(l)
+                    }
+                    let varolan = Set(p.recipe.map(\.materialId))
+                    p.recipe = korunan + recete.filter { !varolan.contains($0.materialId) }
+                    // Setin kendi ek maliyet kalemleri (ürün formunda girilir) olduğu gibi kalır
                     p.openingQty = nil        // setin kendi stoğu yok
                     p.openingUnitCost = nil
                     p.archived = false
@@ -1294,11 +1344,13 @@ public struct SetupWizard: View {
             }
             s.materials = yeniMalzemeler
 
-            // Kullanılmayan malzemelerin reçete satırlarını temizle
+            // Bu kurulumda kullanılmaz işaretlenen malzemelerin reçete satırlarını temizle. Daha önce
+            // arşivlenmiş ama hâlâ reçetede duran malzemeye dokunulmaz (kullanıcı orada bırakmış)
             let aktif = Set(s.materials.filter { !$0.archived }.map(\.id))
+            let oncedenArsiv = Set(store.state.materials.filter(\.archived).map(\.id))
             let urunIdleri = Set(s.products.map(\.id))
             for i in s.products.indices {
-                s.products[i].recipe.removeAll { !aktif.contains($0.materialId) }
+                s.products[i].recipe.removeAll { !aktif.contains($0.materialId) && !oncedenArsiv.contains($0.materialId) }
                 s.products[i].components.removeAll { !urunIdleri.contains($0.productId) }
             }
 

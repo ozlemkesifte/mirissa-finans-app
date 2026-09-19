@@ -22,3 +22,11 @@ struct NumberParseTests {
         #expect(NumberInput.kurus("1.250") == tl(1_250))
     }
 }
+
+@Suite("Sayı okuma: karışık ayraç")
+struct NumberParseKarisikTests {
+    @Test func sondakiAyracOndaliktir() {
+        #expect(NumberInput.kurus("1,234.56") == 123_456)
+        #expect(NumberInput.kurus("1.234,56") == 123_456)
+    }
+}

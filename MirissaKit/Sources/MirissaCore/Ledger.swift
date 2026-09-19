@@ -20,6 +20,9 @@ public struct LedgerRow: Identifiable, Hashable, Sendable {
     public var balanceAfter: BaseQty
     public var unitCostAfter: Double
     public var valueAfter: Kurus
+    /// Eksi stoğu kapatan alımda: stok yokken satılan adetlerin, gider yazıldıkları fiyatla bu alımın
+    /// fiyatı arasındaki fark (kuruş, kesirli). Alımın ayında gider olur; yoksa bu para kaybolurdu.
+    public var fiyatFarki: Double = 0
 
     public var id: String { movement.id }
     public var date: DateKey { movement.date }
@@ -57,6 +60,9 @@ public enum Ledger {
         var qty: [Id: BaseQty] = [:]
         var totalValue: [Id: Double] = [:]     // kuruş, kesirli
         var lastCost: [Id: Double] = [:]       // stok sıfırlandığında korunan son birim maliyet
+        // Açık eksik (stok yokken satılan adetler): bilinen bir maliyetle gider yazılanlar (adet, değer) ve
+        // maliyeti bilinmeden (sonraki alımın fiyatıyla) gider yazılanlar. Alım eksiği kapatınca fark buradan.
+        var eksikBilinen: [Id: Double] = [:], eksikDeger: [Id: Double] = [:], eksikBilinmeyen: [Id: Double] = [:]
         var negative: Set<Id> = []
         var lastDate: [Id: DateKey] = [:]
         var refs: [Id: ItemRef] = [:]
@@ -67,6 +73,9 @@ public enum Ledger {
             var q = qty[key] ?? 0
             var v = totalValue[key] ?? 0
             let currentCost = q > 0 ? v / q : (lastCost[key] ?? 0)
+            let qOnce = q
+            var fiyatFarki = 0.0
+            var alimFiyatiKapatan: Double?
 
             switch mv.kind {
             case .opening, .purchase:
@@ -78,6 +87,7 @@ public enum Ledger {
                     // alımın parasını az sayıda adede bölüp birim maliyeti
                     // şişiriyor, bazen de eksiye düşürüyordu.
                     let fiyat = giris / mv.delta
+                    alimFiyatiKapatan = fiyat
                     q += mv.delta
                     v = q * fiyat
                     if q <= 0 { lastCost[key] = fiyat }
@@ -124,6 +134,41 @@ public enum Ledger {
             }
             if q < 0 { negative.insert(key) }
 
+            // Açık eksiğin takibi
+            if q < qOnce, q < 0 {
+                // Yeni eksik: stok sıfırın altına inen kısım, bu hareketin maliyetiyle gider yazıldı
+                let yeni = -q - max(-qOnce, 0)
+                if yeni > 0 {
+                    if currentCost > 0 {
+                        eksikBilinen[key, default: 0] += yeni
+                        eksikDeger[key, default: 0] += yeni * currentCost
+                    } else {
+                        eksikBilinmeyen[key, default: 0] += yeni
+                    }
+                }
+            } else if q > qOnce, qOnce < 0 {
+                // Eksik kapandı (alım, iade, sayım). Alımla kapanan bilinen maliyetli kısmın,
+                // gider yazıldığı fiyatla alım fiyatı arasındaki fark bu alımın ayında gider olur.
+                let kapanan = min(q - qOnce, -qOnce)
+                // Maliyeti bilinmeden satılanlar gider hesabında ilk gelen alımın fiyatıyla yazıldı
+                // (Engine.unitCost): ilk alımda o fiyatla bilinen kısma geçer, sonraki alımlarda farkı çıkar
+                if let fiyat = alimFiyatiKapatan, let b = eksikBilinmeyen[key], b > 0 {
+                    eksikBilinen[key, default: 0] += b
+                    eksikDeger[key, default: 0] += b * fiyat
+                    eksikBilinmeyen[key] = 0
+                }
+                let bilinen = eksikBilinen[key] ?? 0, bilinmeyen = eksikBilinmeyen[key] ?? 0
+                let toplam = bilinen + bilinmeyen
+                if toplam > 0 {
+                    let payBilinen = min(kapanan * bilinen / toplam, bilinen)
+                    let ort = bilinen > 0 ? (eksikDeger[key] ?? 0) / bilinen : 0
+                    if let fiyat = alimFiyatiKapatan { fiyatFarki = payBilinen * (fiyat - ort) }
+                    eksikBilinen[key] = bilinen - payBilinen
+                    eksikDeger[key] = (eksikDeger[key] ?? 0) - payBilinen * ort
+                    eksikBilinmeyen[key] = max(bilinmeyen - (kapanan - payBilinen), 0)
+                }
+            }
+
             qty[key] = q
             totalValue[key] = v
             lastDate[key] = mv.date
@@ -133,7 +178,8 @@ public enum Ledger {
                 movement: mv,
                 balanceAfter: q,
                 unitCostAfter: unitAfter,
-                valueAfter: Money.roundHalfAwayFromZero(max(v, 0))
+                valueAfter: Money.roundHalfAwayFromZero(max(v, 0)),
+                fiyatFarki: fiyatFarki
             ))
         }
 

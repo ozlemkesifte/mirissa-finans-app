@@ -621,8 +621,8 @@ struct ProjectionAndCSVTests {
         s.addPurchase("u", "2026-09-01", .product(Fx.sampuanId), qty: 1_000, paid: tl(100_000))
         s.sales.append(SalesEntry(id: "s", month: "2026-09", channelId: ChannelIds.trendyol,
                                   productId: Fx.sampuanId, qty: 90, grossSales: tl(90_000)))
-        let r = Engine(s).consumptionRate(.product(Fx.sampuanId), endingAt: "2026-09")
-        // Ürün eylülde başladı: ayda 90, üç aya bölünüp 30 değil
+        let r = Engine(s).consumptionRate(.product(Fx.sampuanId), endingAt: "2026-09", bugun: "2026-09-30")
+        // Ürün eylülde başladı: ay sonunda ayda 90, üç aya bölünüp 30 değil
         #expect(abs(r.perMonth - 90) < 1e-9)
     }
 

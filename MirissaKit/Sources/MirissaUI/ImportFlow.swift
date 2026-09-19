@@ -122,7 +122,9 @@ struct RaporIceAktarmaAkisi: View {
                     }
                     adim = .urunler
                 }
-                .disabled(k.isEmpty || sutun[.tarih] == nil || (sutun[.urun] == nil && sutun[.sku] == nil))
+                // Sipariş numarası olmadan sipariş (kargo, koli) sayılamaz ve aynı rapor tekrar aktarılınca ayıklanamaz
+                .disabled(k.isEmpty || sutun[.tarih] == nil || sutun[.siparisNo] == nil
+                          || (sutun[.urun] == nil && sutun[.sku] == nil))
             }
         }
     }

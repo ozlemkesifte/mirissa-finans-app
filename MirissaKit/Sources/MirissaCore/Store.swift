@@ -447,13 +447,23 @@ public final class AppStore {
             guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
             if let month, s.expenses[i].isRecurring {
                 var ov = s.expenses[i].overrides[month] ?? ExpenseOverride()
-                AttachmentStore.delete(ov.attachment)
                 ov.attachment = name
                 s.expenses[i].overrides[month] = ov
             } else {
-                AttachmentStore.delete(s.expenses[i].attachment)
                 s.expenses[i].attachment = name
             }
+        }
+        eskiFaturalariTemizle(yeni: name)
+    }
+
+    /// Fatura değiştikten sonra: değişiklik reddedildiyse (kilitli ay) yeni dosya silinir; kabul
+    /// edildiyse hiçbir kayda bağlı olmayan eski dosyalar temizlenir. Eski dosya kayıt kaydedilmeden
+    /// silinmez ve başka bir kayıt (bölünmüş giderin geçmiş parçası) hâlâ kullanıyorsa kalır.
+    private func eskiFaturalariTemizle(yeni name: String) {
+        if !state.attachmentNames.contains(name) {
+            AttachmentStore.delete(name)
+        } else {
+            pruneAttachments()
         }
     }
 
@@ -474,9 +484,9 @@ public final class AppStore {
         guard let name = try? AttachmentStore.save(data: data, suggestedExtension: ext) else { return }
         mutate { s in
             guard let i = s.purchases.firstIndex(where: { $0.id == id }) else { return }
-            AttachmentStore.delete(s.purchases[i].attachment)
             s.purchases[i].attachment = name
         }
+        eskiFaturalariTemizle(yeni: name)
     }
 
     public func removeInvoice(fromPurchase id: Id) {
@@ -507,6 +517,13 @@ public final class AppStore {
                   !s.expenses.contains(where: { $0.id == s.expenses[i].devamId }),
                   let son = s.expenses[i].endMonth else { return }
             s.expenses[i].devamId = nil
+            // Yıllık gider ödenmiş yılın içinde yeniden başlatılıyorsa eski düzenle devam eder:
+            // o yıl zaten ödendi, bir sonraki ödeme yıldönümünde (bu aya yeni ödeme yazılmaz)
+            let e = s.expenses[i]
+            if e.recurrence == .yillik, buAy <= Dates.addMonths(e.yillikOdemeAyi(son), 11) {
+                s.expenses[i].endMonth = nil
+                return
+            }
             if son >= Dates.addMonths(buAy, -1) {
                 s.expenses[i].endMonth = nil
                 return
@@ -812,8 +829,17 @@ public final class AppStore {
         }
     }
 
+    /// Doğrudan uygulanan (değişiklik akışından geçmeyen) büyük işlemler de günlüğe yazılır
+    private static func gunlugeYaz(_ s: inout AppState, onceki: [ChangeLogEntry], _ aciklama: String) {
+        s.changeLog = Array((onceki + [ChangeLogEntry(
+            zaman: ISO8601DateFormatter().string(from: Date()), tur: .silindi, alan: "Veriler",
+            aciklama: aciklama)]).suffix(DegisiklikGunlugu.enFazla))
+    }
+
     public func resetToSeed() {
-        apply(SeedData.initialState())
+        var s = SeedData.initialState()
+        Self.gunlugeYaz(&s, onceki: state.changeLog, "Başlangıç verisine sıfırlandı")
+        apply(s)
         pruneAttachments()
     }
 
@@ -826,6 +852,7 @@ public final class AppStore {
         s.counts = []
         s.channelMonths = []
         s.balances = []
+        Self.gunlugeYaz(&s, onceki: s.changeLog, "Bütün satış, gider, alım ve stok kayıtları silindi")
         apply(s)
         pruneAttachments()
     }
@@ -833,6 +860,9 @@ public final class AppStore {
     public func exportJSON() throws -> Data { try Persistence.encode(state) }
 
     public func importJSON(_ data: Data) throws {
-        apply(try Persistence.decode(data))
+        var s = try Persistence.decode(data)
+        Self.gunlugeYaz(&s, onceki: s.changeLog + state.changeLog.filter { k in !s.changeLog.contains { $0.id == k.id } },
+                        "Dosyadan içe aktarıldı (önceki kayıtların yerine)")
+        apply(s)
     }
 }

@@ -18,7 +18,12 @@ public enum NumberInput {
         guard !t.isEmpty else { return nil }
         let hasDot = t.contains("."), hasComma = t.contains(",")
         if hasDot && hasComma {
-            t = t.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
+            // Sonda gelen ayraç ondalıktır: "1.234,56" (Türkçe) ya da yapıştırılan "1,234.56"
+            if let v = t.lastIndex(of: ","), let n = t.lastIndex(of: "."), n > v {
+                t = t.replacingOccurrences(of: ",", with: "")
+            } else {
+                t = t.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
+            }
         } else if hasComma {
             t = t.replacingOccurrences(of: ",", with: ".")
         } else if hasDot {

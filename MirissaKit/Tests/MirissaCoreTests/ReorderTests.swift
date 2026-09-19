@@ -21,13 +21,15 @@ struct ReorderTests {
     }
 
     @Test func sonSiparisGunuVeMiktarElleHesaplananlaAyni() {
+        // 18 Eylül'e kadar 60 koli: bu ayın satışı ayın o gününe kadardır → ayda 60 ÷ (18/30) = 100,
+        // günde 3,33. Elde 40 → 12 gün yeter
         let o = Engine(durum(tedarik: 10)).siparisOnerisi(.material(Fx.koliId), bugun: "2026-09-18")!
-        #expect(o.kalanGun == 20)
-        // 20 gün − (10 tedarik + 7 güvenlik) = 3 gün sonra
-        #expect(o.sonSiparisGunu == "2026-09-21")
-        // 40 gün yetecek kadar (10 + 30) = 80, elde 40 → 40
-        #expect(o.miktar == 40)
-        #expect(!o.acil)
+        #expect(o.kalanGun == 12)
+        // 12 gün − (10 tedarik + 7 güvenlik) = 5 gün önce: acil
+        #expect(o.sonSiparisGunu == "2026-09-13")
+        #expect(o.acil)
+        // 40 gün yetecek kadar (10 + 30) × 3,33 = 133,3, elde 40 → 93,3 → 94
+        #expect(o.miktar == 94)
     }
 
     @Test func enAzSiparisMiktariUygulanir() {

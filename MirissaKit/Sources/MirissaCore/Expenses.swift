@@ -49,7 +49,8 @@ public extension Expense {
         devam.id = Ids.make(.expense)
         devam.date = Dates.dateIn(month: ay, dayOfMonth: Dates.day(of: date))
         devam.overrides = overrides.filter { $0.key >= ay }
-        devam.devamId = nil
+        // Düzenlenen parçanın kendi devamı varsa (daha önce bölünmüştü) yeni parça ona bağlanır
+        devam.devamId = yeniHali.devamId
         eski.overrides = overrides.filter { $0.key < ay }
         eski.endMonth = Dates.addMonths(ay, -1)
         eski.devamId = devam.id

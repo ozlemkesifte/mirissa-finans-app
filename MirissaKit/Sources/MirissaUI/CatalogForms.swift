@@ -401,6 +401,8 @@ struct ProductForm: View {
             p.tedarikSuresiGun = tedarikGun.map { Int($0.rounded()) }; p.minSiparis = minSiparis
             p.kdvOrani = kdvOrani
             let bugun = Dates.today()
+            // Etiket fiyatı alanı bilerek boşaltıldıysa bugünden kaldırılır
+            if listeFiyat == 0 { p.fiyatiKaldir(channelId: nil, today: bugun) }
             p.applyCurrentPrice(listeFiyat, channelId: nil, today: bugun)
             // Boş bırakılan kanal fiyatı da işlenir: o kanalda etiket fiyatına döner
             for c in store.state.activeChannels {

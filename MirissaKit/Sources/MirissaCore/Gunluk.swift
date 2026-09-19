@@ -43,6 +43,15 @@ public enum DegisiklikGunlugu {
         karsilastir("Malzeme", eski.materials, yeni.materials) { $0.name }
         karsilastir("Kanal", eski.channels, yeni.channels) { $0.name }
         karsilastir("Alacak / borç", eski.balances, yeni.balances) { "\($0.name) \(Money.format($0.amount))" }
+        // KDV ayarları geçmiş ayların kârını ve KDV'sini değiştirebilir: günlüğe yazılır
+        let e = eski.settings, y = yeni.settings
+        if e.vatEnabled != y.vatEnabled || e.defaultVatRate != y.defaultVatRate
+            || e.defaultVatIncluded != y.defaultVatIncluded {
+            out.append(ChangeLogEntry(zaman: zaman, tur: .degisti, alan: "KDV ayarı", aciklama:
+                (y.vatEnabled ? "KDV takibi açık" : "KDV takibi kapalı")
+                + ", varsayılan \(y.defaultVatRate.displayName), tutarlar KDV "
+                + (y.defaultVatIncluded ? "dahil" : "hariç")))
+        }
         return out.sorted { ($0.alan, $0.aciklama) < ($1.alan, $1.aciklama) }
     }
 }
@@ -61,16 +70,19 @@ public enum AyKilidi {
             func degisti<T: Hashable>(_ a: [T], _ b: [T], _ m: (T) -> MonthKey) -> Bool {
                 a != b && Set(a.filter { m($0) == ay }) != Set(b.filter { m($0) == ay })
             }
+            // Beyanı etkilemeyen bilgiler (hakediş, not, fatura dosyası, ad, tedarikçi) karşılaştırılmaz:
+            // hakediş kilitten haftalar sonra gelir, fatura fotoğrafı sonradan eklenir
             if degisti(eski.sales, yeni.sales, \.month)
-                || degisti(eski.channelMonths, yeni.channelMonths, \.month)
+                || (eski.channelMonths != yeni.channelMonths
+                    && degisti(eski.channelMonths.map(\.beyanAlanlari), yeni.channelMonths.map(\.beyanAlanlari), \.month))
                 // Ödeme planı alımın ayına değil taksitin ödendiği aya aittir (aşağıda gider satırlarıyla bakılır)
                 || (eski.purchases != yeni.purchases
-                    && degisti(eski.purchases.map(\.odemesiz), yeni.purchases.map(\.odemesiz), { Dates.month(of: $0.date) }))
+                    && degisti(eski.purchases.map(\.beyanAlanlari), yeni.purchases.map(\.beyanAlanlari), { Dates.month(of: $0.date) }))
                 || degisti(eski.adjustments, yeni.adjustments, { Dates.month(of: $0.date) })
                 || degisti(eski.counts, yeni.counts, { Dates.month(of: $0.date) })
                 // Taksit yalnızca nakit hareketidir (KDV'si alım ayında): ödendi işaretlemek kilitli ayı bozmaz
-                || Expenses.instances(eski, from: ay, to: ay).filter({ $0.sourceKind != .taksit })
-                    != Expenses.instances(yeni, from: ay, to: ay).filter({ $0.sourceKind != .taksit }) {
+                || Expenses.instances(eski, from: ay, to: ay).filter({ $0.sourceKind != .taksit }).map(\.beyanAlanlari)
+                    != Expenses.instances(yeni, from: ay, to: ay).filter({ $0.sourceKind != .taksit }).map(\.beyanAlanlari) {
                 return "\(Dates.displayMonth(ay)) kilitli (KDV beyanı verildi). Bu değişiklik o ayın kayıtlarını "
                     + "değiştiriyor; önce Raporlar → KDV kartından kilidi aç."
             }

@@ -108,6 +108,7 @@ public extension View {
 // MARK: - Form iskeleti
 
 struct FormShell<Content: View>: View {
+    @Environment(AppStore.self) private var store
     var title: String
     var saveTitle: String = "Kaydet"
     var canSave: Bool = true
@@ -142,9 +143,11 @@ struct FormShell<Content: View>: View {
                 }
                 .sheet(isPresented: $onayGoster) {
                     OnayEkrani(issues: onayIcin, summary: onayOzeti) {
+                        store.hatayiKapat()
                         onSave()
                         onayGoster = false
-                        dismiss()
+                        // Kilitli ay gibi bir sebeple kayıt reddedildiyse form açık kalır (girilenler kaybolmasın)
+                        if store.sonHata == nil { dismiss() }
                     }
                 }
                 .alert("Bu kayıt yapılamaz", isPresented: $engelGoster) {
@@ -166,8 +169,9 @@ struct FormShell<Content: View>: View {
         let ozet = summary()
         let onaylanacak = sorunlar.blocking + sorunlar.warnings
         if onaylanacak.isEmpty && ozet.isEmpty {
+            store.hatayiKapat()
             onSave()
-            dismiss()
+            if store.sonHata == nil { dismiss() }
             return
         }
         onayIcin = onaylanacak

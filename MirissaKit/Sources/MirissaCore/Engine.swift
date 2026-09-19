@@ -45,6 +45,13 @@ public final class Engine {
         var out: [MonthKey: [ExpenseCategory: Kurus]] = [:]
         for r in ledger.rows {
             let key = r.item.id
+            // Eksi stoğu kapatan alımın fiyat farkı: stok yokken satılanların maliyet düzeltmesi
+            // Maliyeti elle girilmiş ürün alımdan maliyetlenmez: onda fiyat farkı da yoktur
+            if r.fiyatFarki != 0,
+               r.item.kind == .material || cost(of: r.item.id, asOf: r.date).ownFromPurchases {
+                let kat: ExpenseCategory = r.item.kind == .material ? .ambalaj : .urunUretimi
+                out[Dates.month(of: r.date), default: [:]][kat, default: 0] += Money.roundHalfAwayFromZero(r.fiyatFarki)
+            }
             let oncekiDeger = sonDeger[key] ?? 0
             let oncekiMiktar = sonMiktar[key] ?? 0
             sonDeger[key] = r.valueAfter
@@ -81,9 +88,12 @@ public final class Engine {
     private var tarihliMalzemeCache: [DateKey: [Id: StockMaterial]] = [:]
     /// Ürün|kanal → satışların (ay, KDV oranı) listesi, aya göre sıralı: son satışın oranı bir kez taranır
     lazy var satisKdvDizini: [String: [(ay: MonthKey, oran: VatRate?)]] = {
-        var d: [String: [(ay: MonthKey, oran: VatRate?)]] = [:]
-        for e in state.sales { d["\(e.productId)|\(e.channelId)", default: []].append((e.month, e.vatRate)) }
-        return d.mapValues { $0.sorted { $0.ay < $1.ay } }
+        // Aynı ay içinde satış listesindeki sıra korunur (sıralama sıra numarasıyla kararlı)
+        var d: [String: [(ay: MonthKey, sira: Int, oran: VatRate?)]] = [:]
+        for (i, e) in state.sales.enumerated() {
+            d["\(e.productId)|\(e.channelId)", default: []].append((e.month, i, e.vatRate))
+        }
+        return d.mapValues { $0.sorted { ($0.ay, $0.sira) < ($1.ay, $1.sira) }.map { ($0.ay, $0.oran) } }
     }()
     private lazy var receteGecmisiVar = state.products.contains { !($0.eskiReceteler ?? []).isEmpty }
     private lazy var malzemeGecmisiVar = state.materials.contains { !($0.eskiAyarlar ?? []).isEmpty }
@@ -148,7 +158,11 @@ public final class Engine {
         guard h[found].qty <= 0, let sonraki = h[found...].first(where: { $0.cost > 0 })?.cost else { return 0 }
         // Sonraki alımın fiyatı yalnızca eksik kalan (stok yokken satılan) adetlere uygulanır;
         // o hareketten önce elde olan maliyetsiz stok 0 TL kalır. Birim maliyet ikisinin ortalamasıdır.
-        let onceki = found > 0 ? h[found - 1].qty : 0
+        // Aynı gün (ör. ay sonu) birden çok satır olabilir: iki ürün aynı malzemeyi kullanır, her kanalın
+        // koli satırı ayrıdır. Eksik payı o günün ilk hareketinden önceki bakiyeye göre hesaplanır.
+        var ilk = found
+        while ilk > 0, h[ilk - 1].date == h[found].date { ilk -= 1 }
+        let onceki = ilk > 0 ? h[ilk - 1].qty : 0
         let tuketilen = onceki - h[found].qty
         guard tuketilen > 0 else { return sonraki }
         let eksik = min(tuketilen, -h[found].qty + min(onceki, 0))
@@ -180,6 +194,14 @@ public final class Engine {
         )
         costCache[key] = b
         return b
+    }
+
+    /// Bir adet ürünün (ambalaj hariç) maliyeti, kuruşa yuvarlanmadan. Alımdan gelen maliyet adet
+    /// başına yuvarlanıp çarpılırsa (3.000 adet 10.000 TL'ye alınıp satılınca) 10 TL kaybolurdu.
+    func birimUrunMaliyeti(_ productId: Id, asOf: DateKey) -> Double {
+        let b = cost(of: productId, asOf: asOf)
+        guard b.ownFromPurchases else { return Double(b.intrinsic) }
+        return Double(b.intrinsic - b.ownLines) + unitCost(.product(productId), asOf: asOf)
     }
 
     public func hasCycle(_ productId: Id) -> Bool {
@@ -356,7 +378,7 @@ public final class Engine {
             r.units += e.qty
             r.returnedUnits += e.returnsQty
             let b = cost(of: e.productId, asOf: asOf)
-            r.productCost += Money.roundHalfAwayFromZero(Double(b.intrinsic) * e.netQty)
+            r.productCost += Money.roundHalfAwayFromZero(birimUrunMaliyeti(e.productId, asOf: asOf) * e.netQty)
             // Ambalaj brüt adet üzerinden gider: iade edilen siparişin kolisi geri gelmez
             r.packagingCost += Money.roundHalfAwayFromZero(Double(b.packaging) * e.qty)
         }

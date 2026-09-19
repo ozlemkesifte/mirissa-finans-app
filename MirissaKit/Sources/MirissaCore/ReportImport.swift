@@ -253,12 +253,29 @@ public enum RaporIceAktarma {
     /// Kanal-ay kayıtları; satışı silinmiş ayın "aktarılmış sipariş" listesi yok sayılır
     /// (satışları elle silinen ay yeniden aktarılabilsin)
     public static func satisiOlanAylar(_ s: AppState, kanalId: Id) -> [ChannelMonth] {
-        let satisliAylar = Set(s.sales.filter { $0.channelId == kanalId }.map(\.month))
+        let kanalSatislari = s.sales.filter { $0.channelId == kanalId }
+        let satisliAylar = Set(kanalSatislari.map(\.month))
+        let satisliUrunler = Set(kanalSatislari.map { "\($0.month)|\($0.productId)" })
         return s.channelMonths.map { cm in
             var c = cm
-            if cm.channelId == kanalId, !satisliAylar.contains(cm.month) {
+            guard cm.channelId == kanalId else { return c }
+            if !satisliAylar.contains(cm.month) {
                 c.iceAktarilanSiparisler = nil
                 c.iadesiAlinanSiparisler = nil
+            } else {
+                // Satış satırı elle silinen ürünün kalemleri yeniden aktarılabilsin
+                let eski = cm.iceAktarilanSiparisler ?? []
+                let kalan = eski.filter { a in
+                    guard let urun = a.split(separator: "|", maxSplits: 1).dropFirst().first else { return true }
+                    return satisliUrunler.contains("\(cm.month)|\(urun)")
+                }
+                // Bütün kalemleri düşen sipariş sipariş sayısından da düşer: yeniden aktarılınca
+                // yeni sipariş sayılıp iki kez eklenmesin
+                func siparis(_ a: String) -> String { String(a.split(separator: "|", maxSplits: 1).first ?? "") }
+                let kalanSiparisler = Set(kalan.map(siparis))
+                let dusen = Set(eski.map(siparis)).subtracting(kalanSiparisler).count
+                if dusen > 0, let o = cm.orderCount { c.orderCount = max(o - dusen, 0) }
+                c.iceAktarilanSiparisler = kalan
             }
             return c
         }
@@ -300,13 +317,24 @@ public enum RaporIceAktarma {
             if let c = iadeCache[ay] { return c }
             let c = Set(mevcutlar[ay]?.iadesiAlinanSiparisler ?? []); iadeCache[ay] = c; return c
         }
+        // Aktarılan kalemler "sipariş|ürün" anahtarıyla izlenir: bir siparişin atlanan (eşleşmeyen)
+        // kalemi sonradan eşleştirilince eklenir, tek kalemi iptal edilen sipariş bozulmaz.
+        // Önceki sürümde yalnız sipariş numarası saklanmıştı: o kayıt siparişin bütün kalemlerini kapsar.
+        func anahtar(_ k: Kalem, _ urun: Id) -> String { "\(k.siparisNo)|\(urun)" }
+        func aktarildi(_ ay: MonthKey, _ k: Kalem, _ urun: Id) -> Bool {
+            alinmis(ay).contains(anahtar(k, urun)) || alinmis(ay).contains(k.siparisNo)
+        }
+        func oncedenSiparis(_ ay: MonthKey, _ no: String) -> Bool {
+            alinmis(ay).contains(no) || alinmis(ay).contains { $0.hasPrefix(no + "|") }
+        }
+        var yeniAnahtarlar: [MonthKey: Set<String>] = [:]
         var tekrar = Set<String>()
         for k in gecerli {
             guard let urun = eslesme[k.urunAnahtari] else { atlanan += 1; continue }
             let ay = Dates.month(of: k.tarih)
             let a = Anahtar(ay: ay, urun: urun)
-            // Bu sipariş daha önce aktarıldı: tekrar sayılmaz; o zamandan beri iade edildiyse iadesi eklenir
-            if alinmis(ay).contains(k.siparisNo) {
+            // Bu kalem daha önce aktarıldı: tekrar sayılmaz; o zamandan beri iade edildiyse iadesi eklenir
+            if aktarildi(ay, k, urun) {
                 tekrar.insert(k.siparisNo)
                 if k.iade, !oncekiIade(ay).contains(k.siparisNo) {
                     sonradanIade[a, default: Toplam()].ekle(k, odenen: true)
@@ -319,15 +347,29 @@ public enum RaporIceAktarma {
                 iadesiAlinan[ay, default: []].insert(k.siparisNo)
             }
             toplam[a, default: Toplam()].ekle(k)
-            siparisAdet[ay, default: [:]][k.siparisNo, default: 0] += k.adet
+            yeniAnahtarlar[ay, default: []].insert(anahtar(k, urun))
+            // Sipariş sayısına yalnız ilk kez görülen sipariş girer (önceki aktarımda kalemi olan değil)
+            if !oncedenSiparis(ay, k.siparisNo) {
+                siparisAdet[ay, default: [:]][k.siparisNo, default: 0] += k.adet
+            }
         }
-        // Önceki aktarımda alınmış ama bu raporda iptal görünen siparişler geri alınır
+        // Önceki aktarımda alınmış ama bu raporda iptal görünen kalemler geri alınır. Sipariş sayısından
+        // yalnız bütün kalemleri iptal edilen sipariş düşer.
+        let canliSiparisler = Set(gecerli.map(\.siparisNo))
+        var iptalAnahtarlari: [MonthKey: Set<String>] = [:]
+        var eskiKayittanCozulen: [MonthKey: Set<String>] = [:]
+        var geriAlinanSiparis = Set<String>()
         for k in kalemler where k.iptal {
             guard let urun = eslesme[k.urunAnahtari] else { continue }
             let ay = Dates.month(of: k.tarih)
-            guard alinmis(ay).contains(k.siparisNo) else { continue }
+            guard aktarildi(ay, k, urun) else { continue }
             geri[Anahtar(ay: ay, urun: urun), default: Toplam()].ekle(k)
-            iptalEdilen[ay, default: [:]][k.siparisNo, default: 0] += k.adet
+            iptalAnahtarlari[ay, default: []].insert(anahtar(k, urun))
+            if alinmis(ay).contains(k.siparisNo) { eskiKayittanCozulen[ay, default: []].insert(k.siparisNo) }
+            geriAlinanSiparis.insert(k.siparisNo)
+            if !canliSiparisler.contains(k.siparisNo) {
+                iptalEdilen[ay, default: [:]][k.siparisNo, default: 0] += k.adet
+            }
         }
         func satirlar(_ d: [Anahtar: Toplam], _ yap: (Anahtar, Toplam) -> SalesEntry) -> [SalesEntry] {
             d.keys.sorted { ($0.ay, $0.urun) < ($1.ay, $1.urun) }.map { yap($0, d[$0]!) }
@@ -352,7 +394,7 @@ public enum RaporIceAktarma {
         var aylar: [ChannelMonth] = []
         var eklenen: [MonthKey] = []
         let buyukMu: (Double) -> Bool = { $0 >= Double(OrderPackaging.ikinciKoliUrunSayisi) }
-        let degisenAylar = Set(siparisAdet.keys).union(iptalEdilen.keys).union(iadesiAlinan.keys)
+        let degisenAylar = Set(yeniAnahtarlar.keys).union(iptalAnahtarlari.keys).union(iadesiAlinan.keys)
         for ay in degisenAylar {
             let siparisler = siparisAdet[ay] ?? [:]
             let iptaller = iptalEdilen[ay] ?? [:]
@@ -369,7 +411,17 @@ public enum RaporIceAktarma {
                 cm.orderCount = max((cm.orderCount ?? 0) + siparisler.count - iptaller.count, 0)
                 cm.bigOrderCount = max((cm.bigOrderCount ?? 0) + buyuk - iptaller.values.filter(buyukMu).count, 0)
             }
-            cm.iceAktarilanSiparisler = alinmis.filter { iptaller[$0] == nil } + siparisler.keys.sorted()
+            // Eski (yalnız sipariş numaralı) kayıttan kalemi iptal edilen sipariş: raporda canlı kalan
+            // kalemleri kalem anahtarıyla yazılır, iptal edilen kalem listeden çıkar
+            let cozulen = eskiKayittanCozulen[ay] ?? []
+            let canliAnahtarlar = gecerli.compactMap { k -> String? in
+                guard cozulen.contains(k.siparisNo), Dates.month(of: k.tarih) == ay,
+                      let u = eslesme[k.urunAnahtari] else { return nil }
+                return anahtar(k, u)
+            }
+            let cikan = (iptalAnahtarlari[ay] ?? []).union(cozulen)
+            cm.iceAktarilanSiparisler = Array(Set(alinmis).subtracting(cikan)
+                .union(canliAnahtarlar).union(yeniAnahtarlar[ay] ?? [])).sorted()
             if let yeni = iadesiAlinan[ay] {
                 cm.iadesiAlinanSiparisler = Array(Set(cm.iadesiAlinanSiparisler ?? []).union(yeni)).sorted()
             }
@@ -382,7 +434,7 @@ public enum RaporIceAktarma {
         sonuc.eklenenAylar = eklenen.sorted()
         sonuc.tekrarAtlanan = tekrar.count
         sonuc.geriAlinacak = geriAlinacak
-        sonuc.sonradanIptal = iptalEdilen.values.reduce(0) { $0 + $1.count }
+        sonuc.sonradanIptal = geriAlinanSiparis.count
         sonuc.iadeEklenecek = iadeEklenecek
         return sonuc
     }

@@ -421,7 +421,7 @@ public extension Engine {
                 urunMaliyetiEksik: false
             )
         }
-        return expectedMixBasis()
+        return expectedMixBasis(month: month, today: today)
     }
 
     /// Temel alınan ayın satışlarını, hedef ayda geçerli fiyatlarla yeniden hesaplar.
@@ -438,6 +438,7 @@ public extension Engine {
 
         var kopya = state
         var degisti = false
+        var oraniDegisenKanallar = Set<Id>()
         // Kanal oranları ve kesinti ayarları hedef günün haliyle
         for i in kopya.channels.indices {
             let ch = kopya.channels[i]
@@ -452,6 +453,7 @@ public extension Engine {
             guard yeni != eski else { continue }
             yeni.id = "\(ch.id)_hedef"; yeni.from = "1970-01-01"
             kopya.channels[i].rateHistory = [yeni]
+            oraniDegisenKanallar.insert(ch.id)
             degisti = true
         }
         // Ürün maliyeti ve reçete hedef günün haliyle
@@ -469,8 +471,11 @@ public extension Engine {
             kopya.products[i].eskiReceteler = nil
             degisti = true
         }
+        // Kanal başına eski ve yeni satış tutarı: elle girilen komisyon da fiyatla birlikte ölçeklenir
+        var eskiTutar: [Id: Double] = [:], yeniTutar: [Id: Double] = [:]
         for i in kopya.sales.indices where kopya.sales[i].month == basisMonth {
             let satir = kopya.sales[i]
+            eskiTutar[satir.channelId, default: 0] += Double(satir.netSales)
             guard let p = kopya.product(satir.productId),
                   let eski = p.price(for: satir.channelId, on: eskiGun),
                   let yeni = p.price(for: satir.channelId, on: yeniGun),
@@ -484,32 +489,44 @@ public extension Engine {
             kopya.sales[i].returnsAmount = olcekle(satir.returnsAmount)
             degisti = true
         }
+        for e in kopya.sales where e.month == basisMonth { yeniTutar[e.channelId, default: 0] += Double(e.netSales) }
+        // Elle girilen ay komisyonu yeni fiyata göre ölçeklenir; kanalın oranı değiştiyse eski tutar
+        // yeni oranı yansıtmaz, otomatik hesaba bırakılır. Yoksa hedef gerçekte olduğundan kolay çıkardı.
+        for i in kopya.channelMonths.indices where kopya.channelMonths[i].month == basisMonth {
+            let kanal = kopya.channelMonths[i].channelId
+            guard let k = kopya.channelMonths[i].commissionActual else { continue }
+            if oraniDegisenKanallar.contains(kanal) {
+                kopya.channelMonths[i].commissionActual = nil
+            } else if let e = eskiTutar[kanal], e > 0, let y = yeniTutar[kanal], y != e {
+                kopya.channelMonths[i].commissionActual = Money.roundHalfAwayFromZero(Double(k) * y / e)
+            }
+        }
         guard degisti else {
             fiyatGuncelCache[anahtar] = CompanyMonthResult?.none
             return nil
         }
-        // Elle girilmiş kanal kesintileri eski tutarda kalır; oransal
-        // kesintiler yeni ciro üzerinden kendiliğinden yeniden hesaplanır.
+        // Oransal kesintiler yeni ciro üzerinden kendiliğinden yeniden hesaplanır
         let sonuc = Engine(kopya).companyMonth(basisMonth)
         fiyatGuncelCache[anahtar] = sonuc
         return sonuc
     }
 
     /// Kullanıcının girdiği beklenen sipariş profilinden katkı hesaplar.
-    func expectedMixBasis() -> TargetBasisResult? {
+    /// Geçmiş ay için o ayın sonundaki fiyat, KDV ve maliyetle (bugünkü değişiklik geçmiş hedefi oynatmasın)
+    func expectedMixBasis(month: MonthKey = Dates.currentMonth(), today: DateKey = Dates.today()) -> TargetBasisResult? {
         guard let mix = state.settings.expectedMix,
               let ch = state.channel(mix.channelId),
               state.product(mix.productId) != nil,
               mix.averageOrderValue > 0 else { return nil }
 
         // Ortalama sepet müşterinin ödediği tutardır: KDV dahil.
-        let gun = Dates.today()
+        let gun = hedefGunu(month: month, today: today)
         let fiyat = mix.averageOrderValue
         let oran = satisKdvOrani(productId: mix.productId, channelId: mix.channelId, on: gun)
         let net = Double(Vat.net(fiyat, rate: oran, included: true))
         let kesinti = Double(kanalKesintisi(ch, siparisDegeri: fiyat, on: gun, satisKdv: oran).0.toplam)
-        let b = cost(of: mix.productId)
-        let urun = Double(b.intrinsic) * mix.unitsPerOrder
+        let b = cost(of: mix.productId, asOf: gun)
+        let urun = birimUrunMaliyeti(mix.productId, asOf: gun) * mix.unitsPerOrder
         let koli = mix.unitsPerOrder >= Double(OrderPackaging.ikinciKoliUrunSayisi) ? 2.0 : 1.0
         let ambalaj = Double(b.packaging) * mix.unitsPerOrder + Double(b.orderPackaging) * koli
         let katki = net - kesinti - urun - ambalaj
@@ -659,8 +676,9 @@ public extension Engine {
         plan.fixedCosts = aylar.reduce(0) { $0 + plannedFixedCosts(month: $1) }
         if plan.fixedCosts == 0 { plan.issues.append(.sabitGiderYok) }
 
-        // Sipariş başına katkı, bugünün ayına göre belirlenen temelden gelir.
-        let referansAy = Dates.month(of: today)
+        // Sipariş başına katkı, bugünün ayına göre belirlenen temelden gelir. Geçmiş bir yıl için o
+        // yılın sonundaki temel kullanılır: bugünkü fiyat değişikliği geçmiş yılın planını oynatmasın.
+        let referansAy = min(Dates.month(of: today), Dates.monthKey(y + 1, 1))
         guard let temel = targetBasis(before: referansAy, today: today) else {
             plan.missing = missingForTarget(month: referansAy, today: today)
             plan.issues.append(.referansYok)

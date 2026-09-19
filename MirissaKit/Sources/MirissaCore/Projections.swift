@@ -121,7 +121,8 @@ public extension Engine {
         let buAy = Dates.month(of: bugun ?? Dates.today())
         let istenen = month ?? buAy
         // Önce istek anahtarıyla önbelleğe bakılır: kalemin hareketleri yalnızca ilk seferde taranır
-        let istekAnahtari = "\(item.id)|\(istenen)|\(buAy)"
+        let gun = bugun ?? Dates.today()
+        let istekAnahtari = "\(item.id)|\(istenen)|\(gun)"
         if let c = consumptionCache[istekAnahtari] { return c }
         let satirlar = ledger.rows(for: item)
         // Kalem ilk kez ne zaman göründü: yeni ürünün oranı, henüz yokken geçen
@@ -131,13 +132,23 @@ public extension Engine {
         // bakılır. Kalem bu ay ilk kez satıldıysa elde yalnızca bu ay vardır, o kullanılır.
         let ilkSatisAy = satirlar.filter { $0.movement.source == .sales && $0.kind == .satis }
             .map { Dates.month(of: $0.date) }.min()
-        let end = istenen >= buAy && (ilkSatisAy ?? istenen) < buAy ? Dates.addMonths(buAy, -1) : istenen
-        let key = "\(item.id)|\(end)"
+        var end = istenen >= buAy && (ilkSatisAy ?? istenen) < buAy ? Dates.addMonths(buAy, -1) : istenen
+        // Geçen ayın satışları henüz girilmediyse (ayın ilk günleri) o ay boş sayılıp oranı düşürmesin
+        let satisAylari = Set(satirlar.filter { $0.movement.source == .sales && $0.kind == .satis }
+            .map { Dates.month(of: $0.date) })
+        // Şirketin o ay hiç satışı yoksa henüz girilmemiştir; yalnız bu kalem satılmadıysa gerçek sıfırdır
+        if end == Dates.addMonths(buAy, -1), !satisAylari.contains(end), let ilk = ilkSatisAy, ilk < end,
+           !state.sales.contains(where: { $0.month == end }) {
+            end = Dates.addMonths(end, -1)
+        }
+        // Bu ay pencerede ise sonuç ayın gününe bağlıdır
+        let key = end >= buAy ? "\(item.id)|\(end)|\(gun)" : "\(item.id)|\(end)"
         if let c = consumptionCache[key] { consumptionCache[istekAnahtari] = c; return c }
 
         var result = ConsumptionRate.none
         for window in [state.settings.consumptionWindowMonths, 6, 12] where window > 0 {
-            let start = max(Dates.addMonths(end, -(window - 1)), ilkAy ?? end)
+            // Pencere ilk satıştan başlar: alındığı ama satılmadığı aylar oranı sulandırmasın
+            let start = max(Dates.addMonths(end, -(window - 1)), ilkSatisAy ?? ilkAy ?? end)
             guard start <= end else { continue }
             let months = Set(Dates.monthRange(from: start, to: end))
             // Satışın net tüketimi: stoğa geri dönen iadeler düşülür.
@@ -151,9 +162,17 @@ public extension Engine {
             guard used > 0 else { continue }
             var orders = 0
             for m in months { orders += companyMonth(m).orders }
+            // Bitmemiş bu ay (yalnız bu ay ilk kez satıldıysa pencerede) geçen gün kadar sayılır:
+            // ayın 5'inde 100 satış ayda ~600 hızdır, 100 değil
+            var aySayisi = Double(months.count)
+            if months.contains(buAy) {
+                let gecen = Dates.day(of: gun)
+                let ayGunu = Dates.daysInMonth(year: Dates.year(of: buAy), month: Dates.monthNumber(of: buAy))
+                aySayisi += Double(gecen) / Double(ayGunu) - 1
+            }
             result = ConsumptionRate(
                 perOrder: orders > 0 ? used / Double(orders) : 0,
-                perMonth: used / Double(months.count),
+                perMonth: used / max(aySayisi, 1.0 / 31),
                 windowMonths: months.count
             )
             break

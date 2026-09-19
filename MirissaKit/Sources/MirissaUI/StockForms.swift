@@ -202,6 +202,8 @@ struct PurchaseForm: View {
             p.odeme = plan.tutariDuzelt(p.landedSplit.net + p.landedSplit.vat, bugun: Dates.today())
         }
         editingId == nil ? store.addPurchase(p) : store.updatePurchase(p)
+        // Kayıt reddedildiyse (kilitli ay) fatura da eklenmez
+        guard store.sonHata == nil else { return }
         if let f = picked {
             store.attachInvoice(data: f.data, ext: f.ext, toPurchase: p.id)
         } else if invoiceRemoved {

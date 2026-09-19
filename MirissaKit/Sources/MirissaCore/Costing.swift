@@ -39,8 +39,10 @@ public enum CostingError: Error, CustomStringConvertible {
 /// Kural: 1–2 ürünlük sipariş 1 koli, 3 ve üzeri ürünlük sipariş 2 koli.
 ///   koli = sipariş sayısı + 3 ve üzeri ürünlü sipariş sayısı
 /// Sipariş sayısı girilmemişse her ürün ayrı koli sayılır (tahmini).
-/// 3+ ürünlü sipariş sayısı girilmemişse en az olabilecek değer alınır:
-/// siparişlere 2'şer ürün düştükten sonra artan her ürün bir 3+ sipariş demektir (tahmini).
+/// 3+ ürünlü sipariş sayısı girilmemişse her büyük siparişte 3 ürün olduğu varsayılır:
+/// siparişlere 2'şer ürün düştükten sonra artan her ürün bir 3+ sipariş sayılır. Bu en az değer
+/// değildir (büyük siparişler daha kalabalıksa koli daha az olur); sonuç "tahmini" işaretlenir,
+/// 3+ ürünlü sipariş sayısı girilince kesinleşir.
 public enum OrderPackaging {
     public static let ikinciKoliUrunSayisi = 3
 

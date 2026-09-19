@@ -59,7 +59,7 @@ public extension Engine {
                 Double(b.packaging) * e.returnsQty + Double(b.orderPackaging) * e.returnsQty * koliOrani)
             if !e.returnsRestock {
                 s.hasarli += e.returnsQty
-                s.hasarliMaliyet += Money.roundHalfAwayFromZero(Double(b.intrinsic) * e.returnsQty)
+                s.hasarliMaliyet += Money.roundHalfAwayFromZero(birimUrunMaliyeti(e.productId, asOf: Dates.monthEnd(e.month)) * e.returnsQty)
             }
             sonuc[anahtar] = s
         }

@@ -51,7 +51,7 @@ public extension Engine {
         }
         for o in siparisOnerileri(bugun: bugun) where !o.acil {
             ekle("siparis-\(o.id)", o.sonSiparisGunu, "Sipariş zamanı",
-                 "\(o.ad) için en geç bugün sipariş ver (önerilen \(Units.formatQty(o.miktar, baseUnit: o.birim))).")
+                 "\(o.ad) için en geç bugün sipariş ver (önerilen \(Units.formatQty(o.sonGundeMiktar, baseUnit: o.birim))).")
         }
         let yil = Dates.year(of: Dates.month(of: bugun))
         for c in [3, 6, 9] {

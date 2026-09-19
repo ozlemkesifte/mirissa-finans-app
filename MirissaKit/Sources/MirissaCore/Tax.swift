@@ -46,9 +46,10 @@ public extension Engine {
         let ayNo = Dates.monthNumber(of: buAy)
         let ceyrek = (ayNo - 1) / 3 + 1
         let ceyrekSonu = Dates.monthKey(yil, ceyrek * 3)
-        let oncekiCeyrekSonu = Dates.monthKey(yil, max((ceyrek - 1) * 3, 1))
         let ceyrekKalan = kalan(min(ceyrekSonu, Dates.month(of: today)))
-        let oncekiKarsilik = ceyrek == 1 ? 0 : kalan(oncekiCeyrekSonu)
+        // Önceki çeyreklerde ödenmiş geçici vergi: her çeyrekte kümülatif tutara tamamlanır, zarar eden
+        // çeyrekte iade edilmez. Bu yüzden ödenen toplam, önceki çeyrek sonlarının en büyüğüdür.
+        let oncekiKarsilik = (1..<ceyrek).map { kalan(Dates.monthKey(yil, $0 * 3)) }.max() ?? 0
         let odemeAyi = Dates.addMonths(ceyrekSonu, 2)
         // 4. çeyrek için geçici vergi yoktur: yıllık beyanda ödenir
         let geciciVarMi = ceyrek < 4

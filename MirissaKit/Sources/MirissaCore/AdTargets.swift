@@ -92,10 +92,16 @@ public extension Engine {
     /// sipariş değeri ve kalan tutar o adetle hesaplanır; kargo bir kez düşülür.
     func adTargets(keepPerOrder: Kurus?, on date: DateKey = Dates.today()) -> [AdTarget] {
         let ay = Dates.month(of: date)
+        // Karışık hedefle aynı temel: gerçekleşen fiyat oranı ve reklam dışı satışa bağlı giderler
+        // (influencer gibi) temel aydan; yoksa aynı ekranda iki farklı başa baş ROAS çıkardı
+        let temelAy = targetMix(month: ay).2
+        let digerDegisken = temelAy.map { digerDegiskenGiderSiparisBasi(month: $0) } ?? 0
         return unitContributions(on: date).map { u in
             let bilinen = unitsPerOrder(channelId: u.channelId, month: ay)
             let adet = bilinen ?? 1
-            let s = siparisBasina(u, urunAdedi: adet, ay: ay)
+            let oran = temelAy.map { gerceklesmeOrani(channelId: u.channelId, productId: u.productId, month: $0) } ?? 1
+            var s = siparisBasina(u, urunAdedi: adet, ay: ay, oran: oran)
+            s.kalan -= digerDegisken
             let ch = state.channel(u.channelId)
             return AdTarget(productId: u.productId, productName: u.productName,
                             channelId: u.channelId, channelName: u.channelName,
