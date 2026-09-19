@@ -31,6 +31,8 @@ public enum AppSheet: Identifiable, Hashable {
     case editBalance(Id)
     case settings
     case aySonu(MonthKey)
+    case karHedefi(MonthKey)
+    case yillikKarHedefi(Int)
 
     public var id: String {
         switch self {
@@ -63,6 +65,8 @@ public enum AppSheet: Identifiable, Hashable {
         case let .editBalance(i): return "editBalance-\(i)"
         case .settings: return "settings"
         case let .aySonu(m): return "aySonu-\(m)"
+        case let .karHedefi(m): return "karHedefi-\(m)"
+        case let .yillikKarHedefi(y): return "yillikKarHedefi-\(y)"
         }
     }
 }
@@ -100,6 +104,8 @@ public extension View {
             case .addBalance: BalanceForm()
             case let .editBalance(i): BalanceForm(editing: i)
             case .settings: SettingsView()
+            case let .karHedefi(m): KarHedefiFormu(anahtar: m, yillik: false)
+            case let .yillikKarHedefi(y): KarHedefiFormu(anahtar: "\(y)", yillik: true)
             }
         }
     }

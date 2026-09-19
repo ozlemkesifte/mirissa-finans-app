@@ -138,8 +138,10 @@ public extension Engine {
             }
             ay = Dates.addMonths(ay, 1)
         }
-        // 4) Geçici vergi (oran girildiyse)
-        for ceyrekSonu in [3, 6, 9].map({ Dates.monthKey(Dates.year(of: Dates.month(of: bas)), $0) }) {
+        // 4) Geçici vergi (vergi türü seçildiyse): 4 çeyrek; 4. çeyrek izleyen yılın Şubat'ında ödenir
+        let basYili = Dates.year(of: Dates.month(of: bas))
+        let ceyrekSonlari = [Dates.monthKey(basYili - 1, 12)] + [3, 6, 9, 12].map { Dates.monthKey(basYili, $0) }
+        for ceyrekSonu in ceyrekSonlari {
             // Henüz gelmemiş çeyrek sonu bugünün çeyreğine düşer; aynı vergi iki kez yazılmasın
             if let v = vergiKarsiligi(month: ceyrekSonu, today: bugun),
                v.ceyrek == Dates.monthNumber(of: ceyrekSonu) / 3, pencerede(v.ceyrekSonOdeme),
@@ -147,6 +149,19 @@ public extension Engine {
                 kalemler.append(NakitKalemi(id: "vergi:\(ceyrekSonu)", gun: v.ceyrekSonOdeme,
                                             ad: "\(v.ceyrek). çeyrek geçici vergi",
                                             tutar: -v.ceyrekGeciciVergi, tahmini: true))
+            }
+        }
+        // 4b) Geçen yılın yıllık beyanında ödenecek kalan (geçici vergiler ödenmiş varsayılır).
+        // Kurumlar: 30 Nisan; gelir vergisi: Mart ve Temmuz iki eşit taksit.
+        if let v = vergiKarsiligi(month: Dates.monthKey(basYili - 1, 12), today: bugun), v.yillikBeyandaOdenecek > 0 {
+            let taksitler: [(DateKey, Kurus)] = v.sirket
+                ? [("\(basYili)-04-30", v.yillikBeyandaOdenecek)]
+                : [("\(basYili)-03-31", v.yillikBeyandaOdenecek - v.yillikBeyandaOdenecek / 2),
+                   ("\(basYili)-07-31", v.yillikBeyandaOdenecek / 2)]
+            for (i, (gun, tutar)) in taksitler.enumerated() where pencerede(gun) && tutar > 0 {
+                kalemler.append(NakitKalemi(id: "yillikvergi:\(basYili - 1):\(i)", gun: gun,
+                                            ad: "\(basYili - 1) yıllık \(v.sirket ? "kurumlar" : "gelir") vergisi",
+                                            tutar: -tutar, tahmini: true))
             }
         }
 

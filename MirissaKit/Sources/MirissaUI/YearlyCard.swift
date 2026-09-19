@@ -8,8 +8,6 @@ struct YearlyCard: View {
     var year: Int
     var sheet: Binding<AppSheet?>?
 
-    @State private var hedefGirisi = false
-    @State private var hedefTutar: Kurus = 0
 
     private var plan: YearlyPlan { store.engine.yearlyPlan(year: year) }
 
@@ -86,7 +84,8 @@ struct YearlyCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(t.isBreakeven
                  ? "Yıllık masrafları karşılamak için"
-                 : "\(Money.format(t.targetProfit)) yıllık kâr için")
+                 : (store.engine.yillikKarHedefiBasligi(year: year) ?? "\(Money.format(t.targetProfit)) yıllık kâr için")
+                    + (store.engine.hedefVergiSonrasi("\(year)") ? " (vergi öncesi karşılığı yaklaşık \(Money.format(t.targetProfit)))" : ""))
                 .font(.subheadline)
                 .foregroundStyle(Palette.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
@@ -116,39 +115,18 @@ struct YearlyCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
     private func hedefDuzenle(_ p: YearlyPlan) -> some View {
-        if hedefGirisi {
-            Card(background: Palette.inset) {
-                VStack(spacing: 10) {
-                    MoneyField("Yıllık kâr hedefin", value: $hedefTutar)
-                    HStack(spacing: Metrics.gap) {
-                        Button("Vazgeç") { hedefGirisi = false }
-                            .foregroundStyle(Palette.inkSoft)
-                        Spacer()
-                        Button("Kaydet") {
-                            store.setYearlyProfitGoal(hedefTutar > 0 ? hedefTutar : nil, for: year)
-                            hedefGirisi = false
-                        }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.accent)
-                    }
-                }
-            }
-        } else {
-            Button {
-                hedefTutar = store.state.settings.yearlyProfitGoal(for: year) ?? 0
-                hedefGirisi = true
-            } label: {
-                Label(store.state.settings.yearlyProfitGoal(for: year) == nil
-                      ? "Kendi yıllık hedefimi yazayım"
-                      : "Yıllık hedefi değiştir",
-                      systemImage: "target")
-                    .font(.subheadline.weight(.semibold))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Palette.accent)
+        Button {
+            sheet?.wrappedValue = .yillikKarHedefi(year)
+        } label: {
+            Label(store.state.settings.yearlyProfitGoal(for: year) == nil
+                  ? "Yıllık kâr hedefi seç"
+                  : "Yıllık hedefi değiştir",
+                  systemImage: "target")
+                .font(.subheadline.weight(.semibold))
         }
+        .buttonStyle(.plain)
+        .foregroundStyle(Palette.accent)
     }
 }
 

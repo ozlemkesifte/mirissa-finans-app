@@ -201,7 +201,7 @@ struct BreakevenCard: View {
                     LabeledRow("Sipariş başına ürün",
                                String(format: "%.1f", p.unitsPerOrder).replacingOccurrences(of: ".", with: ","))
                 }
-                CustomGoalRow(month: month)
+                KarHedefiGirisi(month: month)
             }
         }
     }
@@ -307,47 +307,6 @@ private struct TargetRow: View {
 }
 
 // MARK: - Kendi hedefin
-
-private struct CustomGoalRow: View {
-    @Environment(AppStore.self) private var store
-    var month: MonthKey
-
-    @State private var deger: Kurus = 0
-    @State private var yuklendi = false
-
-    private var kayitli: Kurus { store.state.settings.profitGoal(for: month) ?? 0 }
-    private var degisti: Bool { deger != kayitli }
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Divider().overlay(Palette.separator)
-            MoneyField("Bu ay hedefim", placeholder: "örn. 75.000", value: $deger)
-            if degisti {
-                HStack(spacing: 10) {
-                    Button("Uygula") { store.setProfitGoal(deger > 0 ? deger : nil, for: month) }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.accent)
-                    if kayitli > 0 {
-                        Button("Hedefi kaldır") {
-                            deger = 0
-                            store.setProfitGoal(nil, for: month)
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(Palette.zarar)
-                    }
-                    Spacer()
-                }
-            }
-        }
-        .onAppear {
-            guard !yuklendi else { return }
-            yuklendi = true
-            deger = kayitli
-        }
-    }
-}
-
-// MARK: - İlk ay: beklenen sipariş profili
 
 private struct BeklenenProfilForm: View {
     @Environment(AppStore.self) private var store

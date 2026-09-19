@@ -22,10 +22,18 @@ struct ChannelForm: View {
                 Section {
                     PercentField("Komisyon oranı", value: d.commissionPct)
                     PercentField("Ödeme komisyonu", value: d.paymentPct)
+                    if store.state.settings.vatEnabled, (draft?.paymentPct ?? 0) > 0 {
+                        Toggle("Ödeme komisyonu BSMV'li (KDV yok)", isOn: Binding(
+                            get: { draft?.odemeKesintisiBsmv ?? false },
+                            set: { draft?.odemeKesintisiBsmv = $0 }
+                        ))
+                    }
                 } header: {
                     Text("Yüzdeler")
                 } footer: {
-                    Text("Net satış üzerinden otomatik hesaplanır. Ay sonunda gerçek tutarı kanal ekranından elle girip bunun üzerine yazabilirsin.")
+                    Text("Net satış üzerinden otomatik hesaplanır. Ay sonunda gerçek tutarı kanal ekranından elle girip bunun üzerine yazabilirsin. "
+                         + "Banka POS komisyonu KDV'siz, BSMV'lidir; ödeme kuruluşunun (iyzico, PayTR…) faturasında KDV yoksa bunu aç. "
+                         + "Değişiklik bugünden başlar, geçmiş aylar değişmez.")
                 }
 
                 Section {
@@ -196,10 +204,19 @@ struct ChannelMonthForm: View {
         store.engine.kesintiBrut(net, channelId: channelId, month: month)
     }
 
+    /// Komisyon alanının otomatik önerisi (KDV dahil). BSMV'li ödeme komisyonu bu alanda değildir.
+    private var komisyonOnerisi: Kurus { brut(auto.commission.amount - auto.odemeKdvsizTutar) }
+
+    /// Kendi sitede aylık abonelik ödemeden kesilmez (motordaki beklenen hakedişle aynı kural)
+    private var kendiSite: Bool { store.state.channel(channelId)?.kind == .ownStore }
+
     /// Bu ay için beklenen hakediş (formdaki kesintilerle, KDV dahil)
     private var beklenen: Kurus {
-        let giderler = [commission ?? brut(auto.commission.amount), shipping ?? brut(auto.shipping.amount),
-                        serviceFee ?? brut(auto.serviceFee.amount), other ?? brut(auto.otherDeduction.amount)]
+        let digerKesinti = other ?? brut(auto.otherDeduction.amount)
+        let giderler = [(commission ?? komisyonOnerisi) + auto.odemeKdvsizTutar,
+                        shipping ?? brut(auto.shipping.amount),
+                        serviceFee ?? brut(auto.serviceFee.amount),
+                        max(digerKesinti - (kendiSite ? auto.sabitKesintiBrut : 0), 0)]
         // Stopaj pazaryerince kesilir: hesaba yatan paradan düşer (kârdan değil)
         return live.netSalesIncVat - giderler.reduce(0, +) - live.stopaj
     }
@@ -229,7 +246,10 @@ struct ChannelMonthForm: View {
             }
 
             Section {
-                OptionalMoneyField("Komisyon", autoValue: brut(auto.commission.amount), value: $commission)
+                OptionalMoneyField("Komisyon", autoValue: komisyonOnerisi, value: $commission)
+                if auto.odemeKdvsizTutar != 0 {
+                    LabeledRow("Ödeme/POS komisyonu (BSMV'li, otomatik)", auto.odemeKdvsizTutar.tl, tone: Palette.inkSoft)
+                }
                 OptionalMoneyField("Kargo", autoValue: brut(auto.shipping.amount), value: $shipping)
                 OptionalMoneyField("Hizmet bedeli", autoValue: brut(auto.serviceFee.amount), value: $serviceFee)
                 OptionalMoneyField("Diğer kesinti", autoValue: brut(auto.otherDeduction.amount), value: $other)

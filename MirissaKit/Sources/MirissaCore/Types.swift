@@ -681,6 +681,10 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     /// Komisyon KDV hariç satış fiyatı üzerinden mi hesaplanıyor (Trendyol böyle yapar,
     /// üstüne KDV ekler). nil/false = KDV dahil fiyatın yüzdesi. %20 KDV'li üründe ikisi aynı sonucu verir.
     public var komisyonKdvHaric: Bool? = nil
+    /// Ödeme/POS komisyonu BSMV'li (KDV'siz) faturalanıyor: KDV'si yoktur, tamamı gider. Banka POS
+    /// komisyonu KDVK 17/4-e gereği KDV'den istisnadır; ödeme kuruluşları sağlayıcıya göre değişir.
+    /// nil/false = diğer kesintilerle aynı KDV'li (eski kayıtlar)
+    public var odemeKesintisiBsmv: Bool? = nil
     /// E-ticaret stopajı oranı (%). Pazaryeri KDV hariç satış tutarından keser; gider değil,
     /// gelir/kurumlar vergisinden mahsup edilen peşin vergidir. nil = kesilmiyor.
     public var stopajPct: Double? = nil
@@ -849,6 +853,11 @@ public struct Channel: Codable, Identifiable, Hashable, Sendable {
     public func komisyonKdvHaric(on date: DateKey) -> Bool {
         rates(on: date).komisyonKdvHaric ?? komisyonKdvHaric ?? false
     }
+
+    /// O gün ödeme/POS komisyonu KDV'siz (BSMV'li) mi
+    public func odemeKdvsiz(on date: DateKey) -> Bool {
+        rates(on: date).odemeKesintisiBsmv ?? odemeKesintisiBsmv ?? false
+    }
 }
 
 public enum ChannelKind: String, Codable, Sendable {
@@ -952,6 +961,8 @@ public struct ChannelRates: Codable, Identifiable, Hashable, Sendable {
     public var unknownFields: [String]
     /// Bu tarihten itibaren komisyon KDV hariç fiyattan mı. nil = kanalın ayarı
     public var komisyonKdvHaric: Bool? = nil
+    /// Bu tarihten itibaren ödeme komisyonu KDV'siz (BSMV'li) mi. nil = kanalın ayarı
+    public var odemeKesintisiBsmv: Bool? = nil
     /// Bu tarihten itibaren kesintilerin KDV oranı / KDV dahil mi. nil = kanalın ayarı
     public var feeVatRate: VatRate? = nil
     public var feesIncludeVat: Bool? = nil
@@ -987,6 +998,7 @@ public struct ChannelRates: Codable, Identifiable, Hashable, Sendable {
     func ayarlariSabitle(_ kanal: Channel) -> ChannelRates {
         var r = self
         r.komisyonKdvHaric = r.komisyonKdvHaric ?? kanal.komisyonKdvHaric ?? false
+        r.odemeKesintisiBsmv = r.odemeKesintisiBsmv ?? kanal.odemeKesintisiBsmv ?? false
         r.feeVatRate = r.feeVatRate ?? kanal.resolvedFeeVatRate
         r.feesIncludeVat = r.feesIncludeVat ?? kanal.resolvedFeesIncludeVat
         return r
@@ -1288,6 +1300,11 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     /// Tek seferlik büyük bir gider kaç aya bölünerek kâra yazılsın (ör. 12 = bir yıla).
     /// Para ve KDV ödeme ayında çıkar. nil / 1 = tamamı ödendiği ayda.
     public var yayilanAy: Int? = nil
+    /// Faturadaki KDV indirilemez (ör. KKEG gidere ait KDV, adına olmayan belge). KDV indirilecek
+    /// KDV'ye gitmez, gidere eklenir. nil / false = indirilir.
+    public var kdvIndirilemez: Bool? = nil
+    /// Kanunen kabul edilmeyen gider (KKEG): kâr hesabında giderdir, vergi matrahına geri eklenir
+    public var kkeg: Bool? = nil
 
     public init(
         id: Id = Ids.make(.expense),
@@ -1330,6 +1347,14 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var resolvedBehavior: CostBehavior { behavior ?? category.defaultBehavior }
     public var resolvedVatRate: VatRate { vatRate ?? .yok }
     public var resolvedVatIncluded: Bool { vatIncluded ?? true }
+
+    /// KDV indirilemez / KKEG işaretleriyle kopya (false = işaret yok)
+    public func bayraklarla(kdvIndirilemez: Bool, kkeg: Bool) -> Expense {
+        var e = self
+        e.kdvIndirilemez = kdvIndirilemez ? true : nil
+        e.kkeg = kkeg ? true : nil
+        return e
+    }
 
     public var startMonth: MonthKey { Dates.month(of: date) }
     public var isRecurring: Bool { recurrence != .tek }

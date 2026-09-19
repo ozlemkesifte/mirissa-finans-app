@@ -20,6 +20,8 @@ struct ExpenseForm: View {
     @State private var vendor = ""
     @State private var vatRate: VatRate = .yirmi
     @State private var vatIncluded = true
+    @State private var kdvIndirilemez = false
+    @State private var kkeg = false
     @State private var picked: PickedFile?
     @State private var invoiceRemoved = false
     @State private var loaded = false
@@ -210,6 +212,15 @@ struct ExpenseForm: View {
                     .disabled(ayModu)
                     VatSection(rate: $vatRate, included: $vatIncluded, amount: amount,
                                asSection: false)
+                    if store.state.settings.vatEnabled && vatRate != .yok {
+                        Toggle("KDV'si indirilemez", isOn: $kdvIndirilemez).disabled(ayModu)
+                    }
+                    Toggle("Kanunen kabul edilmeyen gider (KKEG)", isOn: $kkeg).disabled(ayModu)
+                    if kkeg || kdvIndirilemez {
+                        Text("KKEG kârdan düşülür ama vergi matrahına geri eklenir (ör. vergi cezası, gecikme faizi, binek aracın %30'u). "
+                             + "İndirilemeyen KDV indirilecek KDV'ye girmez, gidere eklenir (ör. KKEG gidere ait KDV, adına olmayan fatura).")
+                            .font(.caption2).foregroundStyle(Palette.inkFaint)
+                    }
                     TextField("Tedarikçi (isteğe bağlı)", text: $vendor).disabled(ayModu)
                     TextField("Fatura no (isteğe bağlı)", text: $invoiceNo).disabled(ayModu)
                 }
@@ -274,6 +285,8 @@ struct ExpenseForm: View {
         onlyThisMonth = e.isRecurring && ayAralikta
         degerleriYukle(e, ayaOzel: onlyThisMonth)
         yayilanAy = e.yayilanAy ?? 1
+        kdvIndirilemez = e.kdvIndirilemez == true
+        kkeg = e.kkeg == true
     }
 
     private var taslak: Expense {
@@ -288,7 +301,7 @@ struct ExpenseForm: View {
             vatRate: store.state.settings.vatEnabled ? vatRate : nil,
             vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil,
             yayilanAy: yayilan
-        )
+        ).bayraklarla(kdvIndirilemez: kdvIndirilemez, kkeg: kkeg)
     }
 
     private func save() {
@@ -324,6 +337,8 @@ struct ExpenseForm: View {
                 updated.vatRate = store.state.settings.vatEnabled ? vatRate : updated.vatRate
                 updated.vatIncluded = store.state.settings.vatEnabled ? vatIncluded : updated.vatIncluded
                 updated.yayilanAy = yayilan
+                updated.kdvIndirilemez = kdvIndirilemez ? true : nil
+                updated.kkeg = kkeg ? true : nil
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
                 if e.isRecurring && recurrence == e.recurrence && !gecmisDeDegissin {
                     // Bu aydan itibaren: eski gider bir önceki ayda biter, yenisi bu aydan başlar
@@ -343,7 +358,7 @@ struct ExpenseForm: View {
                 vatRate: store.state.settings.vatEnabled ? vatRate : nil,
                 vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil,
                 yayilanAy: yayilan
-            )
+            ).bayraklarla(kdvIndirilemez: kdvIndirilemez, kkeg: kkeg)
             store.addExpense(yeni)
             hedefId = yeni.id
         }

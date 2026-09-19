@@ -69,10 +69,16 @@ struct HedefKarti: View {
     private func karHedefi(_ t: MonthlyTarget) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(Money.format(t.targetProfit)) KÂR İÇİN")
+                Text((store.engine.karHedefiBasligi(month: month) ?? "\(Money.format(t.targetProfit)) kâr için").trUpper)
                     .font(.caption.weight(.semibold))
                     .tracking(0.5)
                     .foregroundStyle(Palette.inkFaint)
+                    .fixedSize(horizontal: false, vertical: true)
+                if store.engine.hedefVergiSonrasi(month) {
+                    Text("Vergi öncesi karşılığı yaklaşık \(Money.format(t.targetProfit))")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.inkFaint)
+                }
                 Text("\(t.orders) kargo / ay")
                     .font(.system(.title3, design: .rounded).weight(.semibold))
                     .foregroundStyle(Palette.ink)
@@ -234,7 +240,7 @@ struct HedefKarti: View {
                                        "yaklaşık \(Money.format(u.contribution))",
                                        tone: u.contribution < 0 ? Palette.zarar : Palette.ink)
                         }
-                        Text("Fiyattan komisyon, kargo, ürün ve ambalaj maliyeti düşülmüş hali. "
+                        Text("Fiyattan KDV, komisyon, ödeme kesintisi, kargo, hizmet bedeli, diğer kesintiler, ürün, ambalaj ve koli maliyeti düşülmüş hali. "
                              + "Sabit giderler bu tutarlardan karşılanır.")
                             .font(.caption2)
                             .foregroundStyle(Palette.inkFaint)
@@ -296,42 +302,93 @@ struct GerceklesenKarti: View {
 struct KarHedefiGirisi: View {
     @Environment(AppStore.self) private var store
     var month: MonthKey
-    @State private var duzenle = false
-    @State private var tutar: Kurus = 0
-
-    private var kayitli: Kurus? { store.state.settings.profitGoal(for: month) }
+    @State private var sheet: AppSheet?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if duzenle {
-                BuyukParaAlani(baslik: "Bu ay kâr hedefin", deger: $tutar)
-                HStack {
-                    Button("Kaydet") {
-                        store.setProfitGoal(tutar > 0 ? tutar : nil, for: month)
-                        duzenle = false
-                    }
-                    .font(.footnote.weight(.semibold))
-                    if kayitli != nil {
-                        Button("Hedefi kaldır", role: .destructive) {
-                            store.setProfitGoal(nil, for: month)
-                            duzenle = false
-                        }
-                        .font(.footnote)
-                    }
-                    Spacer()
-                    Button("Vazgeç") { duzenle = false }.font(.footnote)
+        let baslik = store.engine.karHedefiBasligi(month: month)
+        Button { sheet = .karHedefi(month) } label: {
+            Label(baslik.map { "Kâr hedefini değiştir (\($0))" } ?? "Kâr hedefi seç: bu ay ne kadar kazanmak istiyorsun?",
+                  systemImage: "target")
+                .font(.footnote.weight(.semibold))
+        }
+        .appSheets($sheet)
+    }
+}
+
+/// Tek aktif kâr hedefi. Kaydetmeden önce hedefin vergi öncesi mi vergi sonrası (net) mı olduğu seçilmelidir.
+struct KarHedefiFormu: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    /// Ay ("2026-09") ya da yıl ("2026")
+    var anahtar: String
+    var yillik: Bool
+
+    @State private var tutar: Kurus = 0
+    @State private var vergiSonrasi: Bool?
+    @State private var yuklendi = false
+
+    private var kayitli: Kurus? {
+        yillik ? Int(anahtar).flatMap { store.state.settings.yearlyProfitGoal(for: $0) }
+            : store.state.settings.profitGoal(for: anahtar)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    MoneyField(yillik ? "Yıllık kâr hedefi" : "Aylık kâr hedefi", value: $tutar)
+                } footer: {
+                    Text(yillik ? "\(anahtar) yılı için tek bir hedef." : "\(Dates.displayMonth(anahtar)) için tek bir hedef.")
                 }
-            } else {
-                Button {
-                    tutar = kayitli ?? 0
-                    duzenle = true
-                } label: {
-                    Label(kayitli == nil ? "Kâr hedefi gir: bu ay ne kadar kazanmak istiyorsun?" : "Kâr hedefini değiştir",
-                          systemImage: "target")
-                        .font(.footnote.weight(.semibold))
+                Section {
+                    Button { vergiSonrasi = false } label: { secenek("Vergi öncesi kâr", secili: vergiSonrasi == false) }
+                    Button { vergiSonrasi = true } label: { secenek("Vergi sonrası net kâr", secili: vergiSonrasi == true) }
+                } header: {
+                    Text("Bu tutar hangisi?")
+                } footer: {
+                    Text("Vergi sonrası seçersen gereken kargo, Ayarlar → Vergi'deki vergi türüne göre vergi öncesine çevrilerek hesaplanır (tahmini).")
+                }
+                if kayitli != nil {
+                    Section {
+                        Button("Hedefi kaldır", role: .destructive) { kaydet(nil) }
+                    }
                 }
             }
+            .navigationTitle(yillik ? "Yıllık kâr hedefi" : "Aylık kâr hedefi")
+            .inlineTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Vazgeç") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Kaydet") { kaydet(tutar) }
+                        .disabled(tutar <= 0 || vergiSonrasi == nil)
+                }
+            }
+            .onAppear {
+                guard !yuklendi else { return }
+                yuklendi = true
+                tutar = kayitli ?? 0
+                // Kayıtlı hedefin türü; yeni hedefte seçim kullanıcıya bırakılır
+                if kayitli != nil { vergiSonrasi = store.engine.hedefVergiSonrasi(anahtar) }
+            }
         }
+    }
+
+    private func secenek(_ ad: String, secili: Bool) -> some View {
+        HStack {
+            Text(ad).foregroundStyle(Palette.ink)
+            Spacer()
+            if secili { Image(systemName: "checkmark").foregroundStyle(Palette.accent) }
+        }
+    }
+
+    private func kaydet(_ t: Kurus?) {
+        let v = vergiSonrasi ?? false
+        if yillik, let y = Int(anahtar) {
+            store.setYearlyProfitGoal(t, for: y, vergiSonrasi: v)
+        } else {
+            store.setProfitGoal(t, for: anahtar, vergiSonrasi: v)
+        }
+        dismiss()
     }
 }
 

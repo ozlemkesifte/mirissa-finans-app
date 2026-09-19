@@ -703,6 +703,7 @@ struct ChannelSetupFlow: View {
             unknownFields: bilinmeyen
         )
         r.komisyonKdvHaric = mevcut?.komisyonKdvHaric
+        r.odemeKesintisiBsmv = mevcut?.odemeKesintisiBsmv
         r.feeVatRate = mevcut?.feeVatRate
         r.feesIncludeVat = mevcut?.feesIncludeVat
         return r

@@ -267,7 +267,7 @@ public final class Engine {
             }
             guard i.expenseAmount != 0 else { continue }
             if let ch = i.scope.channelId {
-                if i.category == .reklam { kanalReklamNakit[ch, default: 0] += i.cashAmount }
+                if i.category == .reklam { kanalReklamNakit[ch, default: 0] += i.expenseAmount }
                 channelByCat[ch, default: [:]][i.category, default: 0] += i.expenseAmount
                 if i.behavior == .satisaBagli {
                     channelDegiskenByCat[ch, default: [:]][i.category, default: 0] += i.expenseAmount
@@ -318,7 +318,9 @@ public final class Engine {
         // Platformun kestiği tutarlar da nakit çıkışıdır
         // Platformun kestiği tutar KDV dahildir: net kısmı gider, KDV'si indirilecek KDV
         nakit += results.reduce(0) { $0 + $1.channelFees + $1.feeVat + $1.stopaj }
-        // Elle girilen aylık reklam tutarının, gider kayıtlarını aşan kısmı da ödenmiştir
+        // Elle girilen aylık reklam tutarının (KDV hariç), gider kayıtlarının KDV hariç tutarını aşan kısmı
+        // da ödenmiştir. Kayıtların nakdi (KDV dahil) zaten yukarıda sayıldı; net ile net karşılaştırılır.
+        // Aşan kısmın KDV'si bilinmez (yurt dışı reklamda KDV faturası olmaz): tahmin edilmez.
         for c in results where c.ads.isManual {
             nakit += max(c.ads.amount - (kanalReklamNakit[c.channelId] ?? 0), 0)
         }
@@ -438,8 +440,16 @@ public final class Engine {
         let komisyonTabani = ch.komisyonKdvHaric(on: asOf ?? Dates.monthEnd(month))
             ? Double(max(r.netSales, 0)) * ch.kesintiKdvCarpani(on: Dates.monthEnd(month))
             : taban
+        // Ödeme/POS komisyonu BSMV'liyse KDV'si yoktur: tamamı gider, indirilecek KDV'ye girmez.
+        // Bu kanalda elle girilen komisyon yalnızca (KDV'li) komisyondur; ödeme komisyonu ayrıca eklenir.
+        let odemeKdvsiz = ch.odemeKdvsiz(on: asOf ?? Dates.monthEnd(month))
         r.commission = kesinti(cm?.commissionActual,
-                               auto: komisyonTabani * oranlar.commissionPct / 100 + taban * oranlar.paymentPct / 100)
+                               auto: komisyonTabani * oranlar.commissionPct / 100
+                                + (odemeKdvsiz ? 0 : taban * oranlar.paymentPct / 100))
+        if odemeKdvsiz {
+            r.odemeKdvsizTutar = Money.roundHalfAwayFromZero(taban * oranlar.paymentPct / 100)
+            r.commission.amount += r.odemeKdvsizTutar
+        }
         // E-ticaret stopajı: KDV hariç satış tutarının yüzdesi (komisyon, kargo düşülmez)
         if let oran = ch.stopajOrani(month: month) {
             r.stopaj = Money.roundHalfAwayFromZero(Double(max(r.netSales, 0)) * oran / 100)
@@ -484,11 +494,11 @@ public final class Engine {
         }
         // Aylık sabit kesintiler sipariş adedinden bağımsızdır; başa baş hesabı
         // için değişken kısımdan ayrı tutulur.
-        r.fixedDeduction = min(
-            Vat.net(Money.roundHalfAwayFromZero(sabitToplam),
-                    rate: kkdv.oran, included: kkdv.dahil),
-            r.otherDeduction.amount
-        )
+        let sabitBolum = Vat.split(Money.roundHalfAwayFromZero(sabitToplam), rate: kkdv.oran, included: kkdv.dahil)
+        r.fixedDeduction = min(sabitBolum.net, r.otherDeduction.amount)
+        r.sabitKesintiBrut = r.fixedDeduction == sabitBolum.net
+            ? sabitBolum.net + sabitBolum.vat
+            : r.fixedDeduction + Vat.split(r.fixedDeduction, rate: kkdv.oran, included: false).vat
         let reklamToplam = channelExpenses[.reklam] ?? 0
         let reklamDegisken = channelVariableExpenses[.reklam] ?? 0
         r.ads = figure(cm?.adsActual, auto: Double(reklamToplam))

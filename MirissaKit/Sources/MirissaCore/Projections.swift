@@ -187,6 +187,20 @@ public extension Engine {
         return Int((q / rate.perOrder + 1e-9).rounded(.down))
     }
 
+    /// Eldeki stokla yaklaşık kaç kargo daha hazırlanabilir: siparişte kullanılan (tüketimi bilinen) her
+    /// ürün ve malzeme için "kaç siparişlik kaldı"nın en küçüğü. Hedef hesabını değiştirmez; bilgi içindir.
+    /// Tüketim verisi olan kalem yoksa `nil` (uydurulmaz).
+    func stokKapasitesi() -> (kargo: Int, darbogaz: String)? {
+        var enAz: (kargo: Int, darbogaz: String)?
+        let kalemler = state.activeMaterials.map { (ItemRef.material($0.id), $0.name) }
+            + state.activeProducts.filter(\.tracksOwnStock).map { (ItemRef.product($0.id), $0.name) }
+        for (ref, ad) in kalemler {
+            guard let n = ordersLeft(ref) else { continue }
+            if enAz == nil || n < enAz!.kargo { enAz = (n, ad) }
+        }
+        return enAz
+    }
+
     /// Eldeki bileşen stoğuyla bu setten en fazla kaç adet hazırlanabilir.
     /// Set değilse veya bileşeni yoksa `nil`.
     /// Setin kendi stoğu tutulmaz; sayı her zaman bileşenlerden türetilir.

@@ -143,3 +143,49 @@ public extension Engine {
         )
     }
 }
+
+// MARK: - KDV kayıtları (neden indirildi / indirilmedi)
+
+/// Bir ayın KDV'sini oluşturan kayıtlar. Toplamlar `vatStatus` ile birebir aynıdır:
+/// hesaplananlar = hesaplanan KDV, indirilecekler = indirilecek KDV.
+public struct KdvKaydi: Identifiable, Hashable, Sendable {
+    public enum Tur: String, Sendable { case hesaplanan, indirilecek, indirilemeyen }
+    public var id: String
+    public var tur: Tur
+    public var ad: String
+    public var tarih: DateKey?
+    public var tutar: Kurus
+    /// Neden bu gruba girdiği
+    public var neden: String
+}
+
+public extension Engine {
+    func kdvKayitlari(_ month: MonthKey) -> [KdvKaydi] {
+        let r = companyMonth(month)
+        var out: [KdvKaydi] = []
+        for c in r.channels where c.outputVat != 0 {
+            out.append(KdvKaydi(id: "satis-\(c.channelId)", tur: .hesaplanan, ad: "\(c.channelName) satışları",
+                                tarih: nil, tutar: c.outputVat,
+                                neden: "Satışın KDV'si, satışın yapıldığı ayda hesaplanır (iade ve indirim düşülmüş)."))
+        }
+        for c in r.channels where c.feeVat != 0 {
+            out.append(KdvKaydi(id: "kesinti-\(c.channelId)", tur: .indirilecek, ad: "\(c.channelName) kesinti faturaları",
+                                tarih: nil, tutar: c.feeVat,
+                                neden: "Komisyon, kargo ve hizmet faturalarının KDV'si; kanal ayarındaki kesinti KDV oranıyla."))
+        }
+        for i in expenseInstances(month: month) {
+            if i.inputVat != 0 {
+                out.append(KdvKaydi(id: "gider-\(i.id)", tur: .indirilecek, ad: i.name, tarih: i.date, tutar: i.inputVat,
+                                    neden: i.capitalized ? "Stok alımı faturası: KDV alım ayında indirilir."
+                                        : "Gider faturası: KDV ödeme (fatura) ayında indirilir."))
+            }
+            if i.indirilemeyenKdv != 0 {
+                out.append(KdvKaydi(id: "indirilemez-\(i.id)", tur: .indirilemeyen, ad: i.name, tarih: i.date,
+                                    tutar: i.indirilemeyenKdv,
+                                    neden: "\"KDV indirilemez\" işaretli: KDV gidere eklendi, indirilecek KDV'ye girmedi"
+                                        + (i.kkeg ? " (KKEG gider)." : ".")))
+            }
+        }
+        return out
+    }
+}

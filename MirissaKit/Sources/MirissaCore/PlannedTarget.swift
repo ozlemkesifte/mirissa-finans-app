@@ -123,8 +123,15 @@ public extension Engine {
         let ek = elleAylikTahmin(ch, on: date)
         // Tahmin edilen alan ayardaki aynı alanın yerine geçer (ayın gerçek tutarı gibi)
         let komisyonOrani: Double
+        // Ödeme/POS komisyonu BSMV'liyse KDV'siz ayrı yuvarlanır (motorla aynı)
+        var odemeOrani = 0.0
         if let t = ek.komisyonYuzde {
             komisyonOrani = t
+        } else if ch.odemeKdvsiz(on: date) {
+            let carpan = komisyonTabanCarpani(ch, on: date, satisKdv: satisKdv
+                ?? (state.settings.vatEnabled ? state.settings.defaultVatRate : .yok))
+            komisyonOrani = r.commissionPct * carpan
+            odemeOrani = r.paymentPct
         } else {
             // Komisyon KDV hariç fiyattan alınıyorsa taban, motordaki gibi
             // KDV hariç satış (kesinti tutarları KDV dahil giriliyorsa üstüne kesinti KDV'si)
@@ -152,6 +159,7 @@ public extension Engine {
         let k = ch.kesintiKdv(on: date)
         func net(_ v: Double) -> Kurus { Vat.net(Money.roundHalfAwayFromZero(v), rate: k.oran, included: k.dahil) }
         let toplam = net(komisyonHam) + net(kargoHam) + net(hizmetHam) + net(digerHam)
+            + Money.roundHalfAwayFromZero(fiyat * odemeOrani / 100)
         let siparisBasi = min(net(kargoHam) + net(hizmetHam) + net(ekSiparisBasi), toplam)
         return ((toplam, siparisBasi), ek.tahmin, ek.eksik)
     }

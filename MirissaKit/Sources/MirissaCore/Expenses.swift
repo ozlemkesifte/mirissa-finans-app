@@ -35,6 +35,11 @@ public struct ExpenseInstance: Identifiable, Hashable, Sendable {
 
     /// Kâr hesabına bu ay giren tutar (KDV hariç)
     public var expenseAmount: Kurus { capitalized ? 0 : net }
+    /// Faturadaki indirilemeyen KDV (gidere eklendi, indirilecek KDV'ye girmedi) — ödeme ayında
+    public var indirilemeyenKdv: Kurus = 0
+    /// Kanunen kabul edilmeyen gider: vergi matrahına eklenir
+    public var kkeg: Bool = false
+
     /// Kasadan bu ay çıkan tutar (KDV dahil, gerçekten ödenen).
     /// Tutar KDV hariç girilmişse KDV'si de ödenir; "amount" o durumda eksik kalır.
     public var cashAmount: Kurus { nakitTutari ?? (net + inputVat) }
@@ -175,8 +180,7 @@ public enum Expenses {
             let ov = e.overrides[odemeAyi]
             if ov?.skipped == true { continue }
             let yillik = ov?.amount ?? e.amount
-            let bolum = Vat.split(yillik, rate: ov?.vatRate ?? e.resolvedVatRate,
-                                  included: ov?.vatIncluded ?? e.resolvedVatIncluded)
+            let bolum = kdvBolumu(e, yillik, ov)
             let pay = onIkideBiri(bolum.net, sira)
             let brutPay = onIkideBiri(yillik, sira)
             let odemeAyinda = m == odemeAyi
@@ -188,7 +192,8 @@ public enum Expenses {
                 attachment: odemeAyinda ? (ov?.attachment ?? e.attachment) : nil,
                 net: pay, inputVat: odemeAyinda ? bolum.vat : 0,
                 capitalized: false, editable: true,
-                nakitTutari: odemeAyinda ? bolum.net + bolum.vat : 0))
+                nakitTutari: odemeAyinda ? bolum.net + bolum.vat : 0,
+                indirilemeyenKdv: odemeAyinda ? bolum.indirilemeyen : 0, kkeg: e.kkeg == true))
             if out.count > 2400 { break }
         }
         return out
@@ -216,8 +221,7 @@ public enum Expenses {
         let ov = e.overrides[start]
         if ov?.skipped == true { return [] }
         let tutar = ov?.amount ?? e.amount
-        let bolum = Vat.split(tutar, rate: ov?.vatRate ?? e.resolvedVatRate,
-                              included: ov?.vatIncluded ?? e.resolvedVatIncluded)
+        let bolum = kdvBolumu(e, tutar, ov)
         let anchorDay = Dates.day(of: e.date)
         var out: [ExpenseInstance] = []
         for sira in 0..<min(n, 600) {
@@ -234,7 +238,8 @@ public enum Expenses {
                 attachment: odemeAyinda ? (ov?.attachment ?? e.attachment) : nil,
                 net: esitPay(bolum.net, n, sira), inputVat: odemeAyinda ? bolum.vat : 0,
                 capitalized: false, editable: true,
-                nakitTutari: odemeAyinda ? bolum.net + bolum.vat : 0))
+                nakitTutari: odemeAyinda ? bolum.net + bolum.vat : 0,
+                indirilemeyenKdv: odemeAyinda ? bolum.indirilemeyen : 0, kkeg: e.kkeg == true))
         }
         return out
     }
@@ -243,9 +248,7 @@ public enum Expenses {
         let ov = e.overrides[month]
         let tutar = ov?.amount ?? e.amount
         // O ay için ayrı KDV girilmişse o kullanılır (ör. bir ay KDV'siz fatura)
-        let bolum = Vat.split(tutar,
-                              rate: ov?.vatRate ?? e.resolvedVatRate,
-                              included: ov?.vatIncluded ?? e.resolvedVatIncluded)
+        let bolum = kdvBolumu(e, tutar, ov)
         return ExpenseInstance(
             id: e.recurrence == .tek ? e.id : "\(e.id)#\(month)",
             templateId: e.id,
@@ -261,8 +264,17 @@ public enum Expenses {
             net: bolum.net,
             inputVat: bolum.vat,
             capitalized: false,
-            editable: true
+            editable: true,
+            indirilemeyenKdv: bolum.indirilemeyen,
+            kkeg: e.kkeg == true
         )
+    }
+
+    /// Giderin KDV bölümü. KDV'si indirilemeyen giderde KDV gidere eklenir (net), indirilecek KDV 0 olur.
+    static func kdvBolumu(_ e: Expense, _ tutar: Kurus, _ ov: ExpenseOverride?) -> (net: Kurus, vat: Kurus, indirilemeyen: Kurus) {
+        let b = Vat.split(tutar, rate: ov?.vatRate ?? e.resolvedVatRate,
+                          included: ov?.vatIncluded ?? e.resolvedVatIncluded)
+        return e.kdvIndirilemez == true ? (b.net + b.vat, 0, b.vat) : (b.net, b.vat, 0)
     }
 
     /// Kategori dağılımı (kâra etki eden tutarlar)

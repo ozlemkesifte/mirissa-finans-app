@@ -77,10 +77,10 @@ public extension Engine {
         let yuzde = Money.formatPercentKisa
         var kalemler: [HakedisKalemi] = []
         /// `tahmini`: tutar ayarın yerine ayın gerçek (elle girilmiş) tutarından türetildi
-        func ekle(_ id: String, _ ad: String, _ detay: String, _ ham: Double, tahmini: Bool = false) {
+        func ekle(_ id: String, _ ad: String, _ detay: String, _ ham: Double, tahmini: Bool = false, kdvsiz: Bool = false) {
             let tutar = Money.roundHalfAwayFromZero(ham)
             guard tutar != 0 else { return }
-            let s = Vat.split(tutar, rate: feeRate, included: dahil)
+            let s = kdvsiz ? Vat.split(tutar, rate: .yok, included: true) : Vat.split(tutar, rate: feeRate, included: dahil)
             kalemler.append(HakedisKalemi(id: id, ad: ad, detay: detay + (tahmini ? " · aylık gerçek tutarından" : ""),
                                           brut: s.net + s.vat, net: s.net, tahmini: tahmini))
         }
@@ -94,8 +94,9 @@ public extension Engine {
             let taban = ch.komisyonKdvHaric(on: date) ? "KDV hariç fiyatın" : fiyatYazi
             ekle("komisyon", "Pazaryeri komisyonu", "\(yuzde(r.commissionPct)) × \(taban)",
                  fiyat * r.commissionPct * carpan / 100)
-            ekle("odeme", "Ödeme / işlem komisyonu", "\(yuzde(r.paymentPct)) × \(fiyatYazi)",
-                 fiyat * r.paymentPct / 100)
+            let bsmv = ch.odemeKdvsiz(on: date)
+            ekle("odeme", bsmv ? "Ödeme / POS komisyonu (BSMV'li, KDV yok)" : "Ödeme / işlem komisyonu",
+                 "\(yuzde(r.paymentPct)) × \(fiyatYazi)", fiyat * r.paymentPct / 100, kdvsiz: bsmv)
         }
         let diger = ek.digerYuzde ?? r.otherDeductionPct
         ekle("diger", "Diğer kesinti", "\(yuzde(diger)) × \(fiyatYazi)",

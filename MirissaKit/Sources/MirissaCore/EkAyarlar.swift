@@ -31,6 +31,20 @@ public struct EkAyarlar: Codable, Hashable, Sendable {
     // Ay sonu: elle işaretlenen maddeler (ay → madde kodları)
     public var aySonuIsaretleri: [MonthKey: [String]]?
 
+    // Kâr hedefinin türü: anahtar ay ("2026-09") ya da yıl ("2026"). true = vergi sonrası net kâr.
+    // Kayıt yoksa hedef vergi öncesidir (eski hedefler böyle hesaplanıyordu).
+    public var vergiSonrasiHedef: [String: Bool]?
+
+    // Vergi hesabı için kullanıcının girdiği yıllık tutarlar (anahtar yıl). Girilmemişse "girilmedi".
+    /// Elle eklenen kanunen kabul edilmeyen giderler (KKEG işaretli giderlere ek olarak)
+    public var kkegEk: [String: Kurus]?
+    /// Mahsup edilecek geçmiş yıl zararları
+    public var gecmisYilZarari: [String: Kurus]?
+    /// İstisna ve indirimler (ör. Ar-Ge, bağış)
+    public var istisnaIndirim: [String: Kurus]?
+    /// Şirketin kuruluş yılı: yurt içi asgari kurumlar vergisi ilk üç hesap döneminde uygulanmaz
+    public var kurulusYili: Int?
+
     public init() {}
 
     public var kilitli: Set<MonthKey> { Set(kilitliAylar ?? []) }

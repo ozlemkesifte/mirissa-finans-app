@@ -263,6 +263,7 @@ public final class AppStore {
                 yeni.stopajDonemleri = StopajDonemi.guncelle(eski: eski, yeni: c, buAy: Dates.currentMonth())
             }
             let tabanDegisti = (eski.komisyonKdvHaric ?? false) != (c.komisyonKdvHaric ?? false)
+                || (eski.odemeKesintisiBsmv ?? false) != (c.odemeKesintisiBsmv ?? false)
             let kdvDegisti = eski.resolvedFeeVatRate != c.resolvedFeeVatRate
                 || eski.resolvedFeesIncludeVat != c.resolvedFeesIncludeVat
             let ayarDegisti = tabanDegisti || kdvDegisti
@@ -285,6 +286,7 @@ public final class AppStore {
                 }
                 if ayarDegisti {
                     kayit.komisyonKdvHaric = c.komisyonKdvHaric ?? false
+                    kayit.odemeKesintisiBsmv = c.odemeKesintisiBsmv ?? false
                     kayit.feeVatRate = c.resolvedFeeVatRate
                     kayit.feesIncludeVat = c.resolvedFeesIncludeVat
                 }
@@ -725,10 +727,25 @@ public final class AppStore {
         mutate { $0.settings.lastPriceCheck = day }
     }
 
-    public func setYearlyProfitGoal(_ amount: Kurus?, for year: Int) {
+    public func setYearlyProfitGoal(_ amount: Kurus?, for year: Int, vergiSonrasi: Bool = false) {
         mutate { s in
-            if let a = amount, a > 0 { s.settings.yearlyProfitGoals["\(year)"] = a }
-            else { s.settings.yearlyProfitGoals["\(year)"] = nil }
+            if let a = amount, a > 0 {
+                s.settings.yearlyProfitGoals["\(year)"] = a
+                s.settings.ek.vergiSonrasiHedef = (s.settings.ek.vergiSonrasiHedef ?? [:]).merging(["\(year)": vergiSonrasi]) { $1 }
+            } else {
+                s.settings.yearlyProfitGoals["\(year)"] = nil
+                s.settings.ek.vergiSonrasiHedef?["\(year)"] = nil
+            }
+        }
+    }
+
+    /// Vergi hesabı için yıllık tutarlar (KKEG ek, geçmiş yıl zararı, istisna/indirim). nil = girilmedi.
+    public func vergiTutarlari(yil: Int, kkegEk: Kurus?, gecmisZarar: Kurus?, istisna: Kurus?) {
+        mutate { s in
+            let k = "\(yil)"
+            var a = s.settings.ek.kkegEk ?? [:]; a[k] = kkegEk.map { max($0, 0) }; s.settings.ek.kkegEk = a
+            var b = s.settings.ek.gecmisYilZarari ?? [:]; b[k] = gecmisZarar.map { max($0, 0) }; s.settings.ek.gecmisYilZarari = b
+            var c = s.settings.ek.istisnaIndirim ?? [:]; c[k] = istisna.map { max($0, 0) }; s.settings.ek.istisnaIndirim = c
         }
     }
 
@@ -822,10 +839,15 @@ public final class AppStore {
     }
 
     /// Aya özel kâr hedefi. `nil` hedefi kaldırır.
-    public func setProfitGoal(_ amount: Kurus?, for month: MonthKey) {
+    public func setProfitGoal(_ amount: Kurus?, for month: MonthKey, vergiSonrasi: Bool = false) {
         mutate { s in
-            if let a = amount, a > 0 { s.settings.profitGoals[month] = a }
-            else { s.settings.profitGoals[month] = nil }
+            if let a = amount, a > 0 {
+                s.settings.profitGoals[month] = a
+                s.settings.ek.vergiSonrasiHedef = (s.settings.ek.vergiSonrasiHedef ?? [:]).merging([month: vergiSonrasi]) { $1 }
+            } else {
+                s.settings.profitGoals[month] = nil
+                s.settings.ek.vergiSonrasiHedef?[month] = nil
+            }
         }
     }
 

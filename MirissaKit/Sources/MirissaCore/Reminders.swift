@@ -53,13 +53,23 @@ public extension Engine {
             ekle("siparis-\(o.id)", o.sonSiparisGunu, "Sipariş zamanı",
                  "\(o.ad) için en geç bugün sipariş ver (önerilen \(Units.formatQty(o.sonGundeMiktar, baseUnit: o.birim))).")
         }
-        let yil = Dates.year(of: Dates.month(of: bugun))
-        for c in [3, 6, 9] {
+        let buYil = Dates.year(of: Dates.month(of: bugun))
+        // 4. çeyrek geçici vergisi izleyen yılın Şubat'ında ödenir: geçen yılın 4. çeyreği de bakılır
+        for (yil, c) in [(buYil - 1, 12), (buYil, 3), (buYil, 6), (buYil, 9), (buYil, 12)] {
             // Henüz gelmemiş çeyrek bugünün çeyreğine düşer; aynı hatırlatma tekrar etmesin
             if let v = vergiKarsiligi(month: Dates.monthKey(yil, c), today: bugun), v.ceyrek == c / 3,
                v.ceyrekGeciciVergi > 0 {
                 ekle("vergi-\(yil)-\(c)", Dates.addDays(v.ceyrekSonOdeme, -3), "Geçici vergi",
                      "\(v.ceyrek). çeyrek geçici vergi yaklaşık \(Money.format(v.ceyrekGeciciVergi)), son gün \(Dates.displayDateShort(v.ceyrekSonOdeme)).")
+            }
+        }
+        // Geçen yılın yıllık gelir/kurumlar vergisi (geçici vergiler ödenmiş varsayılır)
+        if let v = vergiKarsiligi(month: Dates.monthKey(buYil - 1, 12), today: bugun), v.yillikBeyandaOdenecek > 0 {
+            let gunler = v.sirket ? ["\(buYil)-04-30"] : ["\(buYil)-03-31", "\(buYil)-07-31"]
+            for (i, g) in gunler.enumerated() {
+                ekle("yillikvergi-\(buYil - 1)-\(i)", Dates.addDays(g, -5), "Yıllık vergi",
+                     "\(buYil - 1) yıllık \(v.sirket ? "kurumlar" : "gelir") vergisi \(v.sirket ? "" : "\(i + 1). taksiti ")"
+                     + "yaklaşık \(Money.format(v.sirket ? v.yillikBeyandaOdenecek : (i == 0 ? v.yillikBeyandaOdenecek - v.yillikBeyandaOdenecek / 2 : v.yillikBeyandaOdenecek / 2))), son gün \(Dates.displayDateShort(g)).")
             }
         }
         return Array(out.sorted { ($0.gun, $0.id) < ($1.gun, $1.id) }.prefix(enFazla))

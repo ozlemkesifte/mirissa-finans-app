@@ -316,9 +316,25 @@ public extension Engine {
         plan.actual = actual
 
         // Satış girilmiş olsa bile "kaç kargo gerekiyor" sorusunun cevabı görünmeli.
-        // Bu ayın kendi gerçek karışımı kullanılır.
+        // Bitmiş ayda (ayın son günü dahil) ayın kendi gerçek karışımı kullanılır. Bitmemiş bu ayın yarım verisi (ayın başında
+        // girilen reklam, birkaç sipariş) hedefin temeli olmaz: tamamlanmış bir satış ayı varsa o ayın
+        // karışımı bu ayın fiyat ve maliyetleriyle kullanılır (yıllık hedefle aynı kural).
         plan.fixedCosts = r.toplamSabitGider
-        if plan.contributionPerOrder > 0 {
+        if month == thisMonth, Dates.day(of: today) < days, let temel = targetBasis(before: month, today: today),
+           temel.contributionPerOrder > 0, temel.basis != .beklenenDagilim || r.orders == 0 {
+            plan.basis = temel.basis
+            plan.contributionPerOrder = temel.contributionPerOrder
+            plan.revenuePerOrder = temel.revenuePerOrder
+            plan.unitsPerOrder = temel.unitsPerOrder
+            plan.fixedCosts = plannedFixedCosts(month: month)
+                + (temel.basis == .beklenenDagilim ? satisaBagliAylikGiderler(month: month) : 0)
+            if temel.fiyatGuncellendi { plan.issues.append(.fiyatGuncel) }
+            if temel.urunMaliyetiEksik, !plan.issues.contains(.urunMaliyetiYok) { plan.issues.append(.urunMaliyetiYok) }
+            if plan.fixedCosts == 0 { plan.issues.append(.sabitGiderYok) }
+            if eksikKanalKesintisiVar(month: month) { plan.issues.append(.eksikKanalBilgisi) }
+            plan.issues.removeAll { $0 == .katkiNegatif }
+            plan.targets = buildTargets(plan: plan, month: month, days: days)
+        } else if plan.contributionPerOrder > 0 {
             plan.basis = .ayinKendisi
             plan.targets = buildTargets(plan: plan, month: month, days: days)
         } else if r.orders == 0 {
@@ -346,7 +362,8 @@ public extension Engine {
 
     private func buildTargets(plan: BreakevenPlan, month: MonthKey, days: Int) -> [MonthlyTarget] {
         var hedefler: [(String, Kurus, Bool, Bool)] = [("Başa baş hedefi", 0, true, false)]
-        let ozel = state.settings.profitGoal(for: month)
+        // Vergi sonrası hedef vergi öncesi kâra çevrilir; çevrilemiyorsa (vergi türü yok) hedef gösterilmez
+        let ozel = aylikHedefVergiOncesi(month: month)
         for g in Engine.defaultGoals where g > 0 {
             hedefler.append(("\(Money.format(g)) kâr hedefi", g, false, false))
         }
@@ -469,6 +486,8 @@ public extension Engine {
             yeni.id = ""; yeni.from = ""; eski.id = ""; eski.from = ""
             yeni.komisyonKdvHaric = ch.komisyonKdvHaric(on: yeniGun)
             eski.komisyonKdvHaric = ch.komisyonKdvHaric(on: eskiGun)
+            yeni.odemeKesintisiBsmv = ch.odemeKdvsiz(on: yeniGun)
+            eski.odemeKesintisiBsmv = ch.odemeKdvsiz(on: eskiGun)
             yeni.feeVatRate = yk.oran; yeni.feesIncludeVat = yk.dahil
             eski.feeVatRate = ek.oran; eski.feesIncludeVat = ek.dahil
             guard yeni != eski else { continue }
@@ -727,20 +746,8 @@ public extension Engine {
         )
 
         let buAy = Dates.month(of: today)
+        // Bitmemiş bu ayın yarım gerçekleşeni hedef temeli olmaz: plan(month:) bunu kendisi uygular
         var planlar = aylar.map { self.plan(month: $0, today: today) }
-        // Bitmemiş bu ayın yarım gerçekleşeni hedef temeli değildir: aylık hedefte olduğu gibi
-        // önceki ayların karışımı bu ayın koşullarıyla kullanılır
-        if let i = aylar.firstIndex(of: buAy), planlar[i].mode == .gerceklesen,
-           let t = targetBasis(before: buAy, today: today) {
-            planlar[i].basis = t.basis
-            planlar[i].contributionPerOrder = t.contributionPerOrder
-            planlar[i].revenuePerOrder = t.revenuePerOrder
-            planlar[i].fixedCosts = plannedFixedCosts(month: buAy)
-                + (t.basis == .beklenenDagilim ? satisaBagliAylikGiderler(month: buAy) : 0)
-            planlar[i].issues.removeAll { $0 == .katkiNegatif }
-            if t.urunMaliyetiEksik { planlar[i].issues.append(.urunMaliyetiYok) }
-            if t.fiyatGuncellendi { planlar[i].issues.append(.fiyatGuncel) }
-        }
         // Kendinden önce satış verisi olmayan bir ayın (ör. ilk satıştan önceki giderli aylar) katkısı,
         // bugüne en yakın gerçek satış ayının karışımı o ayın fiyat, oran ve maliyetleriyle
         // yeniden değerlenerek bulunur (yaklaşık)
@@ -823,7 +830,7 @@ public extension Engine {
 
         var out: [YearlyTarget] = []
         if let be = hedef("Başa baş", kar: 0, breakeven: true, custom: false) { out.append(be) }
-        let ozel = state.settings.yearlyProfitGoal(for: y)
+        let ozel = yillikHedefVergiOncesi(year: y)
         let hedefler = ozel.map { [$0] } ?? Engine.defaultYearlyGoals
         for k in hedefler {
             if let t = hedef("\(Money.format(k)) kâr", kar: k,
@@ -833,5 +840,49 @@ public extension Engine {
         }
         plan.targets = out
         return plan
+    }
+}
+
+// MARK: - Kâr hedefinin türü (vergi öncesi / vergi sonrası)
+
+public extension Engine {
+    func hedefVergiSonrasi(_ anahtar: String) -> Bool { state.settings.ek.vergiSonrasiHedef?[anahtar] == true }
+
+    /// Aylık hedefin hesapta kullanılan vergi öncesi karşılığı. Vergi sonrası hedef, yıllığa çevrilip
+    /// (× 12) vergi kuralıyla vergi öncesine döndürülür ve 12'ye bölünür. Vergi türü yoksa `nil`.
+    func aylikHedefVergiOncesi(month: MonthKey) -> Kurus? {
+        guard let g = state.settings.profitGoal(for: month) else { return nil }
+        guard hedefVergiSonrasi(month) else { return g }
+        return vergiOncesiKar(netKar: g * 12, yil: Dates.year(of: month)).map { Money.roundHalfAwayFromZero(Double($0) / 12) }
+    }
+
+    func yillikHedefVergiOncesi(year: Int) -> Kurus? {
+        guard let g = state.settings.yearlyProfitGoal(for: year) else { return nil }
+        guard hedefVergiSonrasi("\(year)") else { return g }
+        return vergiOncesiKar(netKar: g, yil: year)
+    }
+
+    /// Ana ekranda hedefin başlığı: "Vergi sonrası aylık 50.000 TL net kâr için"
+    func karHedefiBasligi(month: MonthKey) -> String? {
+        guard let g = state.settings.profitGoal(for: month) else { return nil }
+        return hedefVergiSonrasi(month) ? "Vergi sonrası aylık \(Money.format(g)) net kâr için"
+            : "Vergi öncesi aylık \(Money.format(g)) kâr için"
+    }
+
+    func yillikKarHedefiBasligi(year: Int) -> String? {
+        guard let g = state.settings.yearlyProfitGoal(for: year) else { return nil }
+        return hedefVergiSonrasi("\(year)") ? "Vergi sonrası yıllık \(Money.format(g)) net kâr için"
+            : "Vergi öncesi yıllık \(Money.format(g)) kâr için"
+    }
+
+    /// Hedef girilmiş ama hesaplanamıyorsa nedeni
+    func karHedefiHesaplanamadi(month: MonthKey) -> String? {
+        guard state.settings.profitGoal(for: month) != nil, aylikHedefVergiOncesi(month: month) == nil else { return nil }
+        return "Vergi sonrası hedef için vergi türünü seç (Ayarlar → Vergi); vergi bilinmeden hesaplanamaz."
+    }
+
+    func yillikKarHedefiHesaplanamadi(year: Int) -> String? {
+        guard state.settings.yearlyProfitGoal(for: year) != nil, yillikHedefVergiOncesi(year: year) == nil else { return nil }
+        return "Vergi sonrası hedef için vergi türünü seç (Ayarlar → Vergi); vergi bilinmeden hesaplanamaz."
     }
 }

@@ -54,7 +54,7 @@ public struct RootView: View {
                 .tabItem { Label("Ürün & Stok", systemImage: "shippingbox.fill") }
                 .tag(3)
             ReportsView()
-                .tabItem { Label("Raporlar", systemImage: "chart.bar.fill") }
+                .tabItem { Label("Finans & Vergiler", systemImage: "chart.bar.doc.horizontal.fill") }
                 .tag(4)
         }
     }

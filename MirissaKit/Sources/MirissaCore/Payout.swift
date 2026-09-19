@@ -16,10 +16,17 @@ public struct HakedisKarsilastirma: Hashable, Sendable {
 }
 
 public extension Engine {
-    /// Kanalın bir aydaki beklenen hakedişi (KDV dahil)
+    /// Kanalın bir aydaki beklenen hakedişi (KDV dahil).
+    /// Kendi sitede aylık sabit ücret (abonelik) ödemeden kesilmez, ayrıca faturalanır: beklenen
+    /// hakedişten düşülmez. Pazaryerinde aylık ücret hakedişten kesilir.
     func beklenenHakedis(month: MonthKey, channelId: Id) -> Kurus {
         let r = channelResult(channelId: channelId, month: month)
-        return r.netSalesIncVat - r.channelFees - r.feeVat - r.stopaj
+        var kesinti = r.channelFees + r.feeVat
+        if state.channel(channelId)?.kind == .ownStore {
+            // Sabit ücretin faturadaki tutarı (net + KDV'si) birlikte çıkarılır
+            kesinti -= r.sabitKesintiBrut
+        }
+        return r.netSalesIncVat - kesinti - r.stopaj
     }
 
     func hakedis(month: MonthKey, channelId: Id) -> HakedisKarsilastirma? {

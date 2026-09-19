@@ -1,82 +1,44 @@
 import SwiftUI
 import MirissaCore
 
+/// Ana ekran: şirket sahibinin karar paneli. Yalnızca beş sorunun cevabı:
+/// bu ay ne sattım, kâr/zarar ne, başa baş için kaç kargo, seçili kâr hedefi için kaç kargo,
+/// bu yıl ne durumdayım. Vergi, KDV, kanal kesintileri, gider ve stok maliyeti ayrıntıları
+/// "Finans & Vergiler" sekmesindedir; ana ekrana taşınmaz.
 struct HomeView: View {
     @Environment(AppStore.self) private var store
     @Environment(Period.self) private var period
     @Binding var tab: Int
     @State private var sheet: AppSheet?
 
-    private var result: CompanyMonthResult { period.result(store.engine) }
-    private var alerts: [StockAlert] { store.engine.stockAlerts() }   // bugünkü stok, bugünkü hız
-
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Metrics.gap) {
-                    PeriodPicker(period: period)
-                    if let hata = store.loadError {
-                        Card {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label("Verilerin açılamadı", systemImage: "exclamationmark.octagon.fill")
-                                    .font(.headline)
-                                    .foregroundStyle(Palette.zarar)
-                                Text(hata)
-                                    .font(.footnote)
-                                    .foregroundStyle(Palette.ink)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Text("Şu an gördüğün boş başlangıç verisidir. Yeni kayıt girmeden önce "
-                                     + "Ayarlar → Yedekten geri yükle ile son yedeğini aç.")
-                                    .font(.caption)
-                                    .foregroundStyle(Palette.inkSoft)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    AySonuKarti(sheet: $sheet)
-                    YedekHatirlatmaKarti()
+                    MonthStepper(month: Bindable(period).month)
+                    if let hata = store.loadError { yuklemeHatasi(hata) }
                     ButunlukKarti()
-
-                    // 1) HEDEF — satış girilmemiş olsa bile çalışır.
-                    //    Ana ekranın ilk sorusu: bu ay kaç kargo çıkarmalıyım?
-                    if period.scope == .month {
-                        HedefKarti(sheet: $sheet, month: period.month)
-                    } else {
-                        YearlyCard(year: period.year, sheet: $sheet)
-                    }
-
-                    // 2) GERÇEKLEŞEN — satış girildiyse rakamlar, girilmediyse tek cümle.
-                    if period.scope == .month {
-                        if satisGirilmedi {
-                            GerceklesenKarti(sheet: $sheet, month: period.month)
-                        } else {
-                            // Satış girildiyse gerçekleşen kartı tüm dökümü gösterir
-                            BreakevenCard(month: period.month)
-                        }
-                    } else {
-                        headline
-                    }
-                    EksikBilgiNotu(uyari: result.yaklasikUyarisi)
-                    EksikBilgiNotu(uyari: result.maliyetDegisimUyarisi)
-                    if !satisGirilmedi || period.scope == .year {
-                        VergiKarti(month: period.scope == .month ? period.month : min(period.to, Dates.currentMonth()))
-                    }
-                    NakitOzetKarti {
-                        UserDefaults.standard.set(ReportTab.nakit.rawValue, forKey: "raporSekmesi")
-                        tab = 4
-                    }
+                    BuAyKarti(month: period.month, sheet: $sheet) { finansaGit(.aylik) }
+                    BuAyHedefKarti(month: period.month, sheet: $sheet)
+                    BuYilKarti(year: period.year, sheet: $sheet)
                     islemler
-                    YarimIslemKarti(sheet: $sheet)
-                    PriceCheckCard(sheet: $sheet)
-                    SiparisZamaniKarti()
-                    if !alerts.isEmpty { stockAlerts }
-                    TrendChart(
-                        points: trendPoints,
-                        title: period.scope == .month ? "Son 6 Ay" : "\(period.year) Ayları"
-                    )
-                    channels
-                    urunlerVeStoklar
+                    NavigationLink {
+                        HatirlatmalarEkrani()
+                    } label: {
+                        HStack {
+                            Label("Hatırlatmalar ve yapılacaklar", systemImage: "checklist")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Palette.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Palette.inkFaint)
+                        }
+                        .padding(Metrics.pad)
+                        .background(Palette.card)
+                        .clipShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                     Color.clear.frame(height: 24)
                 }
                 .padding(.horizontal, Metrics.pad)
@@ -95,75 +57,30 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Büyük kartlar
-
-    private var headline: some View {
-        let kar = result.gercekKar
-        let loss = kar < 0
-        return LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: Metrics.gap), GridItem(.flexible(), spacing: Metrics.gap)],
-            spacing: Metrics.gap
-        ) {
-            BigStat(title: "Gerçek Ciro", value: result.gercekCiro.tlCompact, tone: Palette.ink)
-            BigStat(title: "Toplam Gider", value: result.toplamGider.tlCompact, tone: Palette.gider)
-            BigStat(
-                title: satisGirilmedi ? "Gerçek Kâr" : (loss ? "Gerçek Zarar" : "Gerçek Kâr"),
-                value: satisGirilmedi ? "—" : kar.tlCompact,
-                tone: satisGirilmedi ? Palette.inkFaint : (loss ? Palette.zarar : Palette.kar),
-                caption: satisGirilmedi ? "satış girilmedi" : nil
-            )
-            BigStat(
-                title: "Kâr Marjı",
-                value: satisGirilmedi ? "—" : Money.formatPercent(result.karMarjiPct),
-                tone: satisGirilmedi ? Palette.inkFaint : (loss ? Palette.zarar : Palette.kar),
-                caption: !satisGirilmedi && result.nakitCikisi != result.toplamGider
-                    ? "Kasa çıkışı \(result.nakitCikisi.tlCompact)" : nil
-            )
-        }
+    /// "Nasıl hesaplandı?" — Finans & Vergiler sekmesinin ilgili bölümünü açar
+    private func finansaGit(_ bolum: ReportTab) {
+        UserDefaults.standard.set(bolum.rawValue, forKey: "raporSekmesi")
+        period.scope = .month
+        tab = 4
     }
 
-    /// Dönemde hiç satış yoksa ve dönem geçmişte değilse, kâr rakamı
-    /// henüz "sonuç" değildir — kullanıcı yanlış okumasın diye belirtilir.
-    private var satisGirilmedi: Bool {
-        result.units == 0 && result.gercekCiro == 0 && period.to >= Dates.currentMonth()
-    }
-
-    private var trendPoints: [TrendPoint] {
-        period.scope == .month
-            ? store.engine.trend(endingAt: period.month, months: 6)
-            : store.engine.year(period.year).trend
-    }
-
-    // MARK: Kanal kartları
-
-    private var channels: some View {
-        VStack(spacing: Metrics.gap) {
-            SectionTitle("Satış Kanalları")
-            ForEach(result.channels) { c in
-                // Yıllık görünümde kart yılın toplamını gösterir; tek ayın kesinti formu açılmaz
-                ChannelCard(result: c, onEdit: period.scope == .month
-                            ? { sheet = .channelMonth(c.channelId, period.month) } : nil)
+    private func yuklemeHatasi(_ hata: String) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Verilerin açılamadı", systemImage: "exclamationmark.octagon.fill")
+                    .font(.headline)
+                    .foregroundStyle(Palette.zarar)
+                Text(hata)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Şu an gördüğün boş başlangıç verisidir. Yeni kayıt girmeden önce "
+                     + "Ayarlar → Yedekten geri yükle ile son yedeğini aç.")
+                    .font(.caption)
+                    .foregroundStyle(Palette.inkSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        }
-    }
-
-    // MARK: Stok uyarıları
-
-    private var stockAlerts: some View {
-        VStack(spacing: Metrics.gap) {
-            SectionTitle("Stok Uyarıları")
-            Card(padding: 0) {
-                VStack(spacing: 0) {
-                    ForEach(Array(alerts.enumerated()), id: \.element.id) { i, a in
-                        StockAlertRow(alert: a)
-                            .padding(.horizontal, Metrics.pad)
-                            .padding(.vertical, 12)
-                        if i < alerts.count - 1 {
-                            Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
-                        }
-                    }
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -186,86 +103,361 @@ struct HomeView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Yeni işlem ekle")
     }
+}
 
-    // MARK: Ürünler ve stoklar
+// MARK: - Ana ekran kartları
 
-    private struct StokSatiri: Identifiable {
-        var ref: ItemRef
-        var ad: String
-        var miktar: String
-        var durum: StockStatus
-        var id: String { ref.id }
-    }
+/// Kart başlığı ve sağında "Nasıl hesaplandı?" bağlantısı
+private struct KartBasligi<Hedef: View>: View {
+    var baslik: String
+    var yaklasik = false
+    @ViewBuilder var detay: () -> Hedef
 
-    private var stokSatirlari: [StokSatiri] {
-        var out: [StokSatiri] = []
-        for p in store.state.activeProducts where p.tracksOwnStock {
-            let r = ItemRef.product(p.id)
-            out.append(StokSatiri(ref: r, ad: p.name,
-                                  miktar: Units.formatQty(store.engine.qty(r), baseUnit: .adet),
-                                  durum: store.engine.status(r)))
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(baslik)
+                .font(.caption.weight(.semibold))
+                .tracking(0.6)
+                .foregroundStyle(Palette.inkFaint)
+            if yaklasik { Pill("yaklaşık") }
+            Spacer(minLength: 8)
+            detay()
         }
-        for m in store.state.activeMaterials {
-            let r = ItemRef.material(m.id)
-            out.append(StokSatiri(ref: r, ad: m.name,
-                                  miktar: Units.formatQty(store.engine.qty(r), baseUnit: m.baseUnit),
-                                  durum: store.engine.status(r)))
-        }
-        return out
     }
+}
 
-    private var urunlerVeStoklar: some View {
-        let hepsi = stokSatirlari
-        let gosterilen = Array(hepsi.prefix(6))
-        return VStack(spacing: Metrics.gap) {
-            SectionTitle("Ürünler ve Stoklar", actionLabel: hepsi.count > 6 ? "Tümü" : nil) {
-                tab = 3
-            }
-            Card(padding: 0) {
-                VStack(spacing: 0) {
-                    ForEach(Array(gosterilen.enumerated()), id: \.element.id) { i, r in
-                        NavigationLink {
-                            if r.ref.kind == .product {
-                                ProductDetail(productId: r.ref.id)
-                            } else {
-                                MaterialDetail(materialId: r.ref.id)
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                Text(r.ad).font(.subheadline).foregroundStyle(Palette.ink)
-                                Spacer(minLength: 8)
-                                Text(r.miktar)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(r.durum == .normal ? Palette.ink
-                                                     : (r.durum == .azaliyor ? Palette.uyari : Palette.zarar))
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(Palette.inkFaint)
-                            }
-                            .padding(.horizontal, Metrics.pad)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        if i < gosterilen.count - 1 {
-                            Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
-                        }
+/// "Nasıl hesaplandı?" bağlantı yazısı
+struct NasilHesaplandi: View {
+    var body: some View {
+        Text("Nasıl hesaplandı?")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Palette.accent)
+    }
+}
+
+/// BU AY: gerçek ciro, kâr/zarar, kâr marjı. Satış girilmediyse 0 TL yerine tek cümle.
+struct BuAyKarti: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+    @Binding var sheet: AppSheet?
+    var detay: () -> Void
+
+    var body: some View {
+        let e = store.engine
+        let r = e.companyMonth(month)
+        let durum = e.satisDurumu(month)
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                KartBasligi(baslik: "BU AY", yaklasik: r.yaklasikUyarisi != nil || r.maliyetDegisimUyarisi != nil) {
+                    if durum != .girilmedi {
+                        Button(action: detay) { NasilHesaplandi() }.buttonStyle(.plain)
                     }
-                    if hepsi.count > 6 {
-                        Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
-                        Button { tab = 3 } label: {
-                            Text("+ \(hepsi.count - 6) kalem daha")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Palette.accent)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
-                                .contentShape(Rectangle())
+                }
+                if durum == .girilmedi {
+                    Text("Bu ayın satışları henüz girilmedi.")
+                        .font(.headline)
+                        .foregroundStyle(Palette.ink)
+                    Button("Satış gir") { sheet = .saleFlow }
+                        .font(.subheadline.weight(.semibold))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Palette.accent)
+                } else {
+                    if durum == .sifirSatis {
+                        Text("Bu ay satış olmadı olarak işaretlendi.")
+                            .font(.caption)
+                            .foregroundStyle(Palette.inkSoft)
+                    }
+                    SadeSatir("Ciro", r.gercekCiro.tl)
+                    SadeSatir(r.isLoss ? "Zarar (vergi öncesi)" : "Kâr (vergi öncesi)",
+                              (r.gercekKar > 0 ? "+" : "") + r.gercekKar.tl
+                                + (r.gercekCiro > 0 ? " · " + Money.formatPercent(r.karMarjiPct) : ""),
+                              tone: r.isLoss ? Palette.zarar : Palette.kar)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// BU AY HEDEF: başa baş kargo, günlük ortalama ve seçili tek kâr hedefi.
+struct BuAyHedefKarti: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+    @Binding var sheet: AppSheet?
+
+    var body: some View {
+        let e = store.engine
+        let p = e.plan(month: month)
+        let basaBas = p.targets.first { $0.isBreakeven }
+        let secili = p.targets.first { !$0.isBreakeven }
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                KartBasligi(baslik: "HEDEF", yaklasik: p.isApproximate && p.canCompute) {
+                    NavigationLink { HedefDetayEkrani(month: month) } label: { NasilHesaplandi() }
+                        .buttonStyle(.plain)
+                }
+                if let be = basaBas {
+                    SadeSatir("Başa baş", "\(be.orders) kargo", buyuk: true)
+                    Text("≈ günde \(be.dailyOrders) kargo")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.uyari)
+                    if let t = secili {
+                        SadeSatir(e.karHedefiBasligi(month: month) ?? "Seçili kâr hedefi", "\(t.orders) kargo")
+                    } else if let neden = e.karHedefiHesaplanamadi(month: month) {
+                        Text(neden).font(.caption).foregroundStyle(Palette.uyari)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Button { sheet = .karHedefi(month) } label: {
+                            Label("Kâr hedefi seç", systemImage: "target")
+                                .font(.footnote.weight(.semibold))
                         }
                         .buttonStyle(.plain)
+                        .foregroundStyle(Palette.accent)
+                    }
+                    StokYetersizUyarisi(gereken: secili?.orders ?? be.orders, month: month)
+                } else {
+                    Text(p.missing.isEmpty ? (p.blocking?.message ?? "Hedef henüz hesaplanamıyor.")
+                         : "Hedefi hesaplamak için \(p.missing.count) bilgi gerekiyor.")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !p.missing.isEmpty {
+                        Button("Eksikleri tamamla") { sheet = .eksikleriTamamla }
+                            .font(.subheadline.weight(.semibold))
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Palette.accent)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Stok yalnızca yetersizse kısa bir satırla söylenir; hedefin kendisini değiştirmez.
+struct StokYetersizUyarisi: View {
+    @Environment(AppStore.self) private var store
+    var gereken: Int
+    var month: MonthKey
+
+    var body: some View {
+        // Bu ay: zaten gönderilen siparişler stoktan düşmüştür; yalnızca kalan hedef karşılaştırılır
+        let kalan = month == Dates.currentMonth() ? max(gereken - store.engine.companyMonth(month).orders, 0) : gereken
+        if month >= Dates.currentMonth(), let k = store.engine.stokKapasitesi(), k.kargo < kalan {
+            Label("Stok yetersiz: mevcut stokla yaklaşık \(k.kargo) kargo hazırlanabilir (\(k.darbogaz)).",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Palette.zarar)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// BU YIL: yıllık ciro, kâr/zarar, marj, yıllık başa baş ve yıl geneli ortalamalar, seçili yıllık hedef.
+struct BuYilKarti: View {
+    @Environment(AppStore.self) private var store
+    var year: Int
+    @Binding var sheet: AppSheet?
+
+    var body: some View {
+        let e = store.engine
+        let yp = e.yearlyPlan(year: year)
+        let satisVar = yp.actualRevenue != 0 || yp.actualOrders > 0
+        let basaBas = yp.targets.first { $0.isBreakeven }
+        let secili = yp.targets.first { !$0.isBreakeven }
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                KartBasligi(baslik: "BU YIL · \(year)", yaklasik: yp.isApproximate && yp.canCompute) {
+                    NavigationLink { YillikDetayEkrani(year: year) } label: { NasilHesaplandi() }
+                        .buttonStyle(.plain)
+                }
+                if satisVar {
+                    SadeSatir("Ciro", yp.actualRevenue.tl)
+                    SadeSatir(yp.actualProfit < 0 ? "Zarar (vergi öncesi)" : "Kâr (vergi öncesi)",
+                              (yp.actualProfit > 0 ? "+" : "") + yp.actualProfit.tl
+                                + (yp.actualRevenue > 0 ? " · " + Money.formatPercent(yp.actualMarginPct) : ""),
+                              tone: yp.actualProfit < 0 ? Palette.zarar : Palette.kar)
+                } else {
+                    Text("Bu yılın satışları henüz girilmedi.")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.inkSoft)
+                }
+                if let be = basaBas {
+                    Divider().overlay(Palette.separator)
+                    SadeSatir("Başa baş", "\(be.ordersPerYear) kargo / yıl")
+                    Text("≈ \(be.ordersPerMonth) / ay · \(be.ordersPerDay) / gün (yıl geneli ortalama)")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.uyari)
+                    if let t = secili {
+                        SadeSatir(e.yillikKarHedefiBasligi(year: year) ?? "Seçili yıllık hedef",
+                                  "\(t.ordersPerYear) kargo")
+                    } else if let neden = e.yillikKarHedefiHesaplanamadi(year: year) {
+                        Text(neden).font(.caption).foregroundStyle(Palette.uyari)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Button { sheet = .yillikKarHedefi(year) } label: {
+                            Label("Yıllık kâr hedefi seç", systemImage: "target")
+                                .font(.footnote.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Palette.accent)
+                    }
+                } else if let engel = yp.blocking {
+                    Text(engel.message)
+                        .font(.caption)
+                        .foregroundStyle(Palette.inkSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Ana ekranın sade satırı: solda etiket, sağda büyük rakam
+struct SadeSatir: View {
+    var etiket: String
+    var deger: String
+    var tone: Color = Palette.ink
+    var buyuk = false
+
+    init(_ etiket: String, _ deger: String, tone: Color = Palette.ink, buyuk: Bool = false) {
+        self.etiket = etiket; self.deger = deger; self.tone = tone; self.buyuk = buyuk
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(etiket)
+                .font(.subheadline)
+                .foregroundStyle(Palette.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Text(deger)
+                .font(.system(buyuk ? .title2 : .title3, design: .rounded).weight(.semibold))
+                .foregroundStyle(tone)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+    }
+}
+
+// MARK: - Detay ekranları (ana ekrandan "Nasıl hesaplandı?" ile açılır)
+
+/// Aylık hedefin bütün hesabı: sabit giderler, sipariş başı katkı, reklam hedefi, stok.
+struct HedefDetayEkrani: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+    @State private var sheet: AppSheet?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Metrics.gap) {
+                HedefKarti(sheet: $sheet, month: month)
+                StokKapasitesiKarti(month: month)
+                if store.engine.satisDurumu(month) != .girilmedi {
+                    BreakevenCard(month: month)
+                }
+                Color.clear.frame(height: 24)
+            }
+            .padding(.horizontal, Metrics.pad)
+            .padding(.top, 4)
+        }
+        .screenBackground()
+        .navigationTitle("\(Dates.displayMonth(month)) hedefi")
+        .appSheets($sheet)
+    }
+}
+
+/// Hedef için gereken kargo ile mevcut stokla hazırlanabilecek kargo (bilgi; hedefi değiştirmez)
+struct StokKapasitesiKarti: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+
+    var body: some View {
+        let e = store.engine
+        let p = e.plan(month: month)
+        if month >= Dates.currentMonth(),
+           let t = p.targets.first(where: { !$0.isBreakeven }) ?? p.targets.first, let k = e.stokKapasitesi() {
+            let gonderilen = month == Dates.currentMonth() ? e.companyMonth(month).orders : 0
+            let kalan = max(t.orders - gonderilen, 0)
+            Card {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("STOK")
+                        .font(.caption.weight(.semibold)).tracking(0.6).foregroundStyle(Palette.inkFaint)
+                    Text("Bu hedef için \(t.orders) kargo gerekiyor"
+                         + (gonderilen > 0 ? " (\(gonderilen) gönderildi, \(kalan) kaldı)" : "")
+                         + ". Mevcut stokla yaklaşık \(k.kargo) kargo hazırlanabilir.")
+                        .font(.subheadline)
+                        .foregroundStyle(k.kargo < kalan ? Palette.zarar : Palette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("İlk bitecek kalem: \(k.darbogaz). Hesap, son ayların sipariş başına gerçek tüketiminden gelir; hedefin kendisini değiştirmez.")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.inkFaint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+/// Yıllık hedefin ayrıntısı: aktif ay ortalaması, en yoğun ay, hedef düzenleme
+struct YillikDetayEkrani: View {
+    var year: Int
+    @State private var sheet: AppSheet?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Metrics.gap) {
+                YearlyCard(year: year, sheet: $sheet)
+                Color.clear.frame(height: 24)
+            }
+            .padding(.horizontal, Metrics.pad)
+            .padding(.top, 4)
+        }
+        .screenBackground()
+        .navigationTitle("\(year) hedefi")
+        .appSheets($sheet)
+    }
+}
+
+/// Ana ekrandan kaldırılan hatırlatma ve iş kartları
+struct HatirlatmalarEkrani: View {
+    @Environment(AppStore.self) private var store
+    @State private var sheet: AppSheet?
+
+    var body: some View {
+        let uyarilar = store.engine.stockAlerts()
+        ScrollView {
+            VStack(spacing: Metrics.gap) {
+                AySonuKarti(sheet: $sheet)
+                YedekHatirlatmaKarti()
+                YarimIslemKarti(sheet: $sheet)
+                PriceCheckCard(sheet: $sheet)
+                SiparisZamaniKarti()
+                if !uyarilar.isEmpty {
+                    SectionTitle("Stok Uyarıları")
+                    Card(padding: 0) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(uyarilar.enumerated()), id: \.element.id) { i, a in
+                                StockAlertRow(alert: a)
+                                    .padding(.horizontal, Metrics.pad)
+                                    .padding(.vertical, 12)
+                                if i < uyarilar.count - 1 {
+                                    Divider().overlay(Palette.separator).padding(.leading, Metrics.pad)
+                                }
+                            }
+                        }
+                    }
+                }
+                Color.clear.frame(height: 24)
+            }
+            .padding(.horizontal, Metrics.pad)
+            .padding(.top, 4)
+        }
+        .screenBackground()
+        .navigationTitle("Yapılacaklar")
+        .appSheets($sheet)
     }
 }
 
