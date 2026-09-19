@@ -206,15 +206,17 @@ struct BuAyHedefKarti: View {
                     } else if let neden = e.karHedefiHesaplanamadi(month: month) {
                         Text(neden).font(.caption).foregroundStyle(Palette.uyari)
                             .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Button { sheet = .karHedefi(month) } label: {
-                            Label("Kâr hedefi seç", systemImage: "target")
-                                .font(.footnote.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Palette.accent)
                     }
+                    // Aylık kâr hedefi her zaman buradan seçilir / değiştirilir
+                    Button { sheet = .karHedefi(month) } label: {
+                        Label(store.state.settings.profitGoal(for: month) == nil ? "Aylık kâr hedefi seç" : "Aylık kâr hedefini değiştir",
+                              systemImage: "target")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.accent)
                     StokYetersizUyarisi(gereken: secili?.orders ?? be.orders, month: month)
+                    ReklamOzetSatiri(month: month)
                 } else {
                     Text(p.missing.isEmpty ? (p.blocking?.message ?? "Hedef henüz hesaplanamıyor.")
                          : "Hedefi hesaplamak için \(p.missing.count) bilgi gerekiyor.")
@@ -231,6 +233,62 @@ struct BuAyHedefKarti: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Ana ekranda reklamın tek satırı: zarar sınırı ROAS ve (seçildiyse) hedef ROAS.
+/// Dokununca reklam hedefi ekranı açılır (siparişte ne kalsın, bütçe, ürün bazında).
+struct ReklamOzetSatiri: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+
+    var body: some View {
+        let e = store.engine
+        let birak = store.state.settings.adKeepPerOrder
+        let liste = e.adTargets(keepPerOrder: birak)
+        let k = e.blendedAdTarget(month: month, keepPerOrder: birak) ?? (liste.count == 1 ? liste.first : nil)
+        if !liste.isEmpty {
+            NavigationLink { ReklamHedefiEkrani(month: month) } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "megaphone").foregroundStyle(Palette.accent)
+                    Text(ozet(k)).font(.subheadline).foregroundStyle(Palette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Palette.inkFaint)
+                }
+                .padding(.top, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func ozet(_ k: AdTarget?) -> String {
+        guard let k else { return "Reklam: ürün bazında hedefler" }
+        if k.gerceklesmeOlagandisi { return "Reklam: hedef hesaplanamadı (olağandışı oran)" }
+        guard let bb = k.breakevenROAS else { return "Reklam: reklamsız bile zarar" }
+        var s = "Reklam: zarar sınırı ROAS \(RoasFormat.format(bb))"
+        if let h = k.targetROAS { s += " · hedef ROAS \(RoasFormat.format(h))" }
+        else if k.hedefiKaldirmiyor { s += " · seçilen tutar mümkün değil" }
+        return s
+    }
+}
+
+/// Reklam hedefi ekranı (ana ekrandaki reklam satırından açılır)
+struct ReklamHedefiEkrani: View {
+    var month: MonthKey
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: Metrics.gap) {
+                Card { ReklamHedefiBolumu(month: month, acik: true) }
+                Color.clear.frame(height: 24)
+            }
+            .padding(.horizontal, Metrics.pad)
+            .padding(.top, 4)
+        }
+        .screenBackground()
+        .navigationTitle("Reklam hedefi")
     }
 }
 
@@ -294,14 +352,14 @@ struct BuYilKarti: View {
                     } else if let neden = e.yillikKarHedefiHesaplanamadi(year: year) {
                         Text(neden).font(.caption).foregroundStyle(Palette.uyari)
                             .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Button { sheet = .yillikKarHedefi(year) } label: {
-                            Label("Yıllık kâr hedefi seç", systemImage: "target")
-                                .font(.footnote.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Palette.accent)
                     }
+                    Button { sheet = .yillikKarHedefi(year) } label: {
+                        Label(store.state.settings.yearlyProfitGoal(for: year) == nil ? "Yıllık kâr hedefi seç" : "Yıllık kâr hedefini değiştir",
+                              systemImage: "target")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Palette.accent)
                 } else if let engel = yp.blocking {
                     Text(engel.message)
                         .font(.caption)
