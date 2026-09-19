@@ -80,9 +80,10 @@ public enum AyKilidi {
                     && degisti(eski.purchases.map(\.beyanAlanlari), yeni.purchases.map(\.beyanAlanlari), { Dates.month(of: $0.date) }))
                 || degisti(eski.adjustments, yeni.adjustments, { Dates.month(of: $0.date) })
                 || degisti(eski.counts, yeni.counts, { Dates.month(of: $0.date) })
-                // Taksit yalnızca nakit hareketidir (KDV'si alım ayında): ödendi işaretlemek kilitli ayı bozmaz
-                || Expenses.instances(eski, from: ay, to: ay).filter({ $0.sourceKind != .taksit }).map(\.beyanAlanlari)
-                    != Expenses.instances(yeni, from: ay, to: ay).filter({ $0.sourceKind != .taksit }).map(\.beyanAlanlari) {
+                // Taksit ve ayrı ödeme satırı yalnızca nakit hareketidir (KDV'si fatura/kayıt döneminde):
+                // ödeme tarihini değiştirmek kilitli ayı bozmaz
+                || Expenses.instances(eski, from: ay, to: ay).filter({ $0.sourceKind != .taksit && $0.sourceKind != .ayriOdeme }).map(\.beyanAlanlari)
+                    != Expenses.instances(yeni, from: ay, to: ay).filter({ $0.sourceKind != .taksit && $0.sourceKind != .ayriOdeme }).map(\.beyanAlanlari) {
                 return "\(Dates.displayMonth(ay)) kilitli (KDV beyanı verildi). Bu değişiklik o ayın kayıtlarını "
                     + "değiştiriyor; önce Raporlar → KDV kartından kilidi aç."
             }

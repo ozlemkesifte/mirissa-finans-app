@@ -18,6 +18,10 @@ public struct VergiKurallari: Hashable, Sendable {
     public var gelirTarifesi: [(ust: Double?, oran: Double)]?
     /// 4. çeyrek geçici vergi var mı (7566 sayılı Kanun: 1/1/2025'ten başlayan dönemlerden itibaren)
     public var dorduncuCeyrekGecici: Bool
+    /// Vergiye uyumlu mükellef indirimi (GVK mük. 121) oranı ve o yılın kazancı için beyannamedeki üst sınırı
+    /// (kuruş; nil = henüz yayımlanmadı/doğrulanmadı)
+    public var uyumIndirimiOrani: Double = 5
+    public var uyumIndirimiUstSiniri: Kurus? = nil
 
     public static func == (a: Self, b: Self) -> Bool { a.yil == b.yil }
     public func hash(into h: inout Hasher) { h.combine(yil) }
@@ -28,10 +32,12 @@ public struct VergiKurallari: Hashable, Sendable {
     //   matrah ticari bilanço kârı + KKEG; ilk üç hesap dönemindeki kurumlar hariç; geçici vergide de uygulanır
     // - Gelir vergisi 2026 tarifesi: GVK md. 103, GV Genel Tebliği Seri 332 (RG 31/12/2025, 33124 5. Mük.)
     // - Geçici vergi %15 (gelir) / kurumlar oranı; 4. çeyrek: 7566 sayılı Kanun (RG 19/12/2025)
+    // - %5 uyum indirimi üst sınırı: 2025 kazancı (2026'da verilen beyan) 12.000.000 TL — GV Genel Tebliği
+    //   Seri 332 md. 3/4 (RG 31/12/2025); 2026 kazancı için henüz yayımlanmadı
     public static let bilinen: [Int: VergiKurallari] = [
         2025: VergiKurallari(
             yil: 2025, kurumlarOrani: 25, asgariKurumlarOrani: 10, gelirGeciciOrani: 15,
-            gelirTarifesi: nil, dorduncuCeyrekGecici: true),
+            gelirTarifesi: nil, dorduncuCeyrekGecici: true, uyumIndirimiUstSiniri: 12_000_000 * 100),
         2026: VergiKurallari(
             yil: 2026, kurumlarOrani: 25, asgariKurumlarOrani: 10, gelirGeciciOrani: 15,
             gelirTarifesi: [(190_000, 15), (400_000, 20), (1_000_000, 27), (5_300_000, 35), (nil, 40)],
@@ -71,8 +77,35 @@ public struct VergiKurallari: Hashable, Sendable {
 
 // MARK: - Vergi hesabı
 
-/// Tahmini vergi karşılığı. "Gerçek kâr" vergi öncesidir (ticari kâr); vergi matrahı
-/// ticari kâr + KKEG − istisna/indirim − geçmiş yıl zararıdır. Her zaman tahmindir: beyanname değildir.
+/// Bir geçici vergi dönemi: tahakkuk eden (hesaplanan), gerçekten ödenen, kalan ve vade.
+/// Ödeme kaydı yoksa ödenmemiş sayılır; ödendiği varsayılmaz.
+public struct GeciciVergiDonemi: Identifiable, Hashable, Sendable {
+    public var yil: Int
+    public var ceyrek: Int
+    /// Dönem için hesaplanan geçici vergi (önceki dönemlerin hesaplanan geçici vergileri ve stopaj düşülmüş)
+    public var tahakkuk: Kurus
+    /// Kullanıcının girdiği gerçek ödeme
+    public var odeme: VergiOdemesi?
+    /// Son ödeme günü (dönemi izleyen 2. ayın 17'si)
+    public var vade: DateKey
+    /// Dönem bitti mi (bitmediyse tahakkuk, bugüne kadarki verilerle tahmindir)
+    public var bitti: Bool
+
+    public var id: String { "\(yil)-\(ceyrek)" }
+    public var odenen: Kurus { odeme?.tutar ?? 0 }
+    public var kalan: Kurus { max(tahakkuk - odenen, 0) }
+}
+
+/// %5 vergiye uyumlu mükellef indirimi (GVK mük. 121) için kullanıcının beyanı
+public enum UyumIndirimiDurumu: String, Sendable {
+    /// Şartları muhasebeci doğruladı: yıllık beyanda uygulanır
+    case evet
+    case hayir
+    /// Bilinmiyor: uygulanmaz, sonuç "tahmini" yazılır
+    case bilinmiyor
+}
+
+/// Tahmini vergi karşılığı. "Gerçek kâr" vergi öncesidir (ticari kâr). Her zaman tahmindir: beyanname değildir.
 public struct VergiKarsiligi: Hashable, Sendable {
     public enum Kaynak: Hashable, Sendable {
         /// Kanundaki oran/tarife (şirket: kurumlar vergisi, şahıs: gelir vergisi tarifesi)
@@ -93,24 +126,36 @@ public struct VergiKarsiligi: Hashable, Sendable {
     public var kkegEk: Kurus?
     public var gecmisYilZarari: Kurus?
     public var istisnaIndirim: Kurus?
-    /// Tahmini vergi matrahı
+    /// Normal vergi matrahı: max(ticari kâr + KKEG − istisna/indirim − geçmiş yıl zararı, 0)
     public var matrah: Kurus
-    /// Yılbaşından bu yana hesaplanan vergi (stopaj ve geçici vergi düşülmeden)
+    /// Normal matrah üzerinden vergi (kurumlar %25 / gelir tarifesi / elle oran)
+    public var normalVergi: Kurus
+    /// Asgari kurumlar vergisi matrahı ve vergisi; uygulanmıyorsa nil
+    public var asgariMatrah: Kurus?
+    public var asgariVergi: Kurus?
+    /// Asgari vergi neden uygulanmıyor (şahıs, elle oran, ilk üç yıl…); uygulanıyorsa nil
+    public var asgariYokNedeni: String?
+    /// Uygulanacak vergi: max(normal, asgari) — stopaj, geçici vergi ve indirim düşülmeden
     public var yilBasindanVergi: Kurus
     /// Yurt içi asgari kurumlar vergisi hesaplanan vergiyi yükseltti mi
     public var asgariUygulandi: Bool
+    /// %5 uyum indirimi: kullanıcının beyanı ve tutar (yalnız "evet"te 0'dan büyük)
+    public var uyumDurumu: UyumIndirimiDurumu
+    public var uyumIndirimi: Kurus
     /// Yılbaşından bu yana pazaryerlerinin kestiği stopaj — vergiden mahsup edilir
     public var yilBasindanStopaj: Kurus
     /// Yılbaşından bu yana ayrılması gereken toplam (vergi − stopaj, eksiye düşmez)
     public var yilBasindanKarsilik: Kurus
     /// Seçili ayın payı (ay kârı zararsa 0; yıl toplamı eksiye düşmez)
     public var ayinPayi: Kurus
-    /// İçinde bulunulan çeyreğin geçici vergi tahmini (önceki çeyrekler ve stopaj düşülmüş)
+    /// İçinde bulunulan çeyreğin geçici vergi tahmini (önceki dönemlerin hesaplanan geçici vergileri ve stopaj düşülmüş)
     public var ceyrek: Int
     public var ceyrekGeciciVergi: Kurus
-    /// Önceki çeyreklerin tahmini geçici vergileri toplamı (ödendiği varsayılan; mahsup edilir)
-    public var oncekiGeciciVergiler: Kurus
-    /// Geçici verginin son ödeme günü (çeyreği izleyen 2. ayın 17'si); 4. çeyrekte yıllık beyan günü
+    /// Önceki çeyreklerde hesaplanan (tahakkuk eden) geçici vergiler: yalnız bu çeyreğin hesabında düşülür
+    public var oncekiGeciciTahakkuk: Kurus
+    /// Yılın bütün geçici vergi dönemleri (bugüne kadar)
+    public var geciciDonemler: [GeciciVergiDonemi]
+    /// Geçici verginin son ödeme günü (çeyreği izleyen 2. ayın 17'si)
     public var ceyrekSonOdeme: DateKey
     /// Yıllık beyanın son ödeme günü
     public var yillikSonOdeme: DateKey
@@ -120,27 +165,60 @@ public struct VergiKarsiligi: Hashable, Sendable {
     public var sirket: Bool
     /// Asgari kurumlar vergisi için kuruluş yılı girilmedi (ilk üç yıl muaftır)
     public var kurulusYiliGirilmedi: Bool
+    /// Yıllık beyan için girilen gerçek ödeme (yoksa ödenmemiş)
+    public var yillikOdeme: VergiOdemesi? = nil
+    /// %5 indirimin o yılki üst sınırı yayımlanmadı (sınır uygulanmadı)
+    public var uyumUstSiniriBilinmiyor: Bool = false
+    /// Geçmiş yıl zararı asgari matrahtan düşüldü (muhasebeci uygulaması seçildi)
+    public var asgariZararIndirildi: Bool = false
 
-    /// Mahsup edilecek vergiler: stopaj + önceki çeyreklerin geçici vergileri
-    public var mahsupEdilecek: Kurus { yilBasindanStopaj + oncekiGeciciVergiler }
-    /// Tahmini kalan vergi borcu (eksiye düşmez)
-    public var kalanVergiBorcu: Kurus { max(yilBasindanVergi - mahsupEdilecek, 0) }
-    /// Mahsup edilemeyen fazla (iade/mahsup talebi konusu)
-    public var mahsupFazlasi: Kurus { max(mahsupEdilecek - yilBasindanVergi, 0) }
-    /// Yıllık beyanda ödenecek kalan: 4. çeyrek dahil bütün geçici vergilerin ödendiği varsayılır
-    /// (yalnızca yılın son ayında anlamlıdır)
-    public var yillikBeyandaOdenecek: Kurus {
-        max(yilBasindanVergi - yilBasindanStopaj - oncekiGeciciVergiler - (ceyrek == 4 ? ceyrekGeciciVergi : 0), 0)
+    /// Gerçekten ödenmiş geçici vergiler (yalnız ödeme kaydı olanlar)
+    public var odenmisGeciciVergiler: Kurus { geciciDonemler.reduce(0) { $0 + $1.odenen } }
+    /// Tevkifat ve ödenmiş geçici vergi düşüldükten sonra ödenmesi gereken (uyum indiriminden önce)
+    public var odenmesiGereken: Kurus { max(yilBasindanVergi - mahsupEdilecek, 0) }
+    /// Uyum indiriminin bu vergiden düşülebilen kısmı (GVK mük. 121: ödenmesi gereken vergiden indirilir)
+    public var kullanilanUyumIndirimi: Kurus { min(uyumIndirimi, odenmesiGereken) }
+    /// Düşülemeyen uyum indirimi: beyan tarihini izleyen bir yıl içinde diğer vergilere mahsup edilebilir,
+    /// iade edilmez. Kullanılıp kullanılmayacağı bilinmediği için net kâra eklenmez.
+    public var uyumIndirimiDevreden: Kurus { uyumIndirimi - kullanilanUyumIndirimi }
+    /// Vadesi geçmiş, ödenmemiş geçici vergi
+    public func odenmemisGecici(bugun: DateKey) -> Kurus {
+        geciciDonemler.filter { $0.vade < bugun }.reduce(0) { $0 + $1.kalan }
     }
-    /// Vergi sonrası tahmini net kâr: ticari kâr − hesaplanan vergi (stopaj verginin peşin ödemesidir, ayrıca düşülmez)
-    public var vergiSonrasiNetKar: Kurus { yilBasindanKar - yilBasindanVergi }
-    /// Girilmemiş vergi bilgileri: sonuç bunlar 0 sayılarak tahmin edildi
+    /// Vergi yükü: uygulanacak vergi − kullanılan uyum indirimi
+    public var odenecekVergi: Kurus { yilBasindanVergi - kullanilanUyumIndirimi }
+    /// Mahsup edilecek vergiler: stopaj + gerçekten ödenmiş geçici vergiler
+    public var mahsupEdilecek: Kurus { yilBasindanStopaj + odenmisGeciciVergiler }
+    /// Tahmini kalan vergi borcu: uygulanacak − tevkifat − ödenmiş geçici vergi − uyum indirimi (eksiye düşmez)
+    public var kalanVergiBorcu: Kurus { odenmesiGereken - kullanilanUyumIndirimi }
+    /// Mahsup edilemeyen tevkifat/geçici vergi fazlası (iade/mahsup talebi konusu)
+    public var mahsupFazlasi: Kurus { max(mahsupEdilecek - yilBasindanVergi, 0) }
+    /// Yıllık beyanda ödenecek kalan: yalnız gerçekten ödenmiş geçici vergiler düşülür
+    public var yillikBeyandaOdenecek: Kurus { kalanVergiBorcu }
+    /// Yıllık beyan için girilen gerçek ödeme ve sonrası kalan
+    public var yillikOdenen: Kurus { yillikOdeme?.tutar ?? 0 }
+    public var yillikKalan: Kurus { max(kalanVergiBorcu - yillikOdenen, 0) }
+    /// Nakit planı için: yıllık beyanda ödenecek kalan, ödenmemiş geçici vergi kalanları da ayrıca
+    /// "planlanan ödeme" olarak gösterildiği için onlar düşülerek (aynı tutar iki kez planlanmaz)
+    public var planlananYillikOdeme: Kurus {
+        max(yillikKalan - geciciDonemler.reduce(0) { $0 + $1.kalan }, 0)
+    }
+    /// Vergi sonrası tahmini net kâr: ticari kâr − (uygulanacak vergi − kullanılan uyum indirimi)
+    public var vergiSonrasiNetKar: Kurus { yilBasindanKar - odenecekVergi }
+    /// Girilmemiş / doğrulanmamış vergi bilgileri: sonuç tahminidir
     public var eksikler: [String] {
         var e: [String] = []
         if kkegEk == nil { e.append("KKEG (işaretli giderler dışında)") }
         if gecmisYilZarari == nil { e.append("geçmiş yıl zararları") }
         if istisnaIndirim == nil { e.append("istisna ve indirimler") }
         if kurulusYiliGirilmedi { e.append("şirketin kuruluş yılı (ilk 3 yıl asgari kurumlar vergisi uygulanmaz)") }
+        if uyumDurumu == .bilinmiyor { e.append("%5 uyum indirimi şartları (hesaba katılmadı)") }
+        if uyumDurumu == .evet && uyumUstSiniriBilinmiyor {
+            e.append("\(yil) kazancı için %5 indirim üst sınırı (henüz yayımlanmadı; sınır uygulanmadı)")
+        }
+        if (istisnaIndirim ?? 0) > 0 && asgariMatrah != nil {
+            e.append("istisnaların asgari matrahtan düşülüp düşülmeyeceği (KVK 32/C-2 listesi; burada düşülmedi)")
+        }
         return e
     }
 }
@@ -159,35 +237,60 @@ public extension Engine {
         }
     }
 
-    /// Verilen vergi öncesi kâr ve ayarlamalarla yıllık vergi (kuruş) ve asgari vergi uygulandı mı.
-    /// `kkeg`: matraha eklenen; `indirim`: istisna/indirim + geçmiş yıl zararı.
-    func vergiTutari(kar: Kurus, kkeg: Kurus, istisna: Kurus, gecmisZarar: Kurus, yil: Int)
-    -> (vergi: Kurus, matrah: Kurus, asgari: Bool)? {
+    /// Vergi hesabının adımları
+    struct VergiAdimlari {
+        var normalMatrah: Kurus
+        var normalVergi: Kurus
+        var asgariMatrah: Kurus?
+        var asgariVergi: Kurus?
+        var asgariYokNedeni: String?
+        var uygulanacak: Kurus { max(normalVergi, asgariVergi ?? 0) }
+        var asgariUygulandi: Bool { (asgariVergi ?? 0) > normalVergi }
+    }
+
+    /// Yıllık (ya da yılbaşından bugüne) vergi adımları.
+    /// Normal matrah = max(ticari kâr + KKEG − istisna/indirim − geçmiş yıl zararı, 0).
+    /// Asgari matrah (KVK 32/C) = max(ticari kâr + KKEG, 0): indirim, istisna ve geçmiş yıl zararı düşülmez.
+    func vergiAdimlari(kar: Kurus, kkeg: Kurus, istisna: Kurus, gecmisZarar: Kurus, yil: Int) -> VergiAdimlari? {
         guard let kaynak = vergiKaynagi() else { return nil }
-        let brutKazanc = max(kar + kkeg, 0)
         let matrah = max(kar + kkeg - istisna - gecmisZarar, 0)
         switch kaynak {
         case let .elleOran(o):
-            return (Money.roundHalfAwayFromZero(Double(matrah) * o / 100), matrah, false)
-        case let .kanun(sirket):
+            return VergiAdimlari(normalMatrah: matrah, normalVergi: Money.roundHalfAwayFromZero(Double(matrah) * o / 100),
+                                 asgariYokNedeni: "Senin girdiğin oran kullanılıyor; asgari kurumlar vergisi hesaplanmadı")
+        case .kanun(sirket: false):
+            return VergiAdimlari(normalMatrah: matrah,
+                                 normalVergi: VergiKurallari.gelirVergisi(matrah, tarife: VergiKurallari.tarife(yil).tarife),
+                                 asgariYokNedeni: "Gelir vergisi mükellefinde asgari kurumlar vergisi yoktur")
+        case .kanun(sirket: true):
             let k = VergiKurallari.kural(yil).kural
-            if sirket {
-                let normal = Money.roundHalfAwayFromZero(Double(matrah) * k.kurumlarOrani / 100)
-                if let a = k.asgariKurumlarOrani {
-                    // Asgari vergi: indirim ve istisnalar düşülmeden önceki kazanç (ticari kâr + KKEG) üzerinden.
-                    // Geçmiş yıl zararları düşülür (Danıştay 3. D. kararıyla; konu kesinleşmedi).
-                    // Kuruluşun ilk üç hesap döneminde uygulanmaz (KVK 32/C-5).
-                    if let kurulus = state.settings.ek.kurulusYili, yil <= kurulus + 2 { return (normal, matrah, false) }
-                    let asgari = Money.roundHalfAwayFromZero(Double(max(brutKazanc - gecmisZarar, 0)) * a / 100)
-                    if asgari > normal { return (asgari, matrah, true) }
-                }
-                return (normal, matrah, false)
+            let normal = Money.roundHalfAwayFromZero(Double(matrah) * k.kurumlarOrani / 100)
+            guard let a = k.asgariKurumlarOrani else {
+                return VergiAdimlari(normalMatrah: matrah, normalVergi: normal, asgariYokNedeni: "Bu yıl asgari kurumlar vergisi yok")
             }
-            return (VergiKurallari.gelirVergisi(matrah, tarife: VergiKurallari.tarife(yil).tarife), matrah, false)
+            if let kurulus = state.settings.ek.kurulusYili, yil <= kurulus + 2 {
+                return VergiAdimlari(normalMatrah: matrah, normalVergi: normal,
+                                     asgariYokNedeni: "Kuruluşun ilk üç hesap dönemi (KVK 32/C-5)")
+            }
+            // KVK 32/C-6: ticari bilanço kârı + KKEG; sıfırdan büyük değilse asgari vergi yok.
+            // 32/C-2 listesindeki istisna/indirimler (Ar-Ge, teknokent…) bu uygulamada ayrıca girilmediği için düşülmez.
+            // Geçmiş yıl zararı yalnız muhasebeci uygulaması seçildiyse düşülür (Danıştay 3. D. E.2024/5700 K.2025/4831).
+            let a0 = kar + kkeg
+            let zararDus = state.settings.ek.asgariZararIndirimi == true ? min(max(gecmisZarar, 0), max(a0, 0)) : 0
+            let asgariMatrah = max(a0 - zararDus, 0)
+            return VergiAdimlari(normalMatrah: matrah, normalVergi: normal, asgariMatrah: asgariMatrah,
+                                 asgariVergi: Money.roundHalfAwayFromZero(Double(asgariMatrah) * a / 100))
         }
     }
 
-    /// Geçici vergi: kurumlarda aynı hesap; şahısta tarife yerine geçici vergi oranı
+    /// Geriye dönük uyumluluk: uygulanacak vergi, normal matrah, asgari uygulandı mı
+    func vergiTutari(kar: Kurus, kkeg: Kurus, istisna: Kurus, gecmisZarar: Kurus, yil: Int)
+    -> (vergi: Kurus, matrah: Kurus, asgari: Bool)? {
+        vergiAdimlari(kar: kar, kkeg: kkeg, istisna: istisna, gecmisZarar: gecmisZarar, yil: yil)
+            .map { ($0.uygulanacak, $0.normalMatrah, $0.asgariUygulandi) }
+    }
+
+    /// Geçici vergi: kurumlarda yıllık hesapla aynı (asgari dahil); şahısta tarife yerine geçici vergi oranı
     private func geciciVergiTutari(kar: Kurus, kkeg: Kurus, istisna: Kurus, gecmisZarar: Kurus, yil: Int) -> Kurus {
         if case .kanun(sirket: false)? = vergiKaynagi() {
             let matrah = max(kar + kkeg - istisna - gecmisZarar, 0)
@@ -202,13 +305,35 @@ public extension Engine {
         return expenseInstances(from: from, to: to).filter(\.kkeg).reduce(0) { $0 + $1.expenseAmount }
     }
 
+    /// %5 uyum indirimi tutarı (GVK mük. 121): yıllık beyanda hesaplanan verginin %5'i, yıllık üst sınırla.
+    /// Asgari kurumlar vergisiyle ilişkisi `VergiKurallari.uyumAsgariAltinaInemez` ile belirlenir.
+    /// İndirim, asgari kurumlar vergisiyle bulunan (üste çıkılmış) vergiye de uygulanır (KV Genel Tebliği 23
+    /// §32.5.4; GİB Asgari KV Rehberi 2026 §2.10). O yılın üst sınırı yayımlanmadıysa sınır uygulanmaz ve bu söylenir.
+    func uyumIndirimiTutari(adim: VergiAdimlari?, yil: Int) -> Kurus {
+        guard let adim else { return 0 }
+        let k = VergiKurallari.kural(yil).kural
+        var indirim = Money.roundHalfAwayFromZero(Double(adim.uygulanacak) * k.uyumIndirimiOrani / 100)
+        if let ust = k.uyumIndirimiUstSiniri { indirim = min(indirim, ust) }
+        return max(indirim, 0)
+    }
+
+    /// %5 uyum indirimi beyanı
+    func uyumIndirimiDurumu() -> UyumIndirimiDurumu {
+        switch state.settings.ek.uyumIndirimi {
+        case "evet": return .evet
+        case "hayir": return .hayir
+        default: return .bilinmiyor
+        }
+    }
+
     func vergiKarsiligi(month: MonthKey, today: DateKey = Dates.today()) -> VergiKarsiligi? {
         guard let kaynak = vergiKaynagi() else { return nil }
         let yil = Dates.year(of: month)
         let ek = state.settings.ek
         let anahtar = "\(yil)"
         let kkegEk = ek.kkegEk?[anahtar], zarar = ek.gecmisYilZarari?[anahtar], istisna = ek.istisnaIndirim?[anahtar]
-        let buAy = min(month, Dates.month(of: today))
+        let bugunAy = Dates.month(of: today)
+        let buAy = min(month, bugunAy)
         let bas = Dates.monthKey(yil, 1)
         func ytd(_ son: MonthKey) -> Kurus { son >= bas ? companyTotals(from: bas, to: son).gercekKar : 0 }
         func stopajYtd(_ son: MonthKey) -> Kurus { son >= bas ? companyTotals(from: bas, to: son).stopaj : 0 }
@@ -219,33 +344,48 @@ public extension Engine {
         }
         // Stopaj peşin ödenmiş vergidir: ayrılacak tutardan düşülür
         func kalan(_ son: MonthKey) -> Kurus { max(vergi(son) - stopajYtd(son), 0) }
-        func geciciKalan(_ son: MonthKey) -> Kurus {
+        func geciciKumulatif(_ son: MonthKey) -> Kurus {
             guard son >= bas else { return 0 }
             let g = geciciVergiTutari(kar: ytd(son), kkeg: kkeg(son), istisna: istisna ?? 0, gecmisZarar: zarar ?? 0, yil: yil)
             return max(g - stopajYtd(son), 0)
         }
         let simdi = ytd(buAy)
-        let hesap = vergiTutari(kar: simdi, kkeg: kkeg(buAy), istisna: istisna ?? 0, gecmisZarar: zarar ?? 0, yil: yil)
+        let adim = vergiAdimlari(kar: simdi, kkeg: kkeg(buAy), istisna: istisna ?? 0, gecmisZarar: zarar ?? 0, yil: yil)
         let ayNo = Dates.monthNumber(of: buAy)
         let ceyrek = (ayNo - 1) / 3 + 1
         let ceyrekSonu = Dates.monthKey(yil, ceyrek * 3)
-        let ceyrekKalan = geciciKalan(min(ceyrekSonu, Dates.month(of: today)))
-        // Önceki çeyreklerde ödenmiş geçici vergi: her çeyrekte kümülatif tutara tamamlanır, zarar eden
-        // çeyrekte iade edilmez. Bu yüzden ödenen toplam, önceki çeyrek sonlarının en büyüğüdür.
-        let oncekiKarsilik = (1..<ceyrek).map { geciciKalan(Dates.monthKey(yil, $0 * 3)) }.max() ?? 0
-        let odemeAyi = Dates.addMonths(ceyrekSonu, 2)
         // 4. çeyrek geçici vergi 2025'ten itibaren yeniden var (7566 sayılı Kanun); son gün izleyen yılın 17 Şubat'ı
-        let geciciVarMi = ceyrek < 4 || VergiKurallari.kural(yil).kural.dorduncuCeyrekGecici && yil >= 2025
+        let dorduncuVar = VergiKurallari.kural(yil).kural.dorduncuCeyrekGecici && yil >= 2025
+        // Geçici vergi dönemleri: her dönemin tahakkuku, önceki dönemlerin HESAPLANAN geçici vergileri düşülerek
+        // bulunur (beyannamedeki mahsup). Ödenip ödenmediği yalnız yıllık mahsubu ve nakdi etkiler.
+        var donemler: [GeciciVergiDonemi] = []
+        var kumulatif: Kurus = 0
+        for q in 1...4 where q < 4 || dorduncuVar {
+            let qBas = Dates.monthKey(yil, q * 3 - 2), qSon = Dates.monthKey(yil, q * 3)
+            guard qBas <= bugunAy else { break }
+            let k = max(geciciKumulatif(min(qSon, bugunAy)), kumulatif)
+            donemler.append(GeciciVergiDonemi(yil: yil, ceyrek: q, tahakkuk: k - kumulatif,
+                                              odeme: ek.geciciVergiOdemeleri?["\(yil)-\(q)"],
+                                              vade: "\(Dates.addMonths(qSon, 2))-17", bitti: qSon < bugunAy))
+            kumulatif = k
+        }
+        let buDonem = donemler.first { $0.ceyrek == ceyrek }
+        let oncekiTahakkuk = donemler.filter { $0.ceyrek < ceyrek }.reduce(0) { $0 + $1.tahakkuk }
+        let geciciVarMi = ceyrek < 4 || dorduncuVar
         let sirket: Bool = { if case .kanun(sirket: false) = kaynak { return false }; return state.settings.ek.vergiTuru != "sahis" }()
         // Kurumlar: beyan ve ödeme izleyen yılın 30 Nisan'ı. Gelir: beyan 31 Mart, ödeme Mart ve Temmuz iki taksit
         let yillikSon = sirket ? "\(yil + 1)-04-30" : "\(yil + 1)-03-31"
+        let uygulanacak = adim?.uygulanacak ?? 0
+        // %5 uyum indirimi: yalnız muhasebecinin doğruladığı "evet"te, yıllık beyanda hesaplanan vergiden
+        let uyum = uyumIndirimiDurumu()
+        let uyumTutari = uyum == .evet ? uyumIndirimiTutari(adim: adim, yil: yil) : 0
         let oran: Double = {
             switch kaynak {
             case let .elleOran(o): return o
             case .kanun(sirket: true): return VergiKurallari.kural(yil).kural.kurumlarOrani
             case .kanun(sirket: false):
-                let m = hesap?.matrah ?? 0
-                return m > 0 ? Double(hesap?.vergi ?? 0) / Double(m) * 100 : 0
+                let m = adim?.normalMatrah ?? 0
+                return m > 0 ? Double(adim?.normalVergi ?? 0) / Double(m) * 100 : 0
             }
         }()
         return VergiKarsiligi(
@@ -253,16 +393,23 @@ public extension Engine {
             yilBasindanKar: simdi,
             kkegGiderler: kkegGiderleri(from: bas, to: buAy),
             kkegEk: kkegEk, gecmisYilZarari: zarar, istisnaIndirim: istisna,
-            matrah: hesap?.matrah ?? 0,
-            yilBasindanVergi: hesap?.vergi ?? 0,
-            asgariUygulandi: hesap?.asgari ?? false,
+            matrah: adim?.normalMatrah ?? 0,
+            normalVergi: adim?.normalVergi ?? 0,
+            asgariMatrah: adim?.asgariMatrah,
+            asgariVergi: adim?.asgariVergi,
+            asgariYokNedeni: adim?.asgariYokNedeni,
+            yilBasindanVergi: uygulanacak,
+            asgariUygulandi: adim?.asgariUygulandi ?? false,
+            uyumDurumu: uyum,
+            uyumIndirimi: uyumTutari,
             yilBasindanStopaj: stopajYtd(buAy),
             yilBasindanKarsilik: kalan(buAy),
             ayinPayi: max(kalan(buAy) - kalan(Dates.addMonths(buAy, -1)), 0),
             ceyrek: ceyrek,
-            ceyrekGeciciVergi: geciciVarMi ? max(ceyrekKalan - oncekiKarsilik, 0) : 0,
-            oncekiGeciciVergiler: oncekiKarsilik,
-            ceyrekSonOdeme: geciciVarMi ? "\(odemeAyi)-17" : yillikSon,
+            ceyrekGeciciVergi: geciciVarMi ? (buDonem?.tahakkuk ?? 0) : 0,
+            oncekiGeciciTahakkuk: oncekiTahakkuk,
+            geciciDonemler: donemler,
+            ceyrekSonOdeme: geciciVarMi ? "\(Dates.addMonths(ceyrekSonu, 2))-17" : yillikSon,
             yillikSonOdeme: yillikSon,
             kuralTahmini: {
                 switch kaynak {
@@ -275,7 +422,10 @@ public extension Engine {
             kurulusYiliGirilmedi: {
                 if case .kanun(sirket: true) = kaynak { return state.settings.ek.kurulusYili == nil }
                 return false
-            }()
+            }(),
+            yillikOdeme: ek.geciciVergiOdemeleri?["\(yil)-yillik"],
+            uyumUstSiniriBilinmiyor: VergiKurallari.bilinen[yil]?.uyumIndirimiUstSiniri == nil,
+            asgariZararIndirildi: adim?.asgariMatrah != nil && ek.asgariZararIndirimi == true && (zarar ?? 0) > 0
         )
     }
 
@@ -286,8 +436,10 @@ public extension Engine {
         let ek = state.settings.ek, k = "\(yil)"
         let kkeg = kkegGiderleri(from: Dates.monthKey(yil, 1), to: Dates.monthKey(yil, 12)) + (ek.kkegEk?[k] ?? 0)
         func net(_ p: Kurus) -> Kurus {
-            p - (vergiTutari(kar: p, kkeg: kkeg, istisna: ek.istisnaIndirim?[k] ?? 0,
-                             gecmisZarar: ek.gecmisYilZarari?[k] ?? 0, yil: yil)?.vergi ?? 0)
+            let a = vergiAdimlari(kar: p, kkeg: kkeg, istisna: ek.istisnaIndirim?[k] ?? 0,
+                                  gecmisZarar: ek.gecmisYilZarari?[k] ?? 0, yil: yil)
+            let uyum = uyumIndirimiDurumu() == .evet ? uyumIndirimiTutari(adim: a, yil: yil) : 0
+            return p - ((a?.uygulanacak ?? 0) - min(uyum, a?.uygulanacak ?? 0))
         }
         // Vergi sonrası kâr, vergi öncesi kârla birlikte artar: ikiye bölerek en küçük yeterli tutar bulunur
         var alt: Kurus = netKar, ust: Kurus = netKar * 3 + 100

@@ -69,7 +69,10 @@ public extension ChannelMonth {
 
 public extension ExpenseInstance {
     /// Kilit karşılaştırması: ad ve fatura dosyası beyanı etkilemez
-    var beyanAlanlari: ExpenseInstance { var i = self; i.name = ""; i.attachment = nil; return i }
+    /// Kilitli ayda karşılaştırılan alanlar: ad, dosya ve yalnız nakdi etkileyen ödeme bilgisi (tutar ve gün) hariç
+    var beyanAlanlari: ExpenseInstance {
+        var i = self; i.name = ""; i.attachment = nil; i.nakitTutari = nil; i.date = i.month; return i
+    }
 }
 
 public struct Taksit: Codable, Hashable, Sendable, Identifiable {

@@ -70,9 +70,9 @@ public extension Engine {
             tahsilat += r.channels.reduce(0) { $0 + $1.netSalesIncVat - $1.channelFees - $1.feeVat - $1.stopaj }
             for i in expenseInstances(month: m) {
                 switch i.sourceKind {
-                case .tekSeferlik: duzensiz += i.cashAmount
+                case .tekSeferlik, .ayriOdeme: duzensiz += i.cashAmount
                 case .stokAlimi: stok += i.cashAmount
-                case .duzenli, .taksit: break   // tarihleriyle ayrıca konuyor
+                case .duzenli, .taksit, .ayriKdv: break   // tarihleriyle ayrıca konuyor
                 }
             }
         }
@@ -138,29 +138,48 @@ public extension Engine {
             }
             ay = Dates.addMonths(ay, 1)
         }
-        // 4) Geçici vergi (vergi türü seçildiyse): 4 çeyrek; 4. çeyrek izleyen yılın Şubat'ında ödenir
+        // 4) Vergi ödemeleri (vergi türü seçildiyse). Gerçekleşen ödeme (girilen tarih ve tutar) bilinen nakit
+        // çıkışıdır; ödenmemiş kalan ise vadesinde "planlanan vergi ödemesi" olarak gösterilir (tahmini).
         let basYili = Dates.year(of: Dates.month(of: bas))
-        let ceyrekSonlari = [Dates.monthKey(basYili - 1, 12)] + [3, 6, 9, 12].map { Dates.monthKey(basYili, $0) }
-        for ceyrekSonu in ceyrekSonlari {
-            // Henüz gelmemiş çeyrek sonu bugünün çeyreğine düşer; aynı vergi iki kez yazılmasın
-            if let v = vergiKarsiligi(month: ceyrekSonu, today: bugun),
-               v.ceyrek == Dates.monthNumber(of: ceyrekSonu) / 3, pencerede(v.ceyrekSonOdeme),
-               v.ceyrekGeciciVergi > 0 {
-                kalemler.append(NakitKalemi(id: "vergi:\(ceyrekSonu)", gun: v.ceyrekSonOdeme,
-                                            ad: "\(v.ceyrek). çeyrek geçici vergi",
-                                            tutar: -v.ceyrekGeciciVergi, tahmini: true))
+        for yil in [basYili - 1, basYili] {
+            guard let v = vergiKarsiligi(month: Dates.monthKey(yil, 12), today: bugun) else { continue }
+            // Yıllık beyan süresi geçtiyse o yılın ödenmemiş geçici vergisi ayrıca planlanmaz: kalan borç
+            // yıllık vergi olarak aşağıda planlanır (ödenmemiş geçici vergi yıllıktan mahsup edilmez)
+            let yillikGecti = v.yillikSonOdeme < bas
+            for d in v.geciciDonemler {
+                if let o = d.odeme, pencerede(o.tarih) {
+                    kalemler.append(NakitKalemi(id: "vergiodeme:\(d.id)", gun: o.tarih,
+                                                ad: "\(d.ceyrek). dönem geçici vergi ödemesi (\(yil))",
+                                                tutar: -o.tutar, tahmini: false))
+                }
+                guard d.kalan > 0, !yillikGecti else { continue }
+                let gecikmis = d.vade <= bas
+                let gun = gecikmis ? ilkGun : d.vade
+                guard gun <= son else { continue }
+                kalemler.append(NakitKalemi(id: "vergi:\(d.id)", gun: gun,
+                                            ad: "Planlanan vergi ödemesi: \(d.ceyrek). dönem geçici vergi (\(yil))"
+                                                + (gecikmis ? " — vadesi geçti, ödenmedi" : ""),
+                                            tutar: -d.kalan, tahmini: true))
             }
         }
-        // 4b) Geçen yılın yıllık beyanında ödenecek kalan (geçici vergiler ödenmiş varsayılır).
-        // Kurumlar: 30 Nisan; gelir vergisi: Mart ve Temmuz iki eşit taksit.
-        if let v = vergiKarsiligi(month: Dates.monthKey(basYili - 1, 12), today: bugun), v.yillikBeyandaOdenecek > 0 {
+        // 4b) Geçen yılın yıllık beyanı: planlanan ödeme. Ödenmiş geçici vergiler ve yukarıda planlanan
+        // geçici vergi kalanları düşülür (aynı tutar iki kez planlanmasın). Kurumlar: 30 Nisan; gelir: Mart ve Temmuz.
+        if let v = vergiKarsiligi(month: Dates.monthKey(basYili - 1, 12), today: bugun) {
+            let yillikGecti = v.yillikSonOdeme < bas
+            if let o = v.yillikOdeme, pencerede(o.tarih) {
+                kalemler.append(NakitKalemi(id: "yillikodeme:\(basYili - 1)", gun: o.tarih,
+                                            ad: "\(basYili - 1) yıllık vergi ödemesi", tutar: -o.tutar, tahmini: false))
+            }
+            let t = yillikGecti ? v.yillikKalan : v.planlananYillikOdeme
             let taksitler: [(DateKey, Kurus)] = v.sirket
-                ? [("\(basYili)-04-30", v.yillikBeyandaOdenecek)]
-                : [("\(basYili)-03-31", v.yillikBeyandaOdenecek - v.yillikBeyandaOdenecek / 2),
-                   ("\(basYili)-07-31", v.yillikBeyandaOdenecek / 2)]
-            for (i, (gun, tutar)) in taksitler.enumerated() where pencerede(gun) && tutar > 0 {
-                kalemler.append(NakitKalemi(id: "yillikvergi:\(basYili - 1):\(i)", gun: gun,
-                                            ad: "\(basYili - 1) yıllık \(v.sirket ? "kurumlar" : "gelir") vergisi",
+                ? [("\(basYili)-04-30", t)]
+                : [("\(basYili)-03-31", t - t / 2), ("\(basYili)-07-31", t / 2)]
+            for (i, (gun, tutar)) in taksitler.enumerated() where tutar > 0 {
+                let gecikmis = gun <= bas
+                guard gecikmis || pencerede(gun) else { continue }
+                kalemler.append(NakitKalemi(id: "yillikvergi:\(basYili - 1):\(i)", gun: gecikmis ? ilkGun : gun,
+                                            ad: "Planlanan vergi ödemesi: \(basYili - 1) yıllık \(v.sirket ? "kurumlar" : "gelir") vergisi"
+                                                + (gecikmis ? " — vadesi geçti, ödeme girilmedi" : ""),
                                             tutar: -tutar, tahmini: true))
             }
         }
@@ -174,7 +193,7 @@ public extension Engine {
             let bilinen: Kurus
             if let c = aylikBilinen[m] { bilinen = c } else {
                 bilinen = expenseInstances(month: m)
-                    .filter { $0.sourceKind == .tekSeferlik || $0.sourceKind == .stokAlimi }
+                    .filter { $0.sourceKind == .tekSeferlik || $0.sourceKind == .stokAlimi || $0.sourceKind == .ayriOdeme }
                     .reduce(0) { $0 + $1.cashAmount }
                 aylikBilinen[m] = bilinen
             }

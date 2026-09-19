@@ -78,7 +78,7 @@ struct ExpensesView: View {
                             CategoryCard(
                                 category: cat,
                                 total: total,
-                                items: instances.filter { $0.category == cat && !$0.capitalized },
+                                items: instances.filter { $0.category == cat && !$0.capitalized && $0.sourceKind != .ayriOdeme && $0.sourceKind != .ayriKdv },
                                 stoktan: store.engine.stoktanGider(from: period.from, to: period.to, category: cat),
                                 onTap: { sheet = .editExpense($0.templateId ?? $0.id, $0.month) }
                             )

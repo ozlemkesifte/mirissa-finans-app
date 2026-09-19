@@ -84,9 +84,13 @@ struct AuditRound8Tests {
         let v = try #require(Engine(s).vergiKarsiligi(month: "2026-03", today: "2026-04-01"))
         #expect(v.yilBasindanKar == tl(290_000))
         #expect(v.kkegGiderler == tl(10_000))
-        // Matrah: 290.000 + 10.000 − 300.000 = 0; asgari: (290.000 + 10.000 − 300.000) × %10 = 0
+        // Normal matrah: 290.000 + 10.000 − 300.000 = 0. Asgari matrah (KVK 32/C, GİB): geçmiş yıl zararı
+        // düşülmez → (290.000 + 10.000) × %10 = 30.000 uygulanır
         #expect(v.matrah == 0)
-        #expect(v.yilBasindanVergi == 0)
+        #expect(v.normalVergi == 0)
+        #expect(v.asgariMatrah == tl(300_000))
+        #expect(v.yilBasindanVergi == tl(30_000))
+        #expect(v.asgariUygulandi)
     }
 
     // MARK: Gelir vergisi 2026 tarifesi (GVK 103, GVT 332)
@@ -128,7 +132,8 @@ struct AuditRound8Tests {
         #expect(v.ceyrekGeciciVergi == tl(10_000))
         #expect(v.ceyrekSonOdeme == "2027-02-17")
         #expect(v.yillikSonOdeme == "2027-04-30")
-        #expect(v.yillikBeyandaOdenecek == 0)
+        // Geçici vergiler ödendi varsayılmaz: ödeme girilmediyse yıllıkta hiçbiri mahsup edilmez
+        #expect(v.yillikBeyandaOdenecek == tl(85_000))
     }
 
     @Test func stopajMahsupEdilirFazlasiIadeDiyeGosterilir() throws {
@@ -384,9 +389,12 @@ struct AuditRound8Tests {
         s.sales.append(SalesEntry(id: "k", month: "2026-11", channelId: ChannelIds.trendyol,
                                   productId: Fx.sampuanId, qty: 1, grossSales: tl(40_000)))
         let t = try #require(Engine(s).nakitTahmini(bugun: "2027-01-10", hafta: 20))
-        let q4 = t.bilinenKalemler.first { $0.id == "vergi:2026-12" }
+        // Q1–Q3 vadesi geçti ve ödeme girilmedi: planlanan (gecikmiş) olarak ilk günde; Q4 17 Şubat'ta
+        let q4 = t.bilinenKalemler.first { $0.id == "vergi:2026-4" }
         #expect(q4?.gun == "2027-02-17")
         #expect(q4?.tutar == -tl(10_000))
+        #expect(q4?.tahmini == true)
+        #expect(q4?.ad.hasPrefix("Planlanan vergi ödemesi") == true)
     }
 
     // MARK: Stok kapasitesi hedefi değiştirmez, yalnızca bilgi

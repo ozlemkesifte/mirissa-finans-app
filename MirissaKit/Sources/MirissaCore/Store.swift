@@ -739,6 +739,24 @@ public final class AppStore {
         }
     }
 
+    /// Bir çeyreğin gerçekten ödenen geçici vergisi. nil = ödeme kaydı yok (ödenmemiş)
+    public func geciciVergiOdemesi(yil: Int, ceyrek: Int, _ odeme: VergiOdemesi?) {
+        mutate { s in
+            var d = s.settings.ek.geciciVergiOdemeleri ?? [:]
+            d["\(yil)-\(ceyrek)"] = odeme.flatMap { $0.tutar > 0 ? $0 : nil }
+            s.settings.ek.geciciVergiOdemeleri = d
+        }
+    }
+
+    /// Yıllık gelir/kurumlar vergisi beyanı için gerçekten ödenen tutar. nil = ödeme kaydı yok
+    public func yillikVergiOdemesi(yil: Int, _ odeme: VergiOdemesi?) {
+        mutate { s in
+            var d = s.settings.ek.geciciVergiOdemeleri ?? [:]
+            d["\(yil)-yillik"] = odeme.flatMap { $0.tutar > 0 ? $0 : nil }
+            s.settings.ek.geciciVergiOdemeleri = d
+        }
+    }
+
     /// Vergi hesabı için yıllık tutarlar (KKEG ek, geçmiş yıl zararı, istisna/indirim). nil = girilmedi.
     public func vergiTutarlari(yil: Int, kkegEk: Kurus?, gecmisZarar: Kurus?, istisna: Kurus?) {
         mutate { s in

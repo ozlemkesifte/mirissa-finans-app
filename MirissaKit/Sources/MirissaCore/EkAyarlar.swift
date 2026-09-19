@@ -44,11 +44,25 @@ public struct EkAyarlar: Codable, Hashable, Sendable {
     public var istisnaIndirim: [String: Kurus]?
     /// Şirketin kuruluş yılı: yurt içi asgari kurumlar vergisi ilk üç hesap döneminde uygulanmaz
     public var kurulusYili: Int?
+    /// Gerçekten ödenen geçici vergiler (anahtar "2026-1" … "2026-4"). Kayıt yoksa ödenmemiş sayılır.
+    public var geciciVergiOdemeleri: [String: VergiOdemesi]?
+    /// %5 vergiye uyumlu mükellef indirimi şartları: "evet" (muhasebeci doğruladı), "hayir"; nil = bilmiyorum
+    public var uyumIndirimi: String?
+    /// Muhasebeci uygulaması: geçmiş yıl zararı asgari kurumlar vergisi matrahından da düşülsün
+    /// (Danıştay 3. D. E.2024/5700 K.2025/4831; kesinleşmesi doğrulanmadı). nil/false = düşülmez
+    public var asgariZararIndirimi: Bool?
 
     public init() {}
 
     public var kilitli: Set<MonthKey> { Set(kilitliAylar ?? []) }
     public func gecikme(_ kanal: Id) -> Int { hakedisGecikmesi?[kanal] ?? 0 }
+}
+
+/// Gerçekleşmiş bir vergi ödemesi
+public struct VergiOdemesi: Codable, Hashable, Sendable {
+    public var tutar: Kurus
+    public var tarih: DateKey
+    public init(tutar: Kurus, tarih: DateKey) { self.tutar = tutar; self.tarih = tarih }
 }
 
 /// Değişiklik günlüğü satırı

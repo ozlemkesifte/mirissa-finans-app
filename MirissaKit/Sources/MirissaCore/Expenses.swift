@@ -4,6 +4,10 @@ public enum ExpenseSourceKind: String, Sendable {
     case tekSeferlik, duzenli, stokAlimi
     /// Vadeli alımın sonradan ödenen taksiti: yalnızca nakit çıkışıdır
     case taksit
+    /// Faturası başka ayda olan giderin ödemesi: yalnızca nakit çıkışıdır (kâra girmez)
+    case ayriOdeme
+    /// Faturası başka ayda olan giderin kanuni kayda alındığı KDV dönemi: yalnızca indirilecek KDV
+    case ayriKdv
 }
 
 /// Ekranlarda gösterilen tek bir gider satırı.
@@ -78,13 +82,13 @@ public enum Expenses {
         for e in s.expenses {
             switch e.recurrence {
             case .tek where (e.yayilanAy ?? 1) > 1:
-                out += tekAylaraBol(e, aySayisi: e.yayilanAy!, from: from, to: to)
+                out += donemleriAyir(e, tekAylaraBol(e, aySayisi: e.yayilanAy!, from: from, to: to), from: from, to: to)
 
             case .tek:
                 let m = e.startMonth
-                guard m >= from, m <= to else { continue }
                 if let ov = e.overrides[m], ov.skipped { continue }
-                out.append(instance(e, month: m, date: e.date))
+                let liste = (m >= from && m <= to) ? [instance(e, month: m, date: e.date)] : []
+                out += donemleriAyir(e, liste, from: from, to: to)
 
             case .aylik:
                 out += expand(e, step: 1, from: from, to: to)
@@ -268,6 +272,48 @@ public enum Expenses {
             indirilemeyenKdv: bolum.indirilemeyen,
             kkeg: e.kkeg == true
         )
+    }
+
+    /// Tek seferlik giderde KDV'yi kanuni kayıt dönemine, parayı ödeme tarihine taşır. Kâr fatura
+    /// ayında kalır. Taşınan KDV ve nakit, kâra girmeyen ayrı satırlarla kendi aylarında görünür.
+    static func donemleriAyir(_ e: Expense, _ liste: [ExpenseInstance], from: MonthKey, to: MonthKey) -> [ExpenseInstance] {
+        let faturaAyi = e.startMonth
+        let kdvAyi = max(e.kdvDonemi ?? faturaAyi, faturaAyi)
+        let odemeGunu = e.odemeTarihi ?? e.date
+        let odemeAyi = Dates.month(of: odemeGunu)
+        let odemeFarkli = odemeGunu != e.date
+        guard kdvAyi != faturaAyi || odemeFarkli else { return liste }
+        // Fatura ayındaki satırın (KDV ve nakit burada) tam hali: aralık dışında olsa da tutarlar için
+        let tam: ExpenseInstance
+        if (e.yayilanAy ?? 1) > 1 {
+            guard let t = tekAylaraBol(e, aySayisi: e.yayilanAy!, from: faturaAyi, to: faturaAyi).first else { return liste }
+            tam = t
+        } else {
+            tam = instance(e, month: faturaAyi, date: e.date)
+        }
+        var out = liste.map { i -> ExpenseInstance in
+            guard i.month == faturaAyi else { return i }
+            var y = i
+            if kdvAyi != faturaAyi { y.inputVat = 0 }
+            if odemeFarkli { y.nakitTutari = 0 }
+            else if kdvAyi != faturaAyi { y.nakitTutari = tam.cashAmount }
+            return y
+        }
+        func golge(_ tur: ExpenseSourceKind, ay: MonthKey, gun: DateKey, kdv: Kurus, nakit: Kurus, ek: String) -> ExpenseInstance {
+            ExpenseInstance(id: "\(e.id)#\(tur.rawValue)", templateId: e.id, sourceKind: tur, date: gun, month: ay,
+                            name: "\(tam.name) (\(ek))", amount: 0, category: e.category, scope: e.scope,
+                            behavior: e.resolvedBehavior, attachment: nil, net: 0, inputVat: kdv,
+                            capitalized: false, editable: false, nakitTutari: nakit)
+        }
+        if kdvAyi != faturaAyi, kdvAyi >= from, kdvAyi <= to, tam.inputVat != 0 {
+            out.append(golge(.ayriKdv, ay: kdvAyi, gun: Dates.monthEnd(kdvAyi), kdv: tam.inputVat, nakit: 0,
+                             ek: "KDV'si bu dönemde indirildi"))
+        }
+        // Ödeme günü faturadan farklıysa (aynı ayda bile) nakit ödeme gününde görünür
+        if odemeFarkli, odemeAyi >= from, odemeAyi <= to {
+            out.append(golge(.ayriOdeme, ay: odemeAyi, gun: odemeGunu, kdv: 0, nakit: tam.cashAmount, ek: "ödemesi"))
+        }
+        return out
     }
 
     /// Giderin KDV bölümü. KDV'si indirilemeyen giderde KDV gidere eklenir (net), indirilecek KDV 0 olur.

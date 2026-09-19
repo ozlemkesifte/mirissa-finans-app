@@ -176,8 +176,10 @@ public extension Engine {
         for i in expenseInstances(month: month) {
             if i.inputVat != 0 {
                 out.append(KdvKaydi(id: "gider-\(i.id)", tur: .indirilecek, ad: i.name, tarih: i.date, tutar: i.inputVat,
-                                    neden: i.capitalized ? "Stok alımı faturası: KDV alım ayında indirilir."
-                                        : "Gider faturası: KDV ödeme (fatura) ayında indirilir."))
+                                    neden: i.sourceKind == .ayriKdv
+                                        ? "Fatura başka ayda; kanuni deftere bu dönemde kaydedildi, KDV bu dönemde indirildi."
+                                        : i.capitalized ? "Stok alımı faturası: KDV fatura (alım) döneminde indirilir; ödeme tarihi etkilemez."
+                                        : "Gider faturası: KDV kanuni kayıt (fatura) döneminde indirilir; ödeme tarihi etkilemez."))
             }
             if i.indirilemeyenKdv != 0 {
                 out.append(KdvKaydi(id: "indirilemez-\(i.id)", tur: .indirilemeyen, ad: i.name, tarih: i.date,

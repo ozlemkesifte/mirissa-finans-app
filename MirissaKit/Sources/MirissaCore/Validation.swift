@@ -219,6 +219,18 @@ public extension Validation {
             out.append(ValidationIssue(.eksikBilgi, .engel,
                 "Gider adı boş", "Neyin gideri olduğunu yaz."))
         }
+        if let d = draft.kdvDonemi {
+            if d < draft.startMonth {
+                out.append(ValidationIssue(.eksikBilgi, .engel, "KDV dönemi faturadan önce olamaz",
+                    "Fatura \(Dates.displayMonth(draft.startMonth)) tarihli; KDV bu aydan önceki bir dönemde indirilemez."))
+            } else if d > Dates.monthKey(Dates.year(of: draft.startMonth) + 1, 12) {
+                out.append(ValidationIssue(.eksikBilgi, .engel, "KDV indirim süresi geçmiş",
+                    "KDVK 29/3: KDV en geç faturanın ait olduğu yılı izleyen takvim yılı sonuna kadar indirilebilir."))
+            }
+        }
+        if let o = draft.odemeTarihi, Dates.month(of: o) < Dates.addMonths(draft.startMonth, -120) {
+            out.append(ValidationIssue(.eksikBilgi, .engel, "Ödeme tarihi geçersiz", "Ödeme tarihini kontrol et."))
+        }
         if draft.amount < 0 {
             out.append(ValidationIssue(.gecersizTutar, .engel,
                 "Tutar eksi olamaz", "Gider tutarı sıfırdan küçük olamaz."))

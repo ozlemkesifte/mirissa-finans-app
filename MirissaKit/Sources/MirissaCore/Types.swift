@@ -1305,6 +1305,12 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var kdvIndirilemez: Bool? = nil
     /// Kanunen kabul edilmeyen gider (KKEG): kâr hesabında giderdir, vergi matrahına geri eklenir
     public var kkeg: Bool? = nil
+    // Tek seferlik giderde `date` belge/fatura tarihidir (kârın ayı). Aşağıdakiler boşsa fatura tarihiyle aynıdır.
+    /// Faturanın kanuni deftere kaydedildiği KDV dönemi: indirilecek KDV bu ayda indirilir
+    /// (fatura ayından önce olamaz; KDVK 29/3: en geç izleyen takvim yılı sonu)
+    public var kdvDonemi: MonthKey? = nil
+    /// Ödeme tarihi: yalnızca nakit akışını etkiler
+    public var odemeTarihi: DateKey? = nil
 
     public init(
         id: Id = Ids.make(.expense),
@@ -1347,6 +1353,14 @@ public struct Expense: Codable, Identifiable, Hashable, Sendable {
     public var resolvedBehavior: CostBehavior { behavior ?? category.defaultBehavior }
     public var resolvedVatRate: VatRate { vatRate ?? .yok }
     public var resolvedVatIncluded: Bool { vatIncluded ?? true }
+
+    /// Kanuni KDV dönemi ve ödeme tarihiyle kopya (yalnız tek seferlik giderde; fatura ile aynıysa nil)
+    public func donemlerle(kdvDonemi: MonthKey?, odemeTarihi: DateKey?) -> Expense {
+        var e = self
+        e.kdvDonemi = recurrence == .tek && kdvDonemi != startMonth ? kdvDonemi : nil
+        e.odemeTarihi = recurrence == .tek && odemeTarihi != date ? odemeTarihi : nil
+        return e
+    }
 
     /// KDV indirilemez / KKEG işaretleriyle kopya (false = işaret yok)
     public func bayraklarla(kdvIndirilemez: Bool, kkeg: Bool) -> Expense {

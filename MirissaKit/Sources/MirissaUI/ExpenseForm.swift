@@ -21,6 +21,12 @@ struct ExpenseForm: View {
     @State private var vatRate: VatRate = .yirmi
     @State private var vatIncluded = true
     @State private var kdvIndirilemez = false
+    @State private var odemeFarkli = false
+    @State private var odemeTarihi: DateKey = Dates.today()
+    @State private var kdvFarkli = false
+    @State private var kdvDonemi: MonthKey = Dates.currentMonth()
+    private var secilenKdvDonemi: MonthKey? { kdvFarkli ? max(kdvDonemi, Dates.month(of: date)) : nil }
+    private var secilenOdeme: DateKey? { odemeFarkli ? odemeTarihi : nil }
     @State private var kkeg = false
     @State private var picked: PickedFile?
     @State private var invoiceRemoved = false
@@ -109,11 +115,30 @@ struct ExpenseForm: View {
             onSave: save
         ) {
             Section {
-                DateRow(dateKey: $date).disabled(ayModu)
+                DateRow(label: recurrence == .tek ? "Belge / fatura tarihi" : "Tarih", dateKey: $date).disabled(ayModu)
+                if recurrence == .tek && !ayModu {
+                    Toggle("Ödeme başka tarihte", isOn: $odemeFarkli)
+                    if odemeFarkli { DateRow(label: "Ödeme tarihi", dateKey: $odemeTarihi) }
+                    if store.state.settings.vatEnabled && vatRate != .yok && !kdvIndirilemez {
+                        Toggle("KDV başka dönemde kayda alındı", isOn: $kdvFarkli)
+                        if kdvFarkli {
+                            Picker("Kanuni kayıt (KDV) dönemi", selection: Binding(
+                                // Fatura tarihi sonraya alınırsa eski dönem listede kalmaz: fatura ayına çekilir
+                                get: { max(kdvDonemi, Dates.month(of: date)) }, set: { kdvDonemi = $0 })) {
+                                ForEach(Dates.monthRange(from: Dates.month(of: date),
+                                                         to: Dates.monthKey(Dates.year(of: Dates.month(of: date)) + 1, 12)), id: \.self) { m in
+                                    Text(Dates.displayMonth(m)).tag(m)
+                                }
+                            }
+                        }
+                    }
+                }
                 TextField("Gider adı", text: $name)
                 MoneyField("Tutar", value: $amount)
             } footer: {
-                if ayModu {
+                if recurrence == .tek && !ayModu && (odemeFarkli || kdvFarkli) {
+                    Text("Gider kâra fatura ayında yazılır. İndirilecek KDV kanuni kayıt döneminde, para ödeme tarihinde görünür.")
+                } else if ayModu {
                     Text("Sadece bu ay için ad, tutar ve KDV değişir. Tarih, kategori ve diğer bilgiler için "
                          + "\"Sadece bu ayın tutarını değiştir\" seçeneğini kapat.")
                 }
@@ -287,6 +312,10 @@ struct ExpenseForm: View {
         yayilanAy = e.yayilanAy ?? 1
         kdvIndirilemez = e.kdvIndirilemez == true
         kkeg = e.kkeg == true
+        odemeFarkli = e.odemeTarihi != nil
+        odemeTarihi = e.odemeTarihi ?? e.date
+        kdvFarkli = e.kdvDonemi != nil
+        kdvDonemi = e.kdvDonemi ?? e.startMonth
     }
 
     private var taslak: Expense {
@@ -302,6 +331,7 @@ struct ExpenseForm: View {
             vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil,
             yayilanAy: yayilan
         ).bayraklarla(kdvIndirilemez: kdvIndirilemez, kkeg: kkeg)
+            .donemlerle(kdvDonemi: kdvIndirilemez ? nil : secilenKdvDonemi, odemeTarihi: secilenOdeme)
     }
 
     private func save() {
@@ -339,6 +369,7 @@ struct ExpenseForm: View {
                 updated.yayilanAy = yayilan
                 updated.kdvIndirilemez = kdvIndirilemez ? true : nil
                 updated.kkeg = kkeg ? true : nil
+                updated = updated.donemlerle(kdvDonemi: kdvIndirilemez ? nil : secilenKdvDonemi, odemeTarihi: secilenOdeme)
                 if !updated.isRecurring { updated.endMonth = nil; updated.overrides = [:] }
                 if e.isRecurring && recurrence == e.recurrence && !gecmisDeDegissin {
                     // Bu aydan itibaren: eski gider bir önceki ayda biter, yenisi bu aydan başlar
@@ -359,6 +390,7 @@ struct ExpenseForm: View {
                 vatIncluded: store.state.settings.vatEnabled ? vatIncluded : nil,
                 yayilanAy: yayilan
             ).bayraklarla(kdvIndirilemez: kdvIndirilemez, kkeg: kkeg)
+                .donemlerle(kdvDonemi: kdvIndirilemez ? nil : secilenKdvDonemi, odemeTarihi: secilenOdeme)
             store.addExpense(yeni)
             hedefId = yeni.id
         }

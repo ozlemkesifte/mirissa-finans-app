@@ -59,7 +59,7 @@ public extension Engine {
             switch i.sourceKind {
             case .duzenli: tur = e?.recurrence == .yillik ? .yillikPay : .herAy
             case .tekSeferlik: tur = (e?.yayilanAy ?? 1) > 1 ? .yayilmis : .tekSeferlik
-            case .stokAlimi, .taksit: tur = .tekSeferlik
+            case .stokAlimi, .taksit, .ayriOdeme, .ayriKdv: tur = .tekSeferlik
             }
             let kanal = i.scope.channelId.flatMap { state.channel($0)?.name }
             satirlar.append(SabitGiderSatiri(
