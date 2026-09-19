@@ -193,7 +193,7 @@ struct RaporIceAktarmaAkisi: View {
                     Text("Bu aylardaki \(degisecek) eski satış kaydı raporla değiştirilecek.")
                         .font(.footnote).foregroundStyle(Palette.uyari)
                 }
-                Text("İadeler raporda ayrı gelmez; iade varsa satış kaydını açıp ekle.")
+                Text("Tamamı iade edilen siparişler iade olarak alınır (kargosu ödendiği için satış silinmez). Kısmi iadeleri satış kaydını açıp ekle.")
                     .font(.caption).foregroundStyle(Palette.inkFaint)
                 Button("Kaydet") { kaydet(r) }.font(.body.weight(.semibold))
                 Button("Geri") { adim = .urunler }

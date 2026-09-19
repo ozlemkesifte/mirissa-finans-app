@@ -37,6 +37,7 @@ struct SaleFlow: View {
     @State private var siparisSayisi: Double = 0
     @State private var buyukSiparis: Double = 0
     @State private var buyukSiparisBiliniyor = false
+    @State private var onDoluAnahtar: String?
     @State private var devamSorusu: WizardDraft?
     @State private var taslakOkundu = false
     @State private var urunArama = ""
@@ -60,6 +61,7 @@ struct SaleFlow: View {
         var siparisSayisi: Double
         var buyukSiparis: Double?
         var buyukSiparisBiliniyor: Bool?
+        var onDoluAnahtar: String?
     }
 
     private var taslakKaydi: TaslakKaydi {
@@ -75,6 +77,23 @@ struct SaleFlow: View {
         iadeSatilabilir = t.iadeSatilabilir; gercekKesinti = t.gercekKesinti
         komisyon = t.komisyon; kargo = t.kargo; siparisSayisi = t.siparisSayisi
         buyukSiparis = t.buyukSiparis ?? 0; buyukSiparisBiliniyor = t.buyukSiparisBiliniyor ?? false
+        // Önceki sürümde kaydedilmiş taslakta anahtar yok: girilen değerler o taslağın ayına aittir
+        onDoluAnahtar = t.onDoluAnahtar ?? "\(t.ay)|\(t.kanalId)"
+    }
+
+    /// Sipariş sayısı ve gerçek kesintiler hangi ay + kanal için dolduruldu. Kullanıcı geri dönüp
+    /// ayı ya da kanalı değiştirirse o ayın kayıtlı değerleriyle yeniden doldurulur; yoksa önceki
+    /// ayın toplamı yeni aya yazılırdı.
+    private func ayDegerleriniDoldur() {
+        let anahtar = "\(ay)|\(kanalId)"
+        guard onDoluAnahtar != anahtar else { return }
+        onDoluAnahtar = anahtar
+        let m = store.state.channelMonth(month: ay, channelId: kanalId)
+        siparisSayisi = m?.orderCount.map(Double.init) ?? 0
+        buyukSiparis = m?.bigOrderCount.map(Double.init) ?? 0
+        buyukSiparisBiliniyor = m?.bigOrderCount != nil
+        komisyon = m?.commissionActual ?? 0
+        kargo = m?.shippingActual ?? 0
     }
 
     private func taslakKaydet() {
@@ -84,7 +103,8 @@ struct SaleFlow: View {
             indirim: indirim, iadeTutar: iadeTutar, iadeAdet: iadeAdet,
             iadeSatilabilir: iadeSatilabilir, gercekKesinti: gercekKesinti,
             komisyon: komisyon, kargo: kargo, siparisSayisi: siparisSayisi,
-            buyukSiparis: buyukSiparis, buyukSiparisBiliniyor: buyukSiparisBiliniyor))
+            buyukSiparis: buyukSiparis, buyukSiparisBiliniyor: buyukSiparisBiliniyor,
+            onDoluAnahtar: onDoluAnahtar))
     }
 
     private var toplamAdim: Int { 7 }
@@ -346,7 +366,6 @@ struct SaleFlow: View {
     }
 
     private var siparisAdimi: some View {
-        let mevcut = store.state.channelMonth(month: ay, channelId: kanalId)
         let adet = kanalinAyToplamAdedi
         return SoruAdimi(
             soru: "Bu ay bu kanaldan toplam kaç sipariş (kargo) çıktı?",
@@ -386,13 +405,7 @@ struct SaleFlow: View {
                 }
             }
         }
-        .onAppear {
-            if siparisSayisi == 0, let o = mevcut?.orderCount { siparisSayisi = Double(o) }
-            if buyukSiparis == 0, let b = mevcut?.bigOrderCount {
-                buyukSiparis = Double(b)
-                buyukSiparisBiliniyor = true
-            }
-        }
+        .onAppear { ayDegerleriniDoldur() }
     }
 
     // 7 — Kanal kesintileri
@@ -423,15 +436,18 @@ struct SaleFlow: View {
 
     private var kesintiDetayAdimi: some View {
         SoruAdimi(
-            soru: "Gerçek kesintiler",
-            aciklama: "Girdiğin rakamlar otomatik hesabın yerine geçer, üstüne eklenmez.",
+            soru: "Bu ayın gerçek kesintileri",
+            aciklama: "Bu kanalın bu ayki TOPLAM komisyon ve kargosunu yaz (daha önce girdiğin satışlar dahil). "
+                + "Otomatik hesabın yerine geçer. Boş bıraktığın alan değişmez.",
             adim: 7, toplam: toplamAdim,
             geri: geriGit, vazgec: { dismiss() },
             ileri: { ileri(.ozet) }
         ) {
-            BuyukParaAlani(baslik: "Komisyon", deger: $komisyon)
-            BuyukParaAlani(baslik: "Kargo", deger: $kargo)
+            BuyukParaAlani(baslik: "Komisyon (bu ayın toplamı)", deger: $komisyon)
+            BuyukParaAlani(baslik: "Kargo (bu ayın toplamı)", deger: $kargo)
         }
+        // Daha önce girilmiş ay toplamı gösterilir: ikinci girişte üzerine yazılıp kaybolmasın
+        .onAppear { ayDegerleriniDoldur() }
     }
 
     // 7 — Özet
@@ -491,7 +507,7 @@ struct SaleFlow: View {
             durum.sales.append(t)
         }
         if gercekKesinti {
-            satirMetinleri.append("Komisyon \(komisyon.tl) ve kargo \(kargo.tl) gerçek tutar olarak kullanılacak")
+            satirMetinleri.append("Bu ayın toplam komisyonu \(komisyon.tl), kargosu \(kargo.tl) gerçek tutar olarak kullanılacak")
         }
         return SaveSummary(
             lines: satirMetinleri,
@@ -535,8 +551,9 @@ struct SaleFlow: View {
                 cm.bigOrderCount = buyukSiparisBiliniyor ? Int(buyukSiparis.rounded()) : nil
             }
             if gercekKesinti {
-                cm.commissionActual = komisyon > 0 ? komisyon : nil
-                cm.shippingActual = kargo > 0 ? kargo : nil
+                // Boş bırakılan alan eski ay toplamını silmez
+                if komisyon > 0 { cm.commissionActual = komisyon }
+                if kargo > 0 { cm.shippingActual = kargo }
             }
             store.upsertChannelMonth(cm)
         }

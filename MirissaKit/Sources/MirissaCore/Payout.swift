@@ -29,6 +29,15 @@ public extension Engine {
                                     yatan: yatan)
     }
 
+    /// Hesaba yatan paradaki (KDV dahil) bir farkın, kesinti alanına yazılacak karşılığı.
+    /// Kesintiler KDV hariç giriliyorsa fark KDV'den arındırılır; motor KDV'yi kendisi ekler.
+    func kesintiGirisi(brutFark: Kurus, channelId: Id, month: MonthKey) -> Kurus {
+        guard let ch = state.channel(channelId) else { return brutFark }
+        let k = ch.kesintiKdv(on: Dates.monthEnd(month))
+        guard !k.dahil, k.oran != .yok else { return brutFark }
+        return Money.roundHalfAwayFromZero(Double(brutFark) / (1 + Double(k.oran.rawValue) / 100))
+    }
+
     /// Net bir kesinti tutarının faturadaki (KDV dahil) karşılığı — kanal ayarına göre
     func kesintiBrut(_ net: Kurus, channelId: Id, month: MonthKey? = nil) -> Kurus {
         guard let ch = state.channel(channelId) else { return net }

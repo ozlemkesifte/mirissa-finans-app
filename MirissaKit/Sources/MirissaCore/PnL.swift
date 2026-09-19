@@ -168,7 +168,8 @@ public struct CompanyMonthResult: Hashable, Sendable, Identifiable {
         channels.reduce(0) { $0 + $1.productCost + $1.packagingCost }
     }
 
-    public var ortakGiderSabit: Kurus { max(ortakGider - ortakGiderDegisken, 0) }
+    /// Sayım fazlası gideri eksiye düşürebilir; kırpılmaz, yoksa katkı − sabit gider ≠ kâr olurdu
+    public var ortakGiderSabit: Kurus { ortakGider - ortakGiderDegisken }
 
     /// Bütün kanalların katkısı — sabit giderleri karşılayan tutar
     public var toplamKatki: Kurus {

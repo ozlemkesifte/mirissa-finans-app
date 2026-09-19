@@ -147,7 +147,7 @@ public enum Movements {
             guard let base = Units.toBaseOrNil(
                 qty: p.qty, unit: p.unit,
                 baseUnit: s.itemBaseUnit(p.item),
-                packSizes: s.itemPackSizes(p.item)
+                packSizes: s.itemPackSizes(p.item, on: p.date)
             ), base != 0 else { return nil }
             return Movement(
                 id: "mv:purchase:\(p.id)",
@@ -176,7 +176,7 @@ public enum Movements {
             guard let base = Units.toBaseOrNil(
                 qty: abs(a.qty), unit: a.unit,
                 baseUnit: s.itemBaseUnit(a.item),
-                packSizes: s.itemPackSizes(a.item)
+                packSizes: s.itemPackSizes(a.item, on: a.date)
             ), base != 0 else { return nil }
             return Movement(
                 id: "mv:adjustment:\(a.id)",
@@ -203,7 +203,7 @@ public enum Movements {
             guard let base = Units.toBaseOrNil(
                 qty: c.countedQty, unit: c.unit,
                 baseUnit: s.itemBaseUnit(c.item),
-                packSizes: s.itemPackSizes(c.item)
+                packSizes: s.itemPackSizes(c.item, on: c.date)
             ) else { return nil }
             return Movement(
                 id: "mv:count:\(c.id)",
@@ -305,7 +305,7 @@ public enum Movements {
                 // Maliyete dahil olup olmaması stok hareketini etkilemez:
                 // yalnızca "stoktan düşmez" işaretli satırlar atlanır.
                 guard line.resolvedConsumesStock else { continue }
-                guard let mat = s.material(line.materialId), !mat.usedPerOrder else { continue }
+                guard let mat = s.material(line.materialId)?.tarihli(date), !mat.usedPerOrder else { continue }
                 guard let perUnit = Units.toBaseOrNil(
                     qty: line.qty, unit: line.unit,
                     baseUnit: mat.baseUnit, packSizes: mat.packSizes

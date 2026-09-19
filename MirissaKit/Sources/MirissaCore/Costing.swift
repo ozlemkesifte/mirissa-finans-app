@@ -93,7 +93,7 @@ public enum OrderPackaging {
         let satirlar = s.sales.filter { $0.month == month && $0.channelId == channelId && $0.qty > 0 }
         let adet = satirlar.reduce(0.0) { $0 + $1.qty }
         guard adet > 0 else { return .bos }
-        let malzemeler = Dictionary(s.materials.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let malzemeler = s.malzemelerTarihli(Dates.monthEnd(month))
         // O ayda geçerli reçetelerle
         let urunler = s.urunlerTarihli(Dates.monthEnd(month))
 

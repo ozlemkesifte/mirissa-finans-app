@@ -4,8 +4,13 @@ import MirissaCore
 // MARK: - Sayı girişi ayrıştırma
 
 public enum NumberInput {
-    /// "5.000,50" / "5000,50" / "5000.50" / "5000" -> 5000.5
-    public static func parse(_ raw: String) -> Double? {
+    /// Miktar ve yüzde: "0,125" / "0.125" / "2,5" / "2.5" -> ondalık. Tek nokta her zaman
+    /// ondalıktır (0.125 kg, 125 kg okunmasın). Birden çok nokta binlik ayracıdır (1.234.567).
+    public static func parse(_ raw: String) -> Double? { ayristir(raw, para: false) }
+
+    /// Para: "5.000,50" / "5000,50" / "5000.50" / "5.000" -> 5000.5 / 5000.
+    /// Tek nokta ve arkasında 3 hane varsa binlik ayracıdır ("0." ile başlıyorsa değil).
+    static func ayristir(_ raw: String, para: Bool) -> Double? {
         var t = raw.replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "TL", with: "")
             .replacingOccurrences(of: "₺", with: "")
@@ -17,9 +22,13 @@ public enum NumberInput {
         } else if hasComma {
             t = t.replacingOccurrences(of: ",", with: ".")
         } else if hasDot {
-            // Tek nokta: son parça 3 haneliyse binlik ayracı sayılır (5.000)
             let parts = t.split(separator: ".", omittingEmptySubsequences: false)
-            if parts.count > 1, parts.dropFirst().allSatisfy({ $0.count == 3 }) {
+            let rakamlar = t.hasPrefix("-") ? String(t.dropFirst()) : t
+            let sifirla = rakamlar.hasPrefix("0.")
+            // Birden çok nokta: binlik ayracı (1.234.567). Tek nokta: parada 3 haneli grup binliktir
+            // (5.000 TL); miktar ve yüzdede ondalıktır. "0." ile başlayan hiçbir zaman binlik değildir.
+            if !sifirla, parts.count > 1, parts.dropFirst().allSatisfy({ $0.count == 3 }),
+               parts.count > 2 || para {
                 t = parts.joined()
             }
         }
@@ -54,7 +63,7 @@ public enum NumberInput {
     }
 
     public static func kurus(_ raw: String) -> Kurus? {
-        parse(raw).map { Money.fromTL($0) }
+        ayristir(raw, para: true).map { Money.fromTL($0) }
     }
 
     public static func display(_ k: Kurus) -> String {

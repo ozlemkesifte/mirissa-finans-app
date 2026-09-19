@@ -49,6 +49,11 @@ public struct OdemePlani: Codable, Hashable, Sendable {
     }
 }
 
+public extension StockPurchase {
+    /// Ödeme planı olmadan alım (kilit karşılaştırması için: taksit ödemek alımın ayını değiştirmez)
+    var odemesiz: StockPurchase { var p = self; p.odeme = nil; return p }
+}
+
 public struct Taksit: Codable, Hashable, Sendable, Identifiable {
     public var id: Id
     public var vade: DateKey

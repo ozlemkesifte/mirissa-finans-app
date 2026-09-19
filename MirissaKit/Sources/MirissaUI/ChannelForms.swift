@@ -251,7 +251,8 @@ struct ChannelMonthForm: View {
                                abs(fark).tl, tone: abs(fark) > 10_000 ? Palette.uyari : Palette.inkSoft)
                     if abs(fark) > 10_000 {
                         Button("Farkı \"diğer kesinti\" olarak ekle") {
-                            other = max((other ?? brut(auto.otherDeduction.amount)) + fark, 0)
+                            other = max((other ?? brut(auto.otherDeduction.amount))
+                                        + store.engine.kesintiGirisi(brutFark: fark, channelId: channelId, month: month), 0)
                         }
                     }
                 }

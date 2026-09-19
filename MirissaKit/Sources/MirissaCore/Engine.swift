@@ -18,12 +18,12 @@ public final class Engine {
     public private(set) lazy var ledger: LedgerResult = Ledger.fold(movements)
 
     /// Kalem başına (tarih, birim maliyet) geçmişi — geçmişe dönük maliyet için
-    private lazy var costHistory: [Id: [(date: DateKey, cost: Double)]] = {
-        var out: [Id: [(DateKey, Double)]] = [:]
+    private lazy var costHistory: [Id: [(date: DateKey, cost: Double, qty: BaseQty)]] = {
+        var out: [Id: [(DateKey, Double, BaseQty)]] = [:]
         for r in ledger.rows {
             // Katlama sırası effectiveDate'e göre: sayımlar ayın sonuna alınır.
             // Görünen tarihi kullanmak listeyi bozar ve ikili arama yanlış sonuç verir.
-            out[r.item.id, default: []].append((r.movement.effectiveDate, r.unitCostAfter))
+            out[r.item.id, default: []].append((r.movement.effectiveDate, r.unitCostAfter, r.balanceAfter))
         }
         return out
     }()
@@ -53,7 +53,12 @@ public final class Engine {
             if r.kind == .sayim, oncekiMiktar < 0 { continue }
             // Değer farkı, stok sıfırın altına inip kırpıldığında yanıltır.
             // Doğrusu: çıkan miktar × o andaki birim maliyet.
-            let birim = oncekiMiktar > 0 ? Double(oncekiDeger) / oncekiMiktar : r.unitCostAfter
+            var birim = oncekiMiktar > 0 ? Double(oncekiDeger) / oncekiMiktar : r.unitCostAfter
+            // Maliyeti yalnız elle girilmiş (alımı, açılış stoğu olmayan) üründe stok değeri 0'dır;
+            // fire yine de girilen maliyetle gider olmalı (satışta da o maliyet kullanılıyor)
+            if birim <= 0, r.item.kind == .product {
+                birim = Double(cost(of: r.item.id, asOf: r.date).intrinsic)
+            }
             let tutar = Money.roundHalfAwayFromZero(-r.delta * birim)
             guard tutar != 0 else { continue }
             let kategori: ExpenseCategory
@@ -73,6 +78,18 @@ public final class Engine {
 
     private var costCache: [String: CostBreakdown] = [:]
     private var tarihliUrunCache: [DateKey: [Id: Product]] = [:]
+    private var tarihliMalzemeCache: [DateKey: [Id: StockMaterial]] = [:]
+
+    /// O gün geçerli ayarlarıyla malzemeler (geçmiş ay eski "sipariş başına" / paket ayarıyla)
+    func malzemeler(asOf: DateKey?) -> [Id: StockMaterial] {
+        guard let d = asOf, state.materials.contains(where: { !($0.eskiAyarlar ?? []).isEmpty }) else {
+            return materialsById
+        }
+        if let c = tarihliMalzemeCache[d] { return c }
+        let m = state.malzemelerTarihli(d)
+        tarihliMalzemeCache[d] = m
+        return m
+    }
 
     /// O gün geçerli reçete ve set içerikleriyle ürünler (geçmiş ay eski reçeteyle hesaplanır)
     func urunler(asOf: DateKey?) -> [Id: Product] {
@@ -118,7 +135,20 @@ public final class Engine {
             let mid = (lo + hi) / 2
             if h[mid].date <= date { found = mid; lo = mid + 1 } else { hi = mid - 1 }
         }
-        return found >= 0 ? h[found].cost : h[0].cost
+        // O gün maliyet bilinmiyorsa (stok eksideyken satış: alım sonradan girildi) ilk bilinen
+        // pozitif maliyet kullanılır; yoksa o satışın maliyeti hiçbir ayda gider olmazdı.
+        // Yalnızca stok o gün sıfır ya da eksiyse: elde maliyetsiz girilmiş stok varsa 0 kalır
+        // (yoksa o stok hem 0 hem sonraki alımın fiyatıyla iki kez gider olurdu).
+        if found < 0 { return h.first { $0.cost > 0 }?.cost ?? 0 }
+        if h[found].cost > 0 { return h[found].cost }
+        guard h[found].qty <= 0, let sonraki = h[found...].first(where: { $0.cost > 0 })?.cost else { return 0 }
+        // Sonraki alımın fiyatı yalnızca eksik kalan (stok yokken satılan) adetlere uygulanır;
+        // o hareketten önce elde olan maliyetsiz stok 0 TL kalır. Birim maliyet ikisinin ortalamasıdır.
+        let onceki = found > 0 ? h[found - 1].qty : 0
+        let tuketilen = onceki - h[found].qty
+        guard tuketilen > 0 else { return sonraki }
+        let eksik = min(tuketilen, -h[found].qty + min(onceki, 0))
+        return sonraki * max(eksik, 0) / tuketilen
     }
 
     public var totalStockValue: Kurus {
@@ -140,7 +170,7 @@ public final class Engine {
             self?.unitCost(.product(urunId), asOf: gun) ?? 0
         }
         let b = Costing.breakdown(
-            products: urunler(asOf: asOf), materials: materialsById,
+            products: urunler(asOf: asOf), materials: malzemeler(asOf: asOf),
             productId: productId, asOf: asOf, unitCostOf: lookup,
             purchasedUnitCostOf: urunAlimi
         )
@@ -450,7 +480,12 @@ public final class Engine {
         guard let baslangic = kanalBaslangicAyi(ch), month >= baslangic else { return 0 }
         // Arşivlenen kanal: son iz bıraktığı aydan sonrası için ücret işlemez,
         // ama geçmiş ayların raporu arşivlemekle değişmez.
-        if ch.archived, let son = kanalSonAyi(ch), month > son { return 0 }
+        if let d = ch.kapaliDonemler {
+            if d.contains(where: { $0.icinde(month) }) { return 0 }
+        } else if ch.archived, let son = kanalSonAyi(ch), month > son {
+            // Önceki sürümde arşivlenmiş (tarihsiz) kanal: eski kural
+            return 0
+        }
         let r = ch.rates(on: Dates.monthEnd(month))
         let ek = r.extras.filter { $0.basis == .aylikSabit && !$0.unknown }
             .reduce(0.0) { $0 + $1.value }

@@ -322,9 +322,10 @@ public extension AppState {
         }
     }
 
-    func itemPackSizes(_ ref: ItemRef) -> [UnitCode: Double] {
+    /// Paket boyutları; tarih verilirse o gün geçerli olanlar (geçmiş paketli alım değişmesin)
+    func itemPackSizes(_ ref: ItemRef, on date: DateKey? = nil) -> [UnitCode: Double] {
         switch ref.kind {
-        case .material: return material(ref.id)?.packSizes ?? [:]
+        case .material: return material(ref.id)?.tarihli(date).packSizes ?? [:]
         case .product: return [:]
         }
     }

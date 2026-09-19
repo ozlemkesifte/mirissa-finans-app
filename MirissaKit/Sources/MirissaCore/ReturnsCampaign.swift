@@ -51,7 +51,12 @@ public extension Engine {
             s.satilan += e.qty
             s.iade += e.returnsQty
             s.iadeTutari += Vat.net(e.returnsAmount, rate: oran, included: dahil)
-            s.bosaGidenAmbalaj += Money.roundHalfAwayFromZero(Double(b.packaging + b.orderPackaging) * e.returnsQty)
+            // Koli sipariş başınadır: iade edilen adet, o ay kanalda ürün başına düşen koli oranıyla sayılır
+            // (1–2 ürün 1 koli). Ürünün kendi ambalajı (patpat, dolgu, etiket) adet başınadır.
+            let kanal = channelResult(channelId: e.channelId, month: e.month)
+            let koliOrani = kanal.units > 0 ? min(kanal.koliSayisi / kanal.units, 1) : 1
+            s.bosaGidenAmbalaj += Money.roundHalfAwayFromZero(
+                Double(b.packaging) * e.returnsQty + Double(b.orderPackaging) * e.returnsQty * koliOrani)
             if !e.returnsRestock {
                 s.hasarli += e.returnsQty
                 s.hasarliMaliyet += Money.roundHalfAwayFromZero(Double(b.intrinsic) * e.returnsQty)

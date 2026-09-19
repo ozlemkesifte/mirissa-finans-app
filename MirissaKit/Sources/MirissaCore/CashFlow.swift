@@ -43,12 +43,17 @@ public struct NakitTahmini: Hashable, Sendable {
 public extension Engine {
 
     /// Son 3 tamamlanmış ayın aylık ortalamaları
-    private func nakitOrtalamalari(bugun: DateKey) -> (tahsilat: Kurus, duzensiz: Kurus, stok: Kurus) {
+    private func nakitOrtalamalari(bugun: DateKey)
+    -> (tahsilat: Kurus, duzensiz: Kurus, stok: Kurus, hesaplanan: Kurus, indirilecek: Kurus) {
         let buAy = Dates.month(of: bugun)
         let aylar = (1...3).map { Dates.addMonths(buAy, -$0) }
-        var tahsilat = 0, duzensiz = 0, stok = 0
+        var tahsilat = 0, duzensiz = 0, stok = 0, hesaplanan = 0, indirilecek = 0
         for m in aylar {
             let r = companyMonth(m)
+            // Henüz girilmemiş ayların KDV tahmini için hesaplanan ve indirilecek KDV ortalaması
+            let v = vatStatus(m)
+            hesaplanan += v.hesaplanan
+            indirilecek += v.indirilecek
             // Kanalların yatırdığı: müşterinin ödediği − platformun kestiği (KDV dahil)
             // Stopaj da pazaryerince kesilir: hesaba yatmaz
             tahsilat += r.channels.reduce(0) { $0 + $1.netSalesIncVat - $1.channelFees - $1.feeVat - $1.stopaj }
@@ -60,7 +65,7 @@ public extension Engine {
                 }
             }
         }
-        return (tahsilat / 3, duzensiz / 3, stok / 3)
+        return (tahsilat / 3, duzensiz / 3, stok / 3, hesaplanan / 3, indirilecek / 3)
     }
 
     func nakitTahmini(bugun: DateKey = Dates.today(), hafta: Int = 12) -> NakitTahmini? {
@@ -82,16 +87,43 @@ public extension Engine {
             kalemler.append(NakitKalemi(id: "b:\(b.id)", gun: v, ad: b.name,
                                         tutar: b.kind == .alacak ? b.amount : -b.amount, tahmini: false))
         }
-        // 3) KDV: bir ayın KDV'si izleyen ayın 28'inde ödenir
+        // 1b) Vadesi geçmiş ama ödenmemiş taksitler ve borç/alacaklar: ilk gün, "gecikmiş" diye
+        let ilkGun = Dates.addDays(bas, 1)
+        for p in state.purchases where !p.excludeFromExpenses {
+            for t in p.odeme?.taksitler ?? [] where !t.odendi && t.vade <= bas && t.tutar != 0 {
+                kalemler.append(NakitKalemi(id: "gecikmis:\(p.id):\(t.id)", gun: ilkGun,
+                                            ad: "\(state.itemName(p.item)) alımı taksiti (vadesi geçti)",
+                                            tutar: -t.tutar, tahmini: false))
+            }
+        }
+        for b in state.balances where !b.settled {
+            guard let v = b.dueDate, v <= bas else { continue }
+            kalemler.append(NakitKalemi(id: "b:\(b.id)", gun: ilkGun, ad: "\(b.name) (vadesi geçti)",
+                                        tutar: b.kind == .alacak ? b.amount : -b.amount, tahmini: false))
+        }
+        let ort = nakitOrtalamalari(bugun: bugun)
+        // 3) KDV: bir ayın KDV'si izleyen ayın 28'inde ödenir. Satışları henüz tam girilmemiş
+        // (bu ve sonraki) aylar için son 3 ayın ortalaması kullanılır; yoksa tahmini tahsilatın KDV'si
+        // hiç ödenmiyormuş gibi görünürdü.
+        // Devreden KDV zincirlenir: önceki aydan kalan KDV alacağı tahmini ayların ödemesinden düşülür.
         var ay = Dates.addMonths(Dates.month(of: bas), -1)
+        var tasinan: Kurus?
         while ay <= Dates.month(of: son) {
             let vade = "\(Dates.addMonths(ay, 1))-28"
+            let v = vatStatus(ay)
+            let tahmini = ay >= Dates.month(of: bugun)
+            var tutar = v.odenecek
+            if tahmini {
+                let devreden = tasinan ?? v.oncekiDevreden
+                let net = max(v.hesaplanan, ort.hesaplanan) - max(v.indirilecek, ort.indirilecek)
+                tutar = max(net - devreden, 0)
+                tasinan = max(devreden - net, 0)
+            }
             if pencerede(vade), state.settings.vatEnabled {
-                let v = vatStatus(ay)
-                if v.odenecek > 0 {
+                if tutar > 0 {
                     kalemler.append(NakitKalemi(id: "kdv:\(ay)", gun: vade,
                                                 ad: "\(Dates.displayMonth(ay)) KDV ödemesi",
-                                                tutar: -v.odenecek, tahmini: ay >= Dates.month(of: bugun)))
+                                                tutar: -tutar, tahmini: tahmini))
                 }
             }
             ay = Dates.addMonths(ay, 1)
@@ -108,8 +140,22 @@ public extension Engine {
             }
         }
 
-        // 5) Tahminler: satış tahsilatı, düzensiz gider, stok alımı (günlük eşit)
-        let ort = nakitOrtalamalari(bugun: bugun)
+        // 5) Tahminler: satış tahsilatı, düzensiz gider, stok alımı (günlük eşit).
+        // Bir ay için girilmiş (bilinen) tek seferlik gider ve alımlar o ayın tahmininden düşülür:
+        // yoksa hem bilinen kalem hem ortalama olarak iki kez sayılırdı.
+        var aylikBilinen: [MonthKey: Kurus] = [:]
+        func gunlukDuzensiz(_ gun: DateKey) -> Double {
+            let m = Dates.month(of: gun)
+            let bilinen: Kurus
+            if let c = aylikBilinen[m] { bilinen = c } else {
+                bilinen = expenseInstances(month: m)
+                    .filter { $0.sourceKind == .tekSeferlik || $0.sourceKind == .stokAlimi }
+                    .reduce(0) { $0 + $1.cashAmount }
+                aylikBilinen[m] = bilinen
+            }
+            let gunSayisi = Dates.daysInMonth(year: Dates.year(of: m), month: Dates.monthNumber(of: m))
+            return Double(max(ort.duzensiz + ort.stok - bilinen, 0)) / Double(gunSayisi)
+        }
         // Girilmiş kanal alacakları geçmiş satışların parasıdır; tahmini tahsilat onlardan sonra başlar
         let sonAlacak = state.balances
             .filter { !$0.settled && $0.kind == .alacak && $0.source == .kanal }
@@ -129,7 +175,7 @@ public extension Engine {
             // Tahmini kalemler: haftanın tahsilat başladıktan sonraki günleri kadar
             let tahsilatGunu = max(0, min(7, Dates.daysBetween(max(hb, tahsilatBas), hs)))
             giris += Money.roundHalfAwayFromZero(Double(ort.tahsilat) * Double(tahsilatGunu) / 30)
-            cikis += Money.roundHalfAwayFromZero(Double(ort.duzensiz + ort.stok) * 7 / 30)
+            cikis += Money.roundHalfAwayFromZero((1...7).reduce(0.0) { $0 + gunlukDuzensiz(Dates.addDays(hb, $1)) })
             b += giris - cikis
             if bitti == nil, b < 0 { bitti = h + 1 }
             haftalar.append(NakitHafta(baslangic: Dates.addDays(hb, 1), bitis: hs,

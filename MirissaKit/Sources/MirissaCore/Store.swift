@@ -61,6 +61,8 @@ public final class AppStore {
         guard s != state else { return }
         // Reçete / set içeriği değiştiyse geçmiş aylar eski haliyle hesaplanır
         s.receteGecmisiniKoru(eski: state, bugun: Dates.today())
+        s.kanalArsivDonemleriniKoru(eski: state, buAy: Dates.currentMonth())
+        s.malzemeGecmisiniKoru(eski: state, bugun: Dates.today())
         // KDV beyanı verilip kilitlenen aya dokunan değişiklik yapılmaz
         if let engel = AyKilidi.ihlal(eski: state, yeni: s) {
             sonHata = engel
@@ -347,7 +349,7 @@ public final class AppStore {
         var cm = state.channelMonth(month: month, channelId: channelId)
             ?? ChannelMonth(month: month, channelId: channelId)
         let mevcut = cm.otherDeductionActual ?? engine.kesintiBrut(r.otherDeduction.amount, channelId: channelId, month: month)
-        cm.otherDeductionActual = max(mevcut + k.fark, 0)
+        cm.otherDeductionActual = max(mevcut + engine.kesintiGirisi(brutFark: k.fark, channelId: channelId, month: month), 0)
         upsertChannelMonth(cm)
     }
 
@@ -429,6 +431,16 @@ public final class AppStore {
                 s.expenses[i] = eski
                 return
             }
+            // Hesaba giren hiçbir şey değişmediyse bölmeye gerek yok (ad, tedarikçi gibi bilgiler yerinde güncellenir)
+            if yeni.amount == eski.amount, yeni.resolvedVatRate == eski.resolvedVatRate,
+               yeni.resolvedVatIncluded == eski.resolvedVatIncluded, yeni.category == eski.category,
+               yeni.scope == eski.scope, yeni.resolvedBehavior == eski.resolvedBehavior,
+               yeni.recurrence == eski.recurrence {
+                var guncel = yeni
+                guncel.date = eski.date
+                s.expenses[i] = guncel
+                return
+            }
             var devam = yeni
             devam.id = Ids.make(.expense)
             devam.date = Dates.dateIn(month: ay, dayOfMonth: Dates.day(of: eski.date))
@@ -436,6 +448,7 @@ public final class AppStore {
             devam.endMonth = eski.endMonth
             eski.overrides = eski.overrides.filter { $0.key < ay }
             eski.endMonth = Dates.addMonths(ay, -1)
+            eski.devamId = devam.id
             s.expenses[i] = eski
             s.expenses.append(devam)
             sonuc = devam.id
@@ -507,19 +520,40 @@ public final class AppStore {
         }
     }
 
-    public func resumeExpense(_ id: Id) {
+    /// Durdurulan gideri yeniden başlatır. Aradaki aylar geriye dönük eklenmez:
+    /// durdurulduğu ay geçtiyse gider bu aydan itibaren devam eden yeni bir kayıt olur.
+    public func resumeExpense(_ id: Id, buAy: MonthKey = Dates.currentMonth()) {
         mutate { s in
-            if let i = s.expenses.firstIndex(where: { $0.id == id }) { s.expenses[i].endMonth = nil }
+            // Devamı olan (bölünmüş) parça yeniden başlatılmaz; devamı silindiyse başlatılabilir
+            guard let i = s.expenses.firstIndex(where: { $0.id == id }),
+                  !s.expenses.contains(where: { $0.id == s.expenses[i].devamId }),
+                  let son = s.expenses[i].endMonth else { return }
+            s.expenses[i].devamId = nil
+            if son >= Dates.addMonths(buAy, -1) {
+                s.expenses[i].endMonth = nil
+                return
+            }
+            let eski = s.expenses[i]
+            var devam = eski
+            devam.id = Ids.make(.expense)
+            devam.endMonth = nil
+            // Yıllık giderde bir sonraki ödeme bu aydan başlar
+            devam.date = Dates.dateIn(month: buAy, dayOfMonth: Dates.day(of: eski.date))
+            devam.overrides = eski.overrides.filter { $0.key >= buAy }
+            s.expenses[i].overrides = eski.overrides.filter { $0.key < buAy }
+            s.expenses[i].devamId = devam.id
+            s.expenses.append(devam)
         }
     }
 
     /// Sadece bir ayın tutarını değiştirir, diğer aylar etkilenmez.
     public func overrideExpense(_ id: Id, month: MonthKey, amount: Kurus?, skipped: Bool = false,
-                                vatRate: VatRate? = nil, vatIncluded: Bool? = nil) {
+                                vatRate: VatRate? = nil, vatIncluded: Bool? = nil, name: String? = nil) {
         mutate { s in
             guard let i = s.expenses.firstIndex(where: { $0.id == id }) else { return }
             var ov = s.expenses[i].overrides[month] ?? ExpenseOverride()
             ov.amount = amount
+            if let name { ov.name = name == s.expenses[i].name ? nil : name }
             ov.skipped = skipped
             ov.vatRate = vatRate
             ov.vatIncluded = vatIncluded
@@ -636,7 +670,34 @@ public final class AppStore {
         let aylar = Set(sonuc.aylarListesi).subtracting(sonuc.eklenenAylar)
         mutate { s in
             s.sales.removeAll { $0.channelId == kanalId && aylar.contains($0.month) }
-            s.sales += sonuc.satislar
+            // Eklenen aylarda aynı ürünün satırı varsa onunla birleştirilir (ayrı satır "iki kez
+            // girilmiş olabilir" uyarısı verirdi); aynı KDV oranında olmayan satır ayrı kalır
+            for yeni in sonuc.satislar {
+                if sonuc.eklenenAylar.contains(yeni.month),
+                   let i = s.sales.firstIndex(where: {
+                       $0.channelId == kanalId && $0.month == yeni.month && $0.productId == yeni.productId
+                           && $0.resolvedVatRate == yeni.resolvedVatRate
+                           && $0.resolvedVatIncluded == yeni.resolvedVatIncluded
+                   }) {
+                    s.sales[i].qty += yeni.qty
+                    s.sales[i].grossSales += yeni.grossSales
+                    s.sales[i].discount += yeni.discount
+                    s.sales[i].returnsQty += yeni.returnsQty
+                    s.sales[i].returnsAmount += yeni.returnsAmount
+                } else {
+                    s.sales.append(yeni)
+                }
+            }
+            // Önceki aktarımda alınıp sonradan iade edilen siparişlerin iadesi aynı ay ve ürüne eklenir
+            for g in sonuc.iadeEklenecek {
+                guard let i = s.sales.indices.filter({
+                    s.sales[$0].channelId == kanalId && s.sales[$0].month == g.month
+                        && s.sales[$0].productId == g.productId
+                }).max(by: { s.sales[$0].qty < s.sales[$1].qty }) else { continue }
+                s.sales[i].returnsQty = min(s.sales[i].returnsQty + g.returnsQty, s.sales[i].qty)
+                s.sales[i].returnsAmount = min(s.sales[i].returnsAmount + g.returnsAmount,
+                                               s.sales[i].grossSales - s.sales[i].discount)
+            }
             // Önceki aktarımda alınıp sonradan iptal edilen siparişler aynı ay ve üründen düşülür
             for g in sonuc.geriAlinacak {
                 var adet = g.qty, tutar = g.grossSales, indirim = g.discount

@@ -28,9 +28,8 @@ struct SalesView: View {
 
                     SectionTitle("Kanallar")
                     ForEach(result.channels) { c in
-                        ChannelCard(result: c) {
-                            sheet = .channelMonth(c.channelId, period.month)
-                        }
+                        ChannelCard(result: c, onEdit: period.scope == .month
+                                    ? { sheet = .channelMonth(c.channelId, period.month) } : nil)
                     }
 
                     if entries.isEmpty {

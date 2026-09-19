@@ -265,8 +265,10 @@ struct AuditRound4KayitTests {
         """
         let t = RaporIceAktarma.oku(csv)
         let k = RaporIceAktarma.kalemler(t, sutun: RaporIceAktarma.sutunlariBul(t.basliklar)).kalemler
-        let iptaller = k.filter { $0.siparisNo == "#1001" }.map(\.iptal)
-        #expect(iptaller == [true, true])
+        // Tamamı iade edilen sipariş: durum yalnız ilk satırda yazsa da iki satır da iade (iptal değil)
+        let siparis = k.filter { $0.siparisNo == "#1001" }
+        #expect(siparis.map(\.iade) == [true, true])
+        #expect(siparis.map(\.iptal) == [false, false])
         #expect(k.first { $0.siparisNo == "#1002" }?.iptal == false)
     }
 

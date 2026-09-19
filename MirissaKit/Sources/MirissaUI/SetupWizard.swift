@@ -269,8 +269,19 @@ public struct SetupWizard: View {
             adim: i + 1, toplam: urunler.count,
             geri: geriGit,
             ileri: {
-                // Tutar girildiyse KDV'si sorulmadan kaydedilmez.
-                ileri(urunTaslak(i).maliyet > 0 ? .urunMaliyetKdv(i) : .ambalajDahil(i))
+                let t = urunTaslak(i)
+                // Kayıttaki (KDV'si zaten düşülmüş) maliyet değişmediyse KDV bir daha sorulmaz
+                if t.maliyet > 0, t.maliyet == t.kayitliNet {
+                    ileri(.ambalajDahil(i))
+                    return
+                }
+                // Tutar yeni yazıldıysa KDV'si sorulmadan kaydedilmez
+                if urunler.indices.contains(i), t.kayitliNet != nil {
+                    urunler[i].maliyetKdvDahil = nil
+                    urunler[i].maliyetKdvOranSecildi = false
+                    urunler[i].maliyetKdvOrani = .yirmi
+                }
+                ileri(t.maliyet > 0 ? .urunMaliyetKdv(i) : .ambalajDahil(i))
             }
         ) {
             BuyukParaAlani(baslik: "1 adet \(urunAdi(i))", deger: urunBinding(i).maliyet)
@@ -658,6 +669,13 @@ public struct SetupWizard: View {
             BuyukSayiAlani(baslik: "Bir siparişte kullandığın",
                            birim: birim, deger: malzemeBinding(i).siparisBasi)
         }
+        .onChange(of: m.maliyet) { _, yeni in
+            // Kayıttaki (KDV hariç) tutar değiştirildiyse KDV'si yeniden sorulur
+            if malzemeler.indices.contains(i), let k = malzemeler[i].kayitliNet, yeni != k {
+                malzemeler[i].maliyetKdvDahil = nil
+                malzemeler[i].maliyetKdvOrani = .yirmi
+            }
+        }
     }
 
     private func sonrakiMalzemeAdimi(_ sira: Int) -> Adim {
@@ -694,7 +712,10 @@ public struct SetupWizard: View {
     private var giderAdimi: some View {
         SoruAdimi(
             soru: "Bu giderler neler?",
-            aciklama: "Adını, tutarını ve ayda mı yılda mı ödediğini yaz.",
+            aciklama: "Adını, ödediğin tutarı (KDV dahil), faturadaki KDV'yi ve ayda mı yılda mı ödediğini yaz.",
+            ileriAktif: !store.state.settings.vatEnabled || giderler.allSatisfy {
+                $0.ad.trimmingCharacters(in: .whitespaces).isEmpty || $0.tutar == 0 || $0.kdv != nil
+            },
             geri: geriGit,
             ileri: { ileri(.ozet) }
         ) {
@@ -716,8 +737,28 @@ public struct SetupWizard: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                         MoneyField(g.yillik == true ? "Yıllık tutar" : "Aylık tutar", value: $g.tutar)
+                        if store.state.settings.vatEnabled {
+                            Picker("Faturadaki KDV", selection: Binding(get: { g.kdv }, set: { g.kdv = $0 })) {
+                                Text("Seç").tag(VatRate?.none)
+                                ForEach(VatRate.allCases) { r in
+                                    Text(r == .yok ? "KDV yok / faturasız" : r.displayName).tag(VatRate?.some(r))
+                                }
+                            }
+                            if g.tutar > 0, g.kdv == nil {
+                                Text("KDV'sini seç: kira ve maaş gibi faturasız giderlerde \"KDV yok\".")
+                                    .font(.caption).foregroundStyle(Palette.uyari)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        if g.yillik == true {
+                            MonthRow(label: "Ödeme ayı", month: Binding(
+                                get: { g.odemeAyi ?? Dates.currentMonth() }, set: { g.odemeAyi = $0 }))
+                        }
                         if g.yillik == true, g.tutar > 0 {
-                            Text("Kâra her ay 1/12'si yazılır: ayda \(Money.roundHalfAwayFromZero(Double(g.tutar) / 12).tl)")
+                            let net = Vat.net(g.tutar, rate: g.kdv ?? .yok, included: true)
+                            Text("Kâra her ay 1/12'si yazılır: ayda \(Money.roundHalfAwayFromZero(Double(net) / 12).tl)"
+                                 + ((g.kdv ?? .yok) == .yok ? "" : " (KDV hariç)")
+                                 + ". Para ve KDV ödeme ayında çıkar.")
                                 .font(.caption).foregroundStyle(Palette.inkFaint)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -1064,33 +1105,51 @@ public struct SetupWizard: View {
         yuklendi = true
         let s = store.state
         let bugun = Dates.today()
-        urunler = s.products.filter { !$0.isBundle }.map { p in
-            UrunTaslak(id: p.id, ad: p.name,
-                       stok: p.openingQty ?? 0,
-                       // Yalnızca bugün geçerli kalemler; kapanmış eski
-                       // maliyetler toplanırsa maliyet iki kez sayılırdı.
-                       maliyet: p.costLines(on: nil).reduce(0) { $0 + $1.amount },
-                       ambalajDahil: p.recipe.isEmpty ? nil
-                        : p.recipe.allSatisfy { !$0.resolvedAddsCost },
-                       listeFiyat: p.price(on: bugun) ?? 0,
-                       kanalFiyat: Dictionary(uniqueKeysWithValues:
-                        s.channels.compactMap { c in
-                            p.price(for: c.id, on: bugun).map { (c.id, $0) }
-                        }))
+        urunler = s.products.filter { !$0.isBundle && !$0.archived }.map { p in
+            // Yalnızca bugün geçerli kalemler; kapanmış eski maliyetler toplanırsa iki kez sayılırdı
+            let net = p.costLines(on: nil).reduce(0) { $0 + $1.amount }
+            // Karışık işaretli reçete (bir kısmı "maliyete dahil") sorulmadan bozulmasın
+            let dahil: Bool? = p.recipe.isEmpty ? nil
+                : (p.recipe.allSatisfy { !$0.resolvedAddsCost } ? true
+                   : (p.recipe.allSatisfy(\.resolvedAddsCost) ? false : nil))
+            var t = UrunTaslak(id: p.id, ad: p.name,
+                               stok: p.openingQty ?? 0,
+                               // Kayıttaki maliyet zaten KDV hariçtir: KDV'si bir daha düşülmez
+                               maliyet: net,
+                               maliyetKdvDahil: net > 0 ? false : nil,
+                               maliyetKdvOrani: .yok,
+                               maliyetKdvOranSecildi: net > 0,
+                               ambalajDahil: dahil,
+                               // Yalnızca kanala özel kayıtlı fiyat; etiket fiyatı kanal fiyatı diye yazılmasın
+                               listeFiyat: p.price(on: bugun) ?? 0,
+                               kanalFiyat: Dictionary(uniqueKeysWithValues:
+                                s.channels.compactMap { c in
+                                    p.kanalaOzelFiyat(c.id, on: bugun).map { (c.id, $0) }
+                                }))
+            t.kayitliNet = net
+            t.kayitliStok = p.openingQty ?? 0
+            t.kayitliAmbalajDahil = dahil
+            return t
         }
         if urunler.isEmpty { urunler = [UrunTaslak(ad: "")] }
         let receteler = s.products.flatMap(\.recipe)
         malzemeler = s.materials.map { m in
-            MalzemeTaslak(id: m.id, ad: m.name, birim: m.baseUnit,
-                          secili: !m.archived,
-                          stok: m.openingQty ?? 0,
-                          maliyet: m.openingUnitCost ?? 0,
-                          siparisBasi: receteler
-                            .filter { $0.materialId == m.id }
-                            .map(\.qty).max() ?? 0,
-                          ilkSiparisBasi: receteler
-                            .filter { $0.materialId == m.id }
-                            .map(\.qty).max() ?? 0)
+            var t = MalzemeTaslak(id: m.id, ad: m.name, birim: m.baseUnit,
+                                  secili: !m.archived,
+                                  stok: m.openingQty ?? 0,
+                                  maliyet: m.openingUnitCost ?? 0,
+                                  // Kayıttaki açılış maliyeti KDV hariçtir
+                                  maliyetKdvDahil: (m.openingUnitCost ?? 0) > 0 ? false : nil,
+                                  maliyetKdvOrani: .yok,
+                                  siparisBasi: receteler
+                                    .filter { $0.materialId == m.id }
+                                    .map(\.qty).max() ?? 0,
+                                  ilkSiparisBasi: receteler
+                                    .filter { $0.materialId == m.id }
+                                    .map(\.qty).max() ?? 0)
+            t.kayitliNet = m.openingUnitCost ?? 0
+            t.kayitliStok = m.openingQty ?? 0
+            return t
         }
         setler = s.products.filter { $0.isBundle && !$0.archived }.map { p in
             SetTaslak(
@@ -1102,7 +1161,7 @@ public struct SetupWizard: View {
                 listeFiyat: p.price(on: bugun) ?? 0,
                 kanalFiyat: Dictionary(uniqueKeysWithValues:
                     s.channels.compactMap { c in
-                        p.price(for: c.id, on: bugun).map { (c.id, $0) }
+                        p.kanalaOzelFiyat(c.id, on: bugun).map { (c.id, $0) }
                     })
             )
         }
@@ -1122,13 +1181,18 @@ public struct SetupWizard: View {
                 if var p = s.products.first(where: { $0.id == t.id }) {
                     p.name = t.ad
                     Self.fiyatlariUygula(&p, liste: t.listeFiyat, kanal: t.kanalFiyat)
-                    p.openingQty = t.stok > 0 ? t.stok : nil
-                    p.openingUnitCost = t.maliyet > 0 ? t.netMaliyet : nil
+                    // Açılış stoğu ve açılış maliyeti yalnızca açılış stoğu değiştirildiyse yazılır;
+                    // bugünkü maliyet açılış maliyetinin yerine geçmez (geçmiş aylar değişmesin)
+                    if t.kayitliStok == nil || t.stok != t.kayitliStok {
+                        p.openingQty = t.stok > 0 ? t.stok : nil
+                        p.openingUnitCost = t.stok > 0
+                            ? (p.openingUnitCost ?? (t.maliyet > 0 ? t.netMaliyet : nil)) : nil
+                    }
                     // Var olan kaydın açılış tarihi korunur: yoksa geçmiş aylar kayar
                     p.openingDate = p.openingDate ?? ay
                     // Maliyet değişikliği geçmiş raporları bozmaz:
-                    // eski kalem kapatılır, yenisi bugünden başlar.
-                    if t.maliyet > 0 {
+                    // eski kalem kapatılır, yenisi bugünden başlar. Değişmediyse dokunulmaz.
+                    if t.maliyet > 0, t.kayitliNet == nil || t.maliyet != t.kayitliNet {
                         let mevcut = p.costLines(on: nil).first
                         p.applyCostLines(
                             [CostLine(id: mevcut?.id ?? Ids.make(.costLine),
@@ -1208,8 +1272,14 @@ public struct SetupWizard: View {
                 if var m = s.materials.first(where: { $0.id == t.id }) {
                     m.name = t.ad
                     m.archived = !t.secili
-                    m.openingQty = t.secili && t.stok > 0 ? t.stok : nil
-                    m.openingUnitCost = t.secili && t.maliyet > 0 ? t.netMaliyet : nil
+                    // Arşive alınan malzemenin açılış stoğu silinmez (geçmiş stok ve maliyet korunur);
+                    // değerler yalnızca değiştirildiyse yazılır
+                    if t.secili, t.kayitliStok == nil || t.stok != t.kayitliStok {
+                        m.openingQty = t.stok > 0 ? t.stok : nil
+                    }
+                    if t.secili, t.kayitliNet == nil || t.maliyet != t.kayitliNet {
+                        m.openingUnitCost = t.maliyet > 0 ? t.netMaliyet : nil
+                    }
                     m.openingDate = m.openingDate ?? ay
                     yeniMalzemeler.append(m)
                 } else if t.secili {
@@ -1241,7 +1311,10 @@ public struct SetupWizard: View {
             // Setlerin reçetesi ayrı soruldu; burada yalnızca tekil ürünler güncellenir.
             let sade = Set(s.products.filter { !$0.isBundle }.map(\.id))
             let seteOzel = Set(setler.flatMap { $0.ambalaj.filter { $0.value > 0 }.keys })
-            for t in malzemeler where t.secili && t.siparisBasi > 0 && aktif.contains(t.id) {
+            // Yalnızca değiştirilen miktar yazılır: yüklenirken en büyük miktar gösterildiği için
+            // dokunulmamış malzeme bütün ürünlere yazılırsa ürünlerin kendi miktarları bozulurdu
+            for t in malzemeler where t.secili && t.siparisBasi > 0 && aktif.contains(t.id)
+                && t.siparisBasi != t.ilkSiparisBasi {
                 let gecenler = s.products.filter { p in
                     !p.isBundle && p.recipe.contains { $0.materialId == t.id }
                 }.map(\.id)
@@ -1276,7 +1349,7 @@ public struct SetupWizard: View {
 
             // --- "Ambalaj üretim fiyatına dahil" cevabı ---
             // Evet → malzeme stoktan düşer ama maliyete ikinci kez eklenmez.
-            for t in urunler {
+            for t in urunler where t.kayitliNet == nil || t.ambalajDahil != t.kayitliAmbalajDahil {
                 guard let dahil = t.ambalajDahil,
                       let i = s.products.firstIndex(where: { $0.id == t.id }),
                       !s.products[i].isBundle else { continue }
@@ -1291,11 +1364,13 @@ public struct SetupWizard: View {
             // --- Sabit giderler ---
             for t in giderler where !t.ad.trimmingCharacters(in: .whitespaces).isEmpty && t.tutar > 0 {
                 if !s.expenses.contains(where: { $0.id == t.id }) {
+                    // KDV ve yıllık ödeme ayı kullanıcının cevabından gelir; varsayılan oran uydurulmaz
+                    let tarih = t.yillik == true ? Dates.monthStart(t.odemeAyi ?? Dates.currentMonth()) : ay
                     s.expenses.append(Expense(
-                        id: t.id, date: ay, name: t.ad, amount: t.tutar,
+                        id: t.id, date: tarih, name: t.ad, amount: t.tutar,
                         category: .sabit, recurrence: t.yillik == true ? .yillik : .aylik,
-                        vatRate: s.settings.vatEnabled ? s.settings.defaultVatRate : nil,
-                        vatIncluded: s.settings.defaultVatIncluded
+                        vatRate: s.settings.vatEnabled ? (t.kdv ?? .yok) : nil,
+                        vatIncluded: true
                     ))
                 }
             }
@@ -1322,6 +1397,10 @@ struct UrunTaslak: Identifiable, Codable {
     var maliyetKdvOranSecildi = false
     /// Şişe/kapak/etiket üretim fiyatına dahil mi? nil = henüz sorulmadı
     var ambalajDahil: Bool?
+    /// Kurulum yeniden açıldığında kayıttaki değerler: değişmedikçe hiçbiri yeniden yazılmaz
+    var kayitliNet: Kurus?
+    var kayitliStok: Double?
+    var kayitliAmbalajDahil: Bool?
 
     /// Kâr ve stok hesabında kullanılan KDV hariç maliyet
     var netMaliyet: Kurus {
@@ -1358,6 +1437,9 @@ struct MalzemeTaslak: Identifiable, Codable {
     var siparisBasi: Double = 0
     /// Kuruluma girerken reçetede yazan miktar; sıfırlanırsa satır kaldırılır
     var ilkSiparisBasi: Double = 0
+    /// Kurulum yeniden açıldığında kayıttaki net birim maliyet ve açılış stoğu
+    var kayitliNet: Kurus?
+    var kayitliStok: Double?
 
     /// KDV hariç birim maliyet
     var netMaliyet: Kurus {
@@ -1372,6 +1454,10 @@ struct GiderTaslak: Identifiable, Codable {
     var tutar: Kurus
     /// Yılda bir mi ödeniyor (nil = ayda bir)
     var yillik: Bool?
+    /// Faturadaki KDV oranı (tutar KDV dahil yazılır). nil = henüz seçilmedi; uydurulmaz
+    var kdv: VatRate?
+    /// Yıllık giderde ödeme ayı (son ödeme ya da ilk ödeme)
+    var odemeAyi: MonthKey?
 }
 
 struct KanalTaslak: Identifiable {

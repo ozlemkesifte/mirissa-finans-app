@@ -33,6 +33,12 @@ struct ExpenseForm: View {
 
     private var yayilan: Int? { recurrence == .tek && yayilanAy > 1 ? yayilanAy : nil }
 
+    /// "Sadece bu ay" modunda yalnızca ad, tutar ve KDV o aya özel değişir; diğer alanlar kilitlenir
+    /// (değiştirilse bile kaydedilmeyecekleri için yanıltmasınlar)
+    private var ayModu: Bool {
+        editing?.isRecurring == true && onlyThisMonth && recurrence == editing?.recurrence
+    }
+
     /// Kâra her ay yazılan pay: KDV hariç tutarın 1/n'i
     private func aylikPay(_ n: Int) -> Kurus {
         let net = store.state.settings.vatEnabled
@@ -96,9 +102,14 @@ struct ExpenseForm: View {
             onSave: save
         ) {
             Section {
-                DateRow(dateKey: $date)
+                DateRow(dateKey: $date).disabled(ayModu)
                 TextField("Gider adı", text: $name)
                 MoneyField("Tutar", value: $amount)
+            } footer: {
+                if ayModu {
+                    Text("Sadece bu ay için ad, tutar ve KDV değişir. Tarih, kategori ve diğer bilgiler için "
+                         + "\"Sadece bu ayın tutarını değiştir\" seçeneğini kapat.")
+                }
             }
 
             Section {
@@ -110,6 +121,7 @@ struct ExpenseForm: View {
                 .onChange(of: category) { _, yeni in
                     if !behaviorTouched { behavior = yeni.defaultBehavior }
                 }
+                .disabled(ayModu)
             }
 
             Section {
@@ -164,7 +176,10 @@ struct ExpenseForm: View {
 
             if let e = editing, e.isRecurring {
                 Section {
-                    if e.isStopped {
+                    if e.isStopped, let d = e.devamId, store.state.expenses.contains(where: { $0.id == d }) {
+                        LabeledRow("Durum", "\(Dates.displayMonth(e.endMonth!)) sonunda yeni tutarla devam ediyor",
+                                   tone: Palette.inkSoft)
+                    } else if e.isStopped {
                         LabeledRow("Durum", "\(Dates.displayMonth(e.endMonth!)) sonunda durduruldu", tone: Palette.uyari)
                         Button("Tekrar başlat") { store.resumeExpense(e.id); dismiss() }
                     } else {
@@ -182,14 +197,16 @@ struct ExpenseForm: View {
                         Text("Ortak şirket gideri").tag("ortak")
                         ForEach(store.state.activeChannels) { c in Text(c.name).tag(c.id) }
                     }
+                    .disabled(ayModu)
                     Picker("Satış arttıkça artar mı?", selection: $behavior) {
                         ForEach(CostBehavior.allCases) { b in Text(b.displayName).tag(b) }
                     }
                     .onChange(of: behavior) { _, _ in behaviorTouched = true }
+                    .disabled(ayModu)
                     VatSection(rate: $vatRate, included: $vatIncluded, amount: amount,
                                asSection: false)
-                    TextField("Tedarikçi (isteğe bağlı)", text: $vendor)
-                    TextField("Fatura no (isteğe bağlı)", text: $invoiceNo)
+                    TextField("Tedarikçi (isteğe bağlı)", text: $vendor).disabled(ayModu)
+                    TextField("Fatura no (isteğe bağlı)", text: $invoiceNo).disabled(ayModu)
                 }
             } footer: {
                 Text("Varsayılanlar çoğu gider için doğrudur; gerekmedikçe açman gerekmez.")
@@ -283,7 +300,8 @@ struct ExpenseForm: View {
                 // Yıllık giderde tutar ödeme ayına bağlıdır: o yılın ödeme ayına yazılır
                 store.overrideExpense(e.id, month: hedefAy, amount: amount,
                                       vatRate: kdvFarkli ? vatRate : nil,
-                                      vatIncluded: kdvFarkli ? vatIncluded : nil)
+                                      vatIncluded: kdvFarkli ? vatIncluded : nil,
+                                      name: name)
                 ayaOzel = true
             } else {
                 var updated = e

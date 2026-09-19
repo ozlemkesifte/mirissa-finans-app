@@ -280,7 +280,10 @@ private struct RecurringRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(expense.isStopped ? Palette.inkFaint : Palette.ink)
                 if expense.recurrence == .yillik {
-                    Text("ayda \(Money.roundHalfAwayFromZero(Double(expense.amount) / 12).tl)")
+                    // Kâra yazılan pay KDV hariçtir (motorla aynı)
+                    let net = Vat.net(expense.amount, rate: expense.resolvedVatRate, included: expense.resolvedVatIncluded)
+                    Text("ayda \(Money.roundHalfAwayFromZero(Double(net) / 12).tl)"
+                         + (expense.resolvedVatRate == .yok ? "" : " KDV hariç"))
                         .font(.caption2).foregroundStyle(Palette.inkFaint)
                 }
             }

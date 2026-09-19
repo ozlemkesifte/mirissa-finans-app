@@ -139,7 +139,9 @@ struct HomeView: View {
         VStack(spacing: Metrics.gap) {
             SectionTitle("Satış Kanalları")
             ForEach(result.channels) { c in
-                ChannelCard(result: c) { sheet = .channelMonth(c.channelId, period.month) }
+                // Yıllık görünümde kart yılın toplamını gösterir; tek ayın kesinti formu açılmaz
+                ChannelCard(result: c, onEdit: period.scope == .month
+                            ? { sheet = .channelMonth(c.channelId, period.month) } : nil)
             }
         }
     }

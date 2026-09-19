@@ -27,7 +27,9 @@ struct HedefKarti: View {
                     }
                     KarHedefiGirisi(month: month)
                     notlar(p)
-                    SabitGiderDokumuBolumu(month: month, planSabit: p.fixedCosts)
+                    SabitGiderDokumuBolumu(month: month, planSabit: p.fixedCosts,
+                                           satisaBagliDahil: p.basis == .beklenenDagilim,
+                                           gerceklesen: p.basis == .ayinKendisi)
                     katkiOzeti
                     ReklamHedefiBolumu(month: month)
                 } else {
@@ -342,11 +344,15 @@ struct SabitGiderDokumuBolumu: View {
     var month: MonthKey
     /// Başa baş hesabında kullanılan sabit gider
     var planSabit: Kurus
+    /// Hedef kurulum verisinden (satış yok) mi: o zaman satışa bağlı giderler de aylık sayılır
+    var satisaBagliDahil: Bool = false
+    /// Ayın gerçekleşen sonucu mu gösteriliyor (henüz satışı olmayan kanalın ücreti hedefe eklenmez)
+    var gerceklesen: Bool = false
     @State private var acik = false
     @State private var yillikSoru: SabitGiderSatiri?
 
     var body: some View {
-        let d = store.engine.sabitGiderDokumu(month: month)
+        let d = store.engine.sabitGiderDokumu(month: month, planli: !gerceklesen)
         VStack(alignment: .leading, spacing: 10) {
             Divider().overlay(Palette.separator)
             Button {
@@ -373,10 +379,13 @@ struct SabitGiderDokumuBolumu: View {
                 }
                 ForEach(d.satirlar) { s in satir(s) }
                 if planSabit != d.toplam {
-                    LabeledRow("Satışa bağlı aylık giderler", (planSabit - d.toplam).tl, tone: Palette.inkSoft)
-                    Text("Henüz satış olmadığı için satışa bağlı giderler de aylık tutar olarak karşılanıyor.")
-                        .font(.caption2).foregroundStyle(Palette.inkFaint)
-                        .fixedSize(horizontal: false, vertical: true)
+                    LabeledRow(satisaBagliDahil ? "Satışa bağlı aylık giderler" : "Diğer / düzeltme",
+                               (planSabit - d.toplam).tl, tone: Palette.inkSoft)
+                    if satisaBagliDahil {
+                        Text("Henüz satış olmadığı için satışa bağlı giderler de aylık tutar olarak karşılanıyor.")
+                            .font(.caption2).foregroundStyle(Palette.inkFaint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Text("Yılda bir ödediğin bir gideri \"Her ay\" girdiysen \"Yılda bir ödüyorum\"a dokun: "
                      + "kâra her ay 1/12'si yazılır. Birkaç ay işine yarayan büyük bir harcamayı aylara bölebilirsin. "

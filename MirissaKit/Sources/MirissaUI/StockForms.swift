@@ -60,7 +60,10 @@ struct PurchaseForm: View {
     /// Alım sonrası oluşacak yeni ağırlıklı ortalama maliyet
     private var newAverage: Kurus {
         guard let item, baseQty > 0 else { return 0 }
-        let b = store.engine.balance(item)
+        // Düzenlenen alım mevcut stokta zaten var: onsuz bakiyeye eklenir (iki kez sayılmasın)
+        var s = store.state
+        if let id = editingId { s.purchases.removeAll { $0.id == id } }
+        let b = editingId == nil ? store.engine.balance(item) : Engine(s).balance(item)
         let existingQty = max(b.qty, 0)
         let total = Double(b.value) + Double(netTotal)
         return Money.roundHalfAwayFromZero(total / (existingQty + baseQty))

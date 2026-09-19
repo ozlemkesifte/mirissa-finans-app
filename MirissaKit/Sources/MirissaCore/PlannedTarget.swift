@@ -133,13 +133,19 @@ public extension Engine {
             komisyonOrani = r.commissionPct * carpan + r.paymentPct
         }
         let diger = ek.digerYuzde ?? r.otherDeductionPct
-        var yuzde = Double(siparisDegeri) * (komisyonOrani + diger) / 100
-        var sabit = (ek.kargoSiparisBasi ?? Double(r.shippingPerOrder))
-            + (ek.hizmetSiparisBasi ?? Double(r.serviceFeePerOrder))
+        let fiyat = Double(siparisDegeri)
+        // Motorla aynı gruplar ve aynı yuvarlama: komisyon (+ödeme), kargo, hizmet bedeli,
+        // diğer (+ ek kesintiler) ayrı ayrı yuvarlanıp KDV'den arındırılır. Tek ürünlük bir
+        // siparişin dökümü ile o ayın kâr hesabı kuruşu kuruşuna aynı çıksın.
+        let komisyonHam = fiyat * komisyonOrani / 100
+        let kargoHam = ek.kargoSiparisBasi ?? Double(r.shippingPerOrder)
+        let hizmetHam = ek.hizmetSiparisBasi ?? Double(r.serviceFeePerOrder)
+        var digerHam = fiyat * diger / 100
+        var ekSiparisBasi = 0.0
         for f in r.extras where !f.unknown && !ek.degistirir(AylikKesinti.alan(f)) {
             switch f.basis {
-            case .yuzde: yuzde += Double(siparisDegeri) * f.value / 100
-            case .siparisBasi: sabit += f.value
+            case .yuzde: digerHam += fiyat * f.value / 100
+            case .siparisBasi: digerHam += f.value; ekSiparisBasi += f.value
             case .aylikSabit, .elleAylik: break   // sipariş başına değil
             }
         }
@@ -147,7 +153,9 @@ public extension Engine {
             let k = ch.kesintiKdv(on: date)
             return Vat.net(Money.roundHalfAwayFromZero(v), rate: k.oran, included: k.dahil)
         }
-        return ((net(yuzde + sabit), net(sabit)), ek.tahmin, ek.eksik)
+        let toplam = net(komisyonHam) + net(kargoHam) + net(hizmetHam) + net(digerHam)
+        let siparisBasi = min(net(kargoHam) + net(hizmetHam) + net(ekSiparisBasi), toplam)
+        return ((toplam, siparisBasi), ek.tahmin, ek.eksik)
     }
 
     /// Bir ürünün satış KDV oranı.

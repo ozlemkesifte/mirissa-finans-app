@@ -66,7 +66,7 @@ public extension Engine {
 
         // 2) Ambalaj: reçetedeki her malzeme ayrı
         for line in p.recipe where line.resolvedAddsCost {
-            guard let m = materialsById[line.materialId],
+            guard let m = materialsById[line.materialId]?.tarihli(date),
                   let taban = Units.toBaseOrNil(qty: line.qty, unit: line.unit,
                                                 baseUnit: m.baseUnit, packSizes: m.packSizes) else { continue }
             let birim = unitCost(.material(m.id), asOf: date)

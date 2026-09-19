@@ -516,11 +516,13 @@ public extension Validation {
         let birim = state.itemBaseUnit(draft.item)
         let base = Units.toBaseOrNil(qty: draft.qty, unit: draft.unit,
                                      baseUnit: birim,
-                                     packSizes: state.itemPackSizes(draft.item)) ?? 0
+                                     packSizes: state.itemPackSizes(draft.item, on: draft.date)) ?? 0
         let net = draft.landedSplit.net
         var lines = ["+\(Units.formatQty(base, baseUnit: birim)) \(state.itemName(draft.item))"]
-        if draft.landedTotal > 0 {
-            lines.append("\(Money.format(draft.landedTotal)) nakit çıkışı")
+        // Tutar KDV hariç girildiyse ödenen KDV'siyle birlikte: kasadan çıkan budur
+        let odenen = draft.landedSplit.net + draft.landedSplit.vat
+        if odenen > 0 {
+            lines.append("\(Money.format(odenen)) nakit çıkışı" + (draft.odeme != nil ? " (toplam, taksitli)" : ""))
         }
         if draft.resolvedVatRate != .yok, draft.landedTotal > 0 {
             lines.append("\(Money.format(draft.landedTotal)) KDV "
@@ -587,17 +589,26 @@ public extension Validation {
     static func expenseSummary(_ draft: Expense, state: AppState) -> SaveSummary {
         let bolum = Vat.split(draft.amount, rate: draft.resolvedVatRate,
                               included: draft.resolvedVatIncluded)
-        var lines = ["\(Money.format(draft.amount)) nakit çıkışı"]
+        // Tutar KDV hariç girildiyse ödenen KDV'siyle birlikte: kasadan çıkan budur
+        var lines = ["\(Money.format(bolum.net + bolum.vat)) nakit çıkışı"
+                     + (draft.recurrence == .aylik ? " (her ay)" : "")]
         if draft.resolvedVatRate != .yok, draft.amount > 0 {
             lines.append("\(Money.format(draft.amount)) KDV "
                 + (draft.resolvedVatIncluded ? "dahil" : "hariç")
                 + " → \(Money.format(bolum.net)) net + \(Money.format(bolum.vat)) KDV")
         }
-        if bolum.vat > 0 {
-            lines.append("\(Money.format(bolum.net)) kâra gider (KDV hariç)")
-            lines.append("\(Money.format(bolum.vat)) indirilecek KDV")
+        let kdvNotu = bolum.vat > 0 ? " (KDV hariç)" : ""
+        let yayilan = draft.recurrence == .tek ? max(draft.yayilanAy ?? 1, 1) : 1
+        if draft.recurrence == .yillik {
+            lines.append("Kâra her ay \(Money.format(Money.roundHalfAwayFromZero(Double(bolum.net) / 12)))\(kdvNotu) "
+                         + "gider (yıllık \(Money.format(bolum.net)) ÷ 12)")
+        } else if yayilan > 1 {
+            lines.append("Kâra \(yayilan) ay boyunca her ay \(Money.format(Money.roundHalfAwayFromZero(Double(bolum.net) / Double(yayilan))))\(kdvNotu) gider")
         } else {
-            lines.append("\(Money.format(bolum.net)) kâra gider")
+            lines.append("\(Money.format(bolum.net)) kâra gider\(kdvNotu)")
+        }
+        if bolum.vat > 0 {
+            lines.append("\(Money.format(bolum.vat)) indirilecek KDV (ödeme ayında)")
         }
         if draft.recurrence == .aylik {
             lines.append("Her ay otomatik eklenecek")

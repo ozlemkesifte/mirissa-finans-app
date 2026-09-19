@@ -58,12 +58,27 @@ public enum AyKilidi {
             func ayin<T: Hashable>(_ a: [T], _ m: (T) -> MonthKey) -> Set<T> { Set(a.filter { m($0) == ay }) }
             if ayin(eski.sales, \.month) != ayin(yeni.sales, \.month)
                 || ayin(eski.channelMonths, \.month) != ayin(yeni.channelMonths, \.month)
-                || ayin(eski.purchases, { Dates.month(of: $0.date) }) != ayin(yeni.purchases, { Dates.month(of: $0.date) })
+                // Ödeme planı alımın ayına değil taksitin ödendiği aya aittir (aşağıda gider satırlarıyla bakılır)
+                || ayin(eski.purchases.map(\.odemesiz), { Dates.month(of: $0.date) })
+                    != ayin(yeni.purchases.map(\.odemesiz), { Dates.month(of: $0.date) })
                 || ayin(eski.adjustments, { Dates.month(of: $0.date) }) != ayin(yeni.adjustments, { Dates.month(of: $0.date) })
                 || ayin(eski.counts, { Dates.month(of: $0.date) }) != ayin(yeni.counts, { Dates.month(of: $0.date) })
-                || Expenses.instances(eski, from: ay, to: ay) != Expenses.instances(yeni, from: ay, to: ay) {
+                // Taksit yalnızca nakit hareketidir (KDV'si alım ayında): ödendi işaretlemek kilitli ayı bozmaz
+                || Expenses.instances(eski, from: ay, to: ay).filter({ $0.sourceKind != .taksit })
+                    != Expenses.instances(yeni, from: ay, to: ay).filter({ $0.sourceKind != .taksit }) {
                 return "\(Dates.displayMonth(ay)) kilitli (KDV beyanı verildi). Bu değişiklik o ayın kayıtlarını "
                     + "değiştiriyor; önce Raporlar → KDV kartından kilidi aç."
+            }
+        }
+        // Kayıtlar aynı olsa da sonuç değişebilir: önceki ayın KDV'si devreden olarak kilitli aya geçer,
+        // kanal ayarı ya da reçete geçmişe uzanabilir. Kilitli ayın beyan rakamları birebir korunur.
+        // Yalnız beyan edilen KDV korunur: sonradan girilen bir alımın geçmiş satışa maliyet olarak
+        // yansıması gibi KDV'yi değiştirmeyen düzeltmeler engellenmez.
+        let e1 = Engine(eski), e2 = Engine(yeni)
+        for ay in aylar.sorted() {
+            if e1.vatStatus(ay) != e2.vatStatus(ay) {
+                return "\(Dates.displayMonth(ay)) kilitli (KDV beyanı verildi). Bu değişiklik o ayın KDV'sini "
+                    + "ya da sonucunu değiştiriyor (ör. önceki aydan devreden KDV); önce Raporlar → KDV kartından kilidi aç."
             }
         }
         return nil

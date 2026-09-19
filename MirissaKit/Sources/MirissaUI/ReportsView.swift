@@ -218,7 +218,13 @@ struct ChannelReport: View {
     var body: some View {
         VStack(spacing: Metrics.gap) {
             PeriodPicker(period: period)
-            ForEach(store.state.activeChannels) { ch in
+            // Arşivlenmiş kanal da dönemde satışı ya da gideri varsa görünür (toplamlar ana sayfayı tutsun)
+            ForEach(store.state.channels.filter { ch in
+                !ch.archived || store.engine.channelTotals(from: period.from, to: min(period.to, Dates.currentMonth()),
+                                                           channelId: ch.id).totalCost != 0
+                    || store.engine.channelTotals(from: period.from, to: min(period.to, Dates.currentMonth()),
+                                                  channelId: ch.id).netSales != 0
+            }) { ch in
                 let r = store.engine.channelTotals(from: period.from,
                                                    to: min(period.to, Dates.currentMonth()),
                                                    channelId: ch.id)

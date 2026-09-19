@@ -41,8 +41,9 @@ public struct SabitGiderDokumu: Hashable, Sendable {
 
 public extension Engine {
 
-    /// Ayın sabit giderleri kalem kalem. Toplam her zaman `plannedFixedCosts(month:)` ile aynıdır.
-    func sabitGiderDokumu(month: MonthKey) -> SabitGiderDokumu {
+    /// Ayın sabit giderleri kalem kalem. `planli` doğruysa toplam `plannedFixedCosts(month:)` ile,
+    /// değilse (ayın gerçekleşen sonucu) `toplamSabitGider` ile birebir aynıdır.
+    func sabitGiderDokumu(month: MonthKey, planli: Bool = true) -> SabitGiderDokumu {
         let r = companyMonth(month)
         let giderler = Dictionary(state.expenses.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var satirlar: [SabitGiderSatiri] = []
@@ -76,7 +77,7 @@ public extension Engine {
             }
         }
         // Henüz satışı olmayan kanalın aylık ücreti (hedefte sayılır)
-        let planlanan = plannedFixedCosts(month: month)
+        let planlanan = planli ? plannedFixedCosts(month: month) : r.toplamSabitGider
         let kanalEk = planlanan - r.toplamSabitGider
         if kanalEk != 0 {
             satirlar.append(SabitGiderSatiri(id: "kanal-plan", ad: "Kanal aylık ücretleri",

@@ -354,8 +354,10 @@ struct ProductForm: View {
         name = p.name; isBundle = p.isBundle; components = p.components
         let bugun = Dates.today()
         listeFiyat = p.price(on: bugun) ?? 0
+        // Yalnızca kanala özel kayıtlı fiyatlar: boş alan etiket fiyatı demektir. Etiket fiyatı
+        // buraya doldurulursa kaydedince her kanala eski etiket fiyatı sabitlenirdi.
         kanalFiyat = Dictionary(uniqueKeysWithValues: store.state.activeChannels.compactMap { c in
-            p.price(for: c.id, on: bugun).map { (c.id, $0) }
+            p.kanalaOzelFiyat(c.id, on: bugun).map { (c.id, $0) }
         })
         costLines = p.costLines(on: nil); recipe = p.recipe
         minQty = p.minQty; criticalQty = p.criticalQty
