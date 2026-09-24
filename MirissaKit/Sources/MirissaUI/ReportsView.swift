@@ -3,11 +3,12 @@ import MirissaCore
 
 /// Finans & Vergiler sekmesinin bölümleri. Ham değerler eski "raporSekmesi" kayıtlarıyla uyumludur.
 enum ReportTab: String, CaseIterable, Identifiable, Sendable {
-    case aylik, kanallar, kdv, vergiler, hakedis, giderler, urunler, nakit
+    case aylik, reklam, kanallar, kdv, vergiler, hakedis, giderler, urunler, nakit
     var id: String { rawValue }
     var label: String {
         switch self {
         case .aylik: return "Kâr & Zarar"
+        case .reklam: return "Reklam"
         case .kanallar: return "Satış Kanalları"
         case .kdv: return "KDV"
         case .vergiler: return "Vergiler"
@@ -34,6 +35,7 @@ struct ReportsView: View {
                     bolumSecici
                     switch tab {
                     case .aylik: KarZararBolumu(sheet: $sheet)
+                    case .reklam: ReklamBolumu()
                     case .kanallar: ChannelReport(onEdit: { id in sheet = .channelMonth(id, period.month) })
                     case .kdv: KdvBolumu()
                     case .vergiler: VergilerBolumu()

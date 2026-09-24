@@ -212,3 +212,91 @@ public enum RoasFormat {
         return f.string(from: NSNumber(value: v)) ?? "-"
     }
 }
+
+// MARK: - Aylık reklam karnesi
+
+/// Bir ayın reklam sonucu — hepsi girilen kayıtlardan hesaplanır, tahmin yoktur.
+/// Reklam harcaması KDV hariçtir (panel de KDV hariç gösterir); ciro müşterinin ödediği (KDV dahil) tutardır.
+public struct ReklamAyi: Hashable, Sendable, Identifiable {
+    public var month: MonthKey
+    /// Ayın reklam gideri (kanala ait + ortak), KDV hariç
+    public var harcama: Kurus
+    /// Reklamın satıştan bağımsız (sabit) sayılan kısmı
+    public var sabitReklam: Kurus
+    public var siparis: Int
+    public var siparisTahmini: Bool
+    /// Müşterinin ödediği net satış (iade ve indirim düşülmüş, KDV dahil)
+    public var ciro: Kurus
+    /// İade ve indirimin KDV dahil tutarı
+    public var iadeIndirim: Kurus
+    /// Reklam düşülmeden önceki katkı: satıştan komisyon, kargo, ürün ve ambalaj sonrası kalan
+    public var katkiReklamsiz: Kurus
+    /// Ayın sabit giderleri (reklamın sabit kısmı hariç)
+    public var sabitGider: Kurus
+    public var gercekKar: Kurus
+
+    public var id: String { month }
+    public var degiskenReklam: Kurus { max(harcama - sabitReklam, 0) }
+    /// Reklam panelinin gösterdiğine en yakın ROAS: iade ve indirim düşülmeden
+    public var brutRoas: Double? {
+        harcama > 0 && ciro + iadeIndirim > 0 ? Double(ciro + iadeIndirim) / Double(harcama) : nil
+    }
+    /// Gerçek ROAS: iade ve indirim düşülmüş ciro ÷ reklam
+    public var roas: Double? { harcama > 0 && ciro > 0 ? Double(ciro) / Double(harcama) : nil }
+    /// Kâr bazlı ROAS: 1 TL reklam kaç TL katkı bıraktı (kesintiler ve maliyetler düşülmüş)
+    public var poas: Double? { harcama > 0 && katkiReklamsiz != 0 ? Double(katkiReklamsiz) / Double(harcama) : nil }
+    public var cpa: Kurus? {
+        siparis > 0 && harcama > 0 ? Money.roundHalfAwayFromZero(Double(harcama) / Double(siparis)) : nil
+    }
+    /// Reklamdan sonra katkıda kalan
+    public var reklamSonrasiKatki: Kurus { katkiReklamsiz - harcama }
+    /// Reklam bu ay katkının tamamını yedi mi
+    public var katkiyiYedi: Bool { harcama > 0 && reklamSonrasiKatki < 0 }
+
+    /// Bu ayki satış ve maliyetlerle, hedef kâr için reklam en fazla ne olabilirdi (eksiye düşmez).
+    /// `hedefKar` 0 ise başa baş tavanı.
+    public func tavan(hedefKar: Kurus) -> Kurus { max(katkiReklamsiz - sabitGider - hedefKar, 0) }
+    public var hasData: Bool { harcama != 0 || ciro != 0 }
+}
+
+public extension Engine {
+
+    /// Ayın reklam karnesi
+    func reklamAyi(_ month: MonthKey) -> ReklamAyi {
+        let r = companyMonth(month)
+        let harcama = r.expenseBreakdown[.reklam] ?? 0
+        // Sabit reklam: kanalların sabit sayılan reklamı + ortak (kanalsız) sabit reklam giderleri
+        let kanalSabit = r.channels.reduce(0) { $0 + min($1.adsFixed, $1.ads.amount) }
+        let ortakSabit = expenseInstances(month: month)
+            .filter { !$0.capitalized && $0.category == .reklam && $0.scope.channelId == nil && $0.behavior == .sabit }
+            .reduce(0) { $0 + $1.expenseAmount }
+        // Katkı reklamı zaten düşmüştür (değişken kısmı): reklamsız katkı için geri eklenir
+        let degisken = max(harcama - kanalSabit - ortakSabit, 0)
+        return ReklamAyi(
+            month: month,
+            harcama: harcama,
+            sabitReklam: kanalSabit + ortakSabit,
+            siparis: r.orders,
+            siparisTahmini: r.channels.contains { $0.orders > 0 && $0.ordersIsEstimate },
+            ciro: r.channels.reduce(0) { $0 + $1.netSalesIncVat },
+            iadeIndirim: r.channels.reduce(0) { $0 + $1.iadeIndirimIncVat },
+            katkiReklamsiz: r.toplamKatki + degisken,
+            sabitGider: max(r.toplamSabitGider - kanalSabit - ortakSabit, 0),
+            gercekKar: r.gercekKar
+        )
+    }
+
+    /// Son `months` ayın reklam karnesi (eskiden yeniye)
+    func reklamTablosu(endingAt month: MonthKey, months: Int = 6) -> [ReklamAyi] {
+        let bas = Dates.addMonths(month, -(max(months, 1) - 1))
+        return Dates.monthRange(from: bas, to: month).map { reklamAyi($0) }
+    }
+
+    /// Kanal kanal reklam verimi (yalnız reklamı ya da satışı olan kanallar)
+    func kanalReklamlari(month: MonthKey) -> [(kanal: String, harcama: Kurus, katkiReklamsiz: Kurus, ciro: Kurus)] {
+        companyMonth(month).channels.compactMap { c in
+            guard c.ads.amount != 0 || c.netSalesIncVat != 0 else { return nil }
+            return (c.channelName, c.ads.amount, c.contribution + c.adsVariable, c.netSalesIncVat)
+        }
+    }
+}

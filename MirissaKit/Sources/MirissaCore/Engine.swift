@@ -374,6 +374,8 @@ public final class Engine {
             r.grossSales += satirNet + indirimNet + iadeNet
             r.discount += indirimNet
             r.returnsAmount += iadeNet
+            r.iadeIndirimIncVat += Vat.split(e.discount, rate: oran, included: dahil).total
+                + Vat.split(e.returnsAmount, rate: oran, included: dahil).total
             netSatisNet += satirNet
             // Kesintiler müşterinin ödediği KDV dahil tutar üzerinden alınır.
             // Satış "KDV hariç" girilmişse KDV'si eklenir; aksi halde komisyon eksik çıkar.

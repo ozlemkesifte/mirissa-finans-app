@@ -281,7 +281,11 @@ struct ReklamHedefiEkrani: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Metrics.gap) {
+                ReklamKarnesiKarti(month: month)
+                ReklamTavaniKarti(month: month)
                 Card { ReklamHedefiBolumu(month: month, acik: true) }
+                ReklamAylarKarti(month: month)
+                ReklamKanallariKarti(month: month)
                 Color.clear.frame(height: 24)
             }
             .padding(.horizontal, Metrics.pad)

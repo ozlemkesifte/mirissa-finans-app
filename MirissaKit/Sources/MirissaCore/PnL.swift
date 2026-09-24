@@ -59,6 +59,9 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     public var koliTahmini: Bool = false
     /// Kurulumda "bilmiyorum" denen ve hesaba katılamayan kalemler
     public var eksikBilgiler: [String] = []
+    /// İade ve indirimin müşteri fiyatı cinsinden (KDV dahil) tutarı — reklam panelleri satışı
+    /// iade/indirim düşmeden sayar; karşılaştırma için
+    public var iadeIndirimIncVat: Kurus = 0
     /// Komisyonun içindeki KDV'siz (BSMV'li) ödeme/POS komisyonu. Elle girilen komisyon bunu içermez.
     public var odemeKdvsizTutar: Kurus = 0
     /// Aylık sabit kesintinin faturadaki (KDV dahil) tutarı
@@ -300,6 +303,7 @@ public extension Array where Element == ChannelMonthResult {
             r.otherDeduction.amount += c.otherDeduction.amount; manualOther = manualOther || c.otherDeduction.isManual
             r.fixedDeduction += c.fixedDeduction
             r.odemeKdvsizTutar += c.odemeKdvsizTutar
+            r.iadeIndirimIncVat += c.iadeIndirimIncVat
             r.sabitKesintiBrut += c.sabitKesintiBrut
             r.ads.amount += c.ads.amount; manualAds = manualAds || c.ads.isManual
             r.adsFixed += c.adsFixed
