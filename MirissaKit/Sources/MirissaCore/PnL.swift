@@ -98,6 +98,10 @@ public struct ChannelMonthResult: Hashable, Sendable, Identifiable {
     /// KATKI = net satış − değişken giderler. Sabit giderleri bu tutar karşılar.
     public var contribution: Kurus { netSales - variableCost }
 
+    /// Reklam düşülmeden önceki katkı: `contribution` değişken reklamı zaten düşmüştür,
+    /// reklam karnesi ve reklam tavanı bu tutarı kullanır
+    public var katkiReklamsiz: Kurus { contribution + adsVariable }
+
     /// Platformun kestiği tutarlar (reklam, ürün maliyeti ve ambalaj hariç)
     public var channelFees: Kurus {
         commission.amount + shipping.amount + serviceFee.amount + otherDeduction.amount

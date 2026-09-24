@@ -61,16 +61,22 @@ public enum DegisiklikGunlugu {
 public enum AyKilidi {
 
     /// Değişiklik, verilen aya kadar olan bir kayda (ya da tarihli ürün/malzeme/kanal ayarına) mı ait?
+    /// DİKKAT: `AppState`'e yeni bir tarihli kayıt türü eklenirse üç yere birden eklenmeli:
+    /// buraya, `ihlal` içindeki ay bazlı karşılaştırmaya ve `DegisiklikGunlugu.fark`a.
     /// İleri tarihli yeni kayıtlar geçmişe dokunmaz sayılır.
     private static func gecmiseDokunuyor(eski: AppState, yeni: AppState, ay: MonthKey) -> Bool {
         let son = Dates.monthEnd(ay)
+        // Değişmeyen listeler önce kimlikten elenir: kilit kontrolü her kayıtta çalışır,
+        // dokunulmamış listeler için süzme ve küme kurma yapılmaz
         func degisti<T: Hashable>(_ a: [T], _ b: [T], _ tarih: (T) -> DateKey) -> Bool {
-            Set(a.filter { tarih($0) <= son }) != Set(b.filter { tarih($0) <= son })
+            a != b && Set(a.filter { tarih($0) <= son }) != Set(b.filter { tarih($0) <= son })
         }
-        if degisti(eski.purchases.map(\.beyanAlanlari), yeni.purchases.map(\.beyanAlanlari), { $0.date }) { return true }
+        if eski.purchases != yeni.purchases,
+           degisti(eski.purchases.map(\.beyanAlanlari), yeni.purchases.map(\.beyanAlanlari), { $0.date }) { return true }
         if degisti(eski.adjustments, yeni.adjustments, { $0.date }) { return true }
         if degisti(eski.counts, yeni.counts, { $0.date }) { return true }
-        if Set(eski.sales.filter { $0.month <= ay }) != Set(yeni.sales.filter { $0.month <= ay }) { return true }
+        if eski.sales != yeni.sales,
+           Set(eski.sales.filter { $0.month <= ay }) != Set(yeni.sales.filter { $0.month <= ay }) { return true }
         if degisti(eski.expenses, yeni.expenses, { $0.date }) { return true }
         // Ürün maliyeti, reçete ve kanal oranları tarihlidir: değiştiyse geçmişe uzanıp uzanmadığına
         // ayın kâr rakamı karar verir

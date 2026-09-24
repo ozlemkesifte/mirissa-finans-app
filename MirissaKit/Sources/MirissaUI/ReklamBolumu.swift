@@ -4,18 +4,31 @@ import MirissaCore
 /// Finans & Vergiler → Reklam: reklamın gerçekte ne getirdiği.
 /// Bütün rakamlar girilen kayıtlardan gelir; panel verisi ya da tahmin kullanılmaz.
 struct ReklamBolumu: View {
-    @Environment(AppStore.self) private var store
     @Environment(Period.self) private var period
 
     var body: some View {
         VStack(spacing: Metrics.gap) {
             MonthStepper(month: Bindable(period).month)
-            ReklamKarnesiKarti(month: period.month)
-            ReklamTavaniKarti(month: period.month)
-            HedefeKalanReklamKarti(month: period.month)
-            ReklamAylarKarti(month: period.month)
-            ReklamKanallariKarti(month: period.month)
-            ReklamHedefiBolumu(month: period.month, acik: true)
+            ReklamRaporu(month: period.month)
+        }
+    }
+}
+
+/// Reklam kartlarının tamamı. Ana ekrandaki reklam satırı da bunu açar: kart listesi tek yerde durur.
+struct ReklamRaporu: View {
+    @Environment(AppStore.self) private var store
+    var month: MonthKey
+
+    var body: some View {
+        // Karne bir kez hesaplanır, kartlara verilir
+        let a = store.engine.reklamAyi(month)
+        VStack(spacing: Metrics.gap) {
+            ReklamKarnesiKarti(a: a)
+            ReklamTavaniKarti(a: a)
+            HedefeKalanReklamKarti(a: a)
+            ReklamAylarKarti(month: month)
+            ReklamKanallariKarti(month: month)
+            ReklamHedefiBolumu(month: month, acik: true)
                 .padding(.horizontal, Metrics.pad)
                 .padding(.vertical, 14)
                 .background(Palette.card)
@@ -26,14 +39,12 @@ struct ReklamBolumu: View {
 
 /// Ayın reklam karnesi: harcama, ROAS (panel gibi ve gerçek), kâr bazlı ROAS, sipariş başı reklam
 struct ReklamKarnesiKarti: View {
-    @Environment(AppStore.self) private var store
-    var month: MonthKey
+    var a: ReklamAyi
 
     var body: some View {
-        let a = store.engine.reklamAyi(month)
         Card {
             VStack(alignment: .leading, spacing: 9) {
-                Text("REKLAM KARNESİ · \(Dates.displayMonth(month))")
+                Text("REKLAM KARNESİ · \(Dates.displayMonth(a.month))")
                     .font(.caption.weight(.semibold)).tracking(0.6).foregroundStyle(Palette.inkFaint)
                 if a.harcama == 0 {
                     Text("Bu ay reklam gideri girilmedi.")
@@ -89,24 +100,25 @@ struct ReklamKarnesiKarti: View {
 /// Hedef kâr için reklam en fazla ne olabilir
 struct ReklamTavaniKarti: View {
     @Environment(AppStore.self) private var store
-    var month: MonthKey
+    var a: ReklamAyi
 
     var body: some View {
-        let e = store.engine
-        let a = e.reklamAyi(month)
         if a.hasData {
+            let e = store.engine
+            let month = a.month
             let hedef = e.aylikHedefVergiOncesi(month: month)
+            let tavan = a.tavan(hedefKar: hedef ?? 0)
             Card {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("REKLAM TAVANI").font(.caption.weight(.semibold)).tracking(0.6)
                         .foregroundStyle(Palette.inkFaint)
                     LabeledRow("Başa baş için en fazla", a.tavan(hedefKar: 0).tl, strong: true)
-                    if let hedef {
+                    if hedef != nil {
                         LabeledRow(e.karHedefiBasligi(month: month) ?? "Kâr hedefi için en fazla",
-                                   a.tavan(hedefKar: hedef).tl, strong: true)
+                                   tavan.tl, strong: true)
                     }
                     LabeledRow("Bu ay harcanan", a.harcama.tl,
-                               tone: a.harcama > a.tavan(hedefKar: hedef ?? 0) ? Palette.zarar : Palette.inkSoft)
+                               tone: a.harcama > tavan ? Palette.zarar : Palette.inkSoft)
                     Text("Bu ayın girilen satışları, kesintileri ve sabit giderleriyle: reklam bu tutarı geçerse "
                          + "hedef tutmaz. Ay ilerledikçe satış girdikçe tavan da yükselir.")
                         .font(.caption2).foregroundStyle(Palette.inkFaint)
@@ -153,10 +165,7 @@ struct ReklamAylarKarti: View {
         var p: [String] = []
         if a.siparis > 0 { p.append("\(a.siparis) sipariş") }
         if let c = a.cpa { p.append("sipariş başı \(Money.format(c))") }
-        if let r = a.roas { p.append("ROAS \(RoasFormat.format(r))") }
-        if let k = a.poas { p.append("kâr bazlı \(RoasFormat.format(k))") }
-        p.append("reklamdan sonra \(Money.format(a.reklamSonrasiKatki))")
-        return p.joined(separator: " · ")
+        return (p + ReklamOzeti.parcalar(a)).joined(separator: " · ")
     }
 }
 
@@ -188,24 +197,18 @@ struct ReklamKanallariKarti: View {
         }
     }
 
-    private func ozet(_ k: (kanal: String, harcama: Kurus, katkiReklamsiz: Kurus, ciro: Kurus)) -> String {
-        var p: [String] = []
-        if k.harcama > 0, k.ciro > 0 { p.append("ROAS \(RoasFormat.format(Double(k.ciro) / Double(k.harcama)))") }
-        if k.harcama > 0 { p.append("kâr bazlı \(RoasFormat.format(Double(k.katkiReklamsiz) / Double(k.harcama)))") }
-        p.append("reklamdan sonra \(Money.format(k.katkiReklamsiz - k.harcama))")
-        return p.joined(separator: " · ")
-    }
+    private func ozet(_ k: ReklamKanali) -> String { ReklamOzeti.parcalar(k).joined(separator: " · ") }
 }
 
 /// Hedefe kalan kargo ve bu ayki sipariş başı reklamla yaklaşık maliyeti; stok yetmiyorsa uyarı
 struct HedefeKalanReklamKarti: View {
     @Environment(AppStore.self) private var store
-    var month: MonthKey
+    var a: ReklamAyi
 
     var body: some View {
         let e = store.engine
+        let month = a.month
         let p = e.plan(month: month)
-        let a = e.reklamAyi(month)
         let hedef = p.targets.first { !$0.isBreakeven } ?? p.targets.first
         if let hedef, month >= Dates.currentMonth() {
             let kalan = max(hedef.orders - a.siparis, 0)
@@ -239,5 +242,16 @@ struct HedefeKalanReklamKarti: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+}
+
+/// Ay ve kanal satırlarının ortak özeti: oranlar motordaki tek tanımdan gelir
+enum ReklamOzeti {
+    static func parcalar(_ o: ReklamOlcumu) -> [String] {
+        var p: [String] = []
+        if let r = o.roas { p.append("ROAS \(RoasFormat.format(r))") }
+        if let k = o.poas { p.append("kâr bazlı \(RoasFormat.format(k))") }
+        p.append("reklamdan sonra \(Money.format(o.reklamSonrasiKatki))")
+        return p
     }
 }

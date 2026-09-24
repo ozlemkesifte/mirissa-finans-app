@@ -37,14 +37,15 @@ struct PurchaseForm: View {
     }
 
     private var baseUnit: UnitCode { item.map { store.state.itemBaseUnit($0) } ?? .adet }
-    private var packSizes: [UnitCode: Double] { item.map { store.state.itemPackSizes($0) } ?? [:] }
+    /// Paket boyutu tarihlidir: geri tarihli kayıtta o günün ayarı kullanılır (motor da öyle hesaplar)
+    private var packSizes: [UnitCode: Double] { item.map { store.state.itemPackSizes($0, on: date) } ?? [:] }
     private var allowedUnits: [UnitCode] { Units.allowedUnits(baseUnit: baseUnit, packSizes: packSizes) }
 
     private var baseQty: Double {
         guard let item else { return 0 }
         return Units.toBaseOrNil(qty: qty, unit: unit,
                                  baseUnit: store.state.itemBaseUnit(item),
-                                 packSizes: store.state.itemPackSizes(item)) ?? 0
+                                 packSizes: store.state.itemPackSizes(item, on: date)) ?? 0
     }
 
     /// Stok maliyeti KDV hariç tutulur
@@ -241,14 +242,14 @@ struct AdjustForm: View {
 
     private var baseUnit: UnitCode { item.map { store.state.itemBaseUnit($0) } ?? .adet }
     private var allowedUnits: [UnitCode] {
-        Units.allowedUnits(baseUnit: baseUnit, packSizes: item.map { store.state.itemPackSizes($0) } ?? [:])
+        Units.allowedUnits(baseUnit: baseUnit, packSizes: item.map { store.state.itemPackSizes($0, on: date) } ?? [:])
     }
 
     private var baseQty: Double {
         guard let item else { return 0 }
         return Units.toBaseOrNil(qty: qty, unit: unit,
                                  baseUnit: store.state.itemBaseUnit(item),
-                                 packSizes: store.state.itemPackSizes(item)) ?? 0
+                                 packSizes: store.state.itemPackSizes(item, on: date)) ?? 0
     }
 
     var body: some View {
@@ -364,11 +365,14 @@ struct CountForm: View {
 
     private var baseUnit: UnitCode { item.map { store.state.itemBaseUnit($0) } ?? .adet }
     private var allowedUnits: [UnitCode] {
-        Units.allowedUnits(baseUnit: baseUnit, packSizes: item.map { store.state.itemPackSizes($0) } ?? [:])
+        Units.allowedUnits(baseUnit: baseUnit, packSizes: item.map { store.state.itemPackSizes($0, on: date) } ?? [:])
     }
 
-    /// Sisteme göre miktar: düzenlenen sayımın kendisi hariç (sayım kendi farkını kapatmasın)
-    private var systemQty: Double {
+    /// Sisteme göre miktar: düzenlenen sayımın kendisi hariç (sayım kendi farkını kapatmasın).
+    /// Kalem değişmedikçe sabittir; her tuşta yeniden hesaplanmaması için saklanır.
+    @State private var systemQty: Double = 0
+
+    private func sistemdekiMiktar(_ item: ItemRef?) -> Double {
         guard let item else { return 0 }
         guard let e = editing else { return store.engine.qty(item) }
         var s = store.state
@@ -380,7 +384,7 @@ struct CountForm: View {
         guard let item else { return 0 }
         return Units.toBaseOrNil(qty: counted, unit: unit,
                                  baseUnit: store.state.itemBaseUnit(item),
-                                 packSizes: store.state.itemPackSizes(item)) ?? 0
+                                 packSizes: store.state.itemPackSizes(item, on: date)) ?? 0
     }
 
     private var fark: Double { countedBase - systemQty }
@@ -433,9 +437,11 @@ struct CountForm: View {
                 unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
                 counted = preselected.map { store.engine.qty($0) } ?? 0
             }
+            systemQty = sistemdekiMiktar(item)
         }
         .onChange(of: item) { _, new in
             if !allowedUnits.contains(unit) { unit = baseUnit }
+            systemQty = sistemdekiMiktar(new)
             guard editingId == nil else { return }
             counted = new.map { store.engine.qty($0) } ?? 0
         }
