@@ -347,6 +347,8 @@ struct CountForm: View {
     @Environment(AppStore.self) private var store
 
     var preselected: ItemRef?
+    /// Düzenlenen sayım (yeni sayımda nil)
+    var editingId: Id?
     @State private var item: ItemRef?
     @State private var date: DateKey = Dates.today()
     @State private var counted: Double = 0
@@ -356,13 +358,23 @@ struct CountForm: View {
     @State private var loaded = false
 
     init(preselected: ItemRef? = nil) { self.preselected = preselected }
+    init(editing id: Id) { self.editingId = id }
+
+    private var editing: StockCount? { editingId.flatMap { id in store.state.counts.first { $0.id == id } } }
 
     private var baseUnit: UnitCode { item.map { store.state.itemBaseUnit($0) } ?? .adet }
     private var allowedUnits: [UnitCode] {
         Units.allowedUnits(baseUnit: baseUnit, packSizes: item.map { store.state.itemPackSizes($0) } ?? [:])
     }
 
-    private var systemQty: Double { item.map { store.engine.qty($0) } ?? 0 }
+    /// Sisteme göre miktar: düzenlenen sayımın kendisi hariç (sayım kendi farkını kapatmasın)
+    private var systemQty: Double {
+        guard let item else { return 0 }
+        guard let e = editing else { return store.engine.qty(item) }
+        var s = store.state
+        s.counts.removeAll { $0.id == e.id }
+        return Engine(s).qty(item)
+    }
 
     private var countedBase: Double {
         guard let item else { return 0 }
@@ -374,7 +386,9 @@ struct CountForm: View {
     private var fark: Double { countedBase - systemQty }
 
     var body: some View {
-        FormShell(title: "Stok Sayımı", saveTitle: "Sayımı uygula", canSave: item != nil, onSave: save) {
+        FormShell(title: editingId == nil ? "Stok Sayımı" : "Sayımı Düzenle",
+                  saveTitle: editingId == nil ? "Sayımı uygula" : "Kaydet",
+                  canSave: item != nil, onSave: save) {
             Section {
                 ItemPicker(selection: $item)
                 DateRow(dateKey: $date)
@@ -411,22 +425,30 @@ struct CountForm: View {
         .onAppear {
             guard !loaded else { return }
             loaded = true
-            item = preselected
-            unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
-            counted = preselected.map { store.engine.qty($0) } ?? 0
+            if let e = editing {
+                item = e.item; date = e.date; counted = e.countedQty; unit = e.unit
+                reason = e.reason ?? .sayimFarki; note = e.note ?? ""
+            } else {
+                item = preselected
+                unit = preselected.map { store.state.itemBaseUnit($0) } ?? .adet
+                counted = preselected.map { store.engine.qty($0) } ?? 0
+            }
         }
         .onChange(of: item) { _, new in
             if !allowedUnits.contains(unit) { unit = baseUnit }
+            guard editingId == nil else { return }
             counted = new.map { store.engine.qty($0) } ?? 0
         }
     }
 
     private func save() {
         guard let item else { return }
-        store.addCount(StockCount(
+        let kayit = StockCount(
+            id: editingId ?? Ids.make(.count),
             date: date, item: item, countedQty: counted, unit: unit,
             reason: fark == 0 ? nil : reason,
             note: note.isEmpty ? nil : note
-        ))
+        )
+        if editingId == nil { store.addCount(kayit) } else { store.updateCount(kayit) }
     }
 }

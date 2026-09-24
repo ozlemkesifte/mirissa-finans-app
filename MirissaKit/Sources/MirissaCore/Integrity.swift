@@ -466,29 +466,31 @@ public enum Integrity {
                     + "ambalaj maliyeti olduğundan düşük çıkar", recordId: m.id))
         }
 
-        // Birimi artık çevrilemeyen kayıtlar sessizce hesaba girmez
-        func cevrilemez(_ item: ItemRef, _ qty: Double, _ unit: UnitCode) -> Bool {
+        // Birimi çevrilemeyen kayıtlar sessizce hesaba girmez. Paket boyutları tarihlidir: kayıt
+        // kendi günündeki ayarla kontrol edilir — motor da öyle hesaplar. Bugünün ayarına bakmak,
+        // hem eski kayıtlar için yanlış alarm verir hem de gerçekten hesaba girmemiş bir kaydı gizlerdi.
+        func cevrilemez(_ item: ItemRef, _ qty: Double, _ unit: UnitCode, _ date: DateKey) -> Bool {
             Units.toBaseOrNil(qty: qty, unit: unit, baseUnit: s.itemBaseUnit(item),
-                              packSizes: s.itemPackSizes(item)) == nil
+                              packSizes: s.itemPackSizes(item, on: date)) == nil
         }
-        for p in s.purchases where s.itemExists(p.item) && cevrilemez(p.item, p.qty, p.unit) {
+        for p in s.purchases where s.itemExists(p.item) && cevrilemez(p.item, p.qty, p.unit, p.date) {
             out.append(IntegrityIssue(.bozuk, "Stok",
                 "\(s.itemName(p.item)) alımı \(p.unit.displayName) ile girilmiş ama malzemede "
                     + "bu birimin karşılığı yok; alım stoğa ve maliyete hiç girmiyor", recordId: p.id))
         }
-        for a in s.adjustments where s.itemExists(a.item) && cevrilemez(a.item, a.qty, a.unit) {
+        for a in s.adjustments where s.itemExists(a.item) && cevrilemez(a.item, a.qty, a.unit, a.date) {
             out.append(IntegrityIssue(.bozuk, "Stok",
                 "\(s.itemName(a.item)) düzeltmesinin birimi (\(a.unit.displayName)) çevrilemiyor; "
                     + "kayıt hesaba girmiyor", recordId: a.id))
         }
-        for c in s.counts where s.itemExists(c.item) && cevrilemez(c.item, c.countedQty, c.unit) {
+        for c in s.counts where s.itemExists(c.item) && cevrilemez(c.item, c.countedQty, c.unit, c.date) {
             out.append(IntegrityIssue(.bozuk, "Stok",
                 "\(s.itemName(c.item)) sayımının birimi (\(c.unit.displayName)) çevrilemiyor; "
                     + "sayım hesaba girmiyor", recordId: c.id))
         }
         for p in s.products {
             for line in p.recipe where s.material(line.materialId) != nil
-            && cevrilemez(.material(line.materialId), line.qty, line.unit) {
+            && cevrilemez(.material(line.materialId), line.qty, line.unit, Dates.today()) {
                 out.append(IntegrityIssue(.bozuk, "Reçeteler",
                     "\(p.name) reçetesinde \(s.itemName(.material(line.materialId))) "
                         + "\(line.unit.displayName) ile yazılmış ama bu birim artık tanımlı değil; "

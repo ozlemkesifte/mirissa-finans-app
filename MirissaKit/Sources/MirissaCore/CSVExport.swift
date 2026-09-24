@@ -52,8 +52,11 @@ public enum CSVExport {
 
     // MARK: - Tablolar
 
-    public static func sales(_ e: Engine) -> ExportFile {
+    public static func sales(_ e: Engine, from: MonthKey? = nil, to: MonthKey? = nil) -> ExportFile {
         let rows = e.state.sales
+            .filter { satir in
+                (from.map { satir.month >= $0 } ?? true) && (to.map { satir.month <= $0 } ?? true)
+            }
             .sorted { $0.month == $1.month ? $0.id < $1.id : $0.month > $1.month }
             .map { s -> [String] in
                 [
@@ -198,7 +201,7 @@ public enum CSVExport {
         let to = max(bugune(to, today: today), from)
         var out = [
             monthlySummary(e, from: from, to: to),
-            sales(e),
+            sales(e, from: from, to: to),
             expenses(e, from: from, to: to),
             products(e),
             materials(e),

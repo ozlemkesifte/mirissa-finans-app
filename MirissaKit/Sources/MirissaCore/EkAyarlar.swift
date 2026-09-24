@@ -18,8 +18,6 @@ public struct EkAyarlar: Codable, Hashable, Sendable {
     /// Kasa + banka bakiyesi ve girildiği gün
     public var kasaBakiye: Kurus?
     public var kasaTarih: DateKey?
-    /// Kanal → satıştan kaç gün sonra para hesaba geçiyor (hakediş gecikmesi)
-    public var hakedisGecikmesi: [Id: Int]?
 
     // Kilit
     /// KDV beyanı verilip kilitlenen aylar: bu aylara ait kayıt değiştirilemez
@@ -55,7 +53,6 @@ public struct EkAyarlar: Codable, Hashable, Sendable {
     public init() {}
 
     public var kilitli: Set<MonthKey> { Set(kilitliAylar ?? []) }
-    public func gecikme(_ kanal: Id) -> Int { hakedisGecikmesi?[kanal] ?? 0 }
 }
 
 /// Gerçekleşmiş bir vergi ödemesi

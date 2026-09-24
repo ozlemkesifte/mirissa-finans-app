@@ -97,14 +97,9 @@ public enum Ledger {
                 }
 
             case .satis, .duzeltme, .iade:
-                if mv.delta >= 0 {
-                    // Stoğa giriş (iade, bulunan mal): güncel birim maliyetle değerlenir
-                    q += mv.delta
-                    v += mv.delta * currentCost
-                } else {
-                    q += mv.delta
-                    v += mv.delta * currentCost
-                }
+                // Çıkış da giriş de (iade, bulunan mal) güncel birim maliyetle değerlenir
+                q += mv.delta
+                v += mv.delta * currentCost
 
             case .sayim:
                 // Sayım bir ADET gerçeğidir, fiyat gerçeği değil: birim maliyet değişmez.

@@ -12,15 +12,14 @@ public enum AppSheet: Identifiable, Hashable {
     case channelAdd
     case eksikleriTamamla
     case satisDagilimi
-    case addSale(MonthKey)
     case editSale(Id)
-    case addExpense(MonthKey)
     case editExpense(Id, MonthKey)
     case addPurchase(ItemRef?)
     case editPurchase(Id)
     case adjustStock(ItemRef?)
     case editAdjustment(Id)
     case countStock(ItemRef?)
+    case editCount(Id)
     case addMaterial
     case editMaterial(Id)
     case addProduct
@@ -46,15 +45,14 @@ public enum AppSheet: Identifiable, Hashable {
         case .channelAdd: return "channelAdd"
         case .eksikleriTamamla: return "eksikleriTamamla"
         case .satisDagilimi: return "satisDagilimi"
-        case let .addSale(m): return "addSale-\(m)"
         case let .editSale(i): return "editSale-\(i)"
-        case let .addExpense(m): return "addExpense-\(m)"
         case let .editExpense(i, m): return "editExpense-\(i)-\(m)"
         case let .addPurchase(r): return "addPurchase-\(r?.id ?? "-")"
         case let .editPurchase(i): return "editPurchase-\(i)"
         case let .editAdjustment(i): return "editAdjustment-\(i)"
         case let .adjustStock(r): return "adjust-\(r?.id ?? "-")"
         case let .countStock(r): return "count-\(r?.id ?? "-")"
+        case let .editCount(i): return "editCount-\(i)"
         case .addMaterial: return "addMaterial"
         case let .editMaterial(i): return "editMaterial-\(i)"
         case .addProduct: return "addProduct"
@@ -86,15 +84,14 @@ public extension View {
             case .channelAdd: ChannelAddFlow()
             case .eksikleriTamamla: EksikleriTamamlaFlow()
             case .satisDagilimi: SatisDagilimiFlow()
-            case let .addSale(m): SaleForm(month: m)
             case let .editSale(i): SaleForm(editing: i)
-            case let .addExpense(m): ExpenseForm(month: m)
             case let .editExpense(i, m): ExpenseForm(editing: i, month: m)
             case let .addPurchase(r): PurchaseForm(preselected: r)
             case let .editPurchase(i): PurchaseForm(editing: i)
             case let .editAdjustment(i): AdjustForm(editing: i)
             case let .adjustStock(r): AdjustForm(preselected: r)
             case let .countStock(r): CountForm(preselected: r)
+            case let .editCount(i): CountForm(editing: i)
             case .addMaterial: MaterialForm()
             case let .editMaterial(i): MaterialForm(editing: i)
             case .addProduct: ProductForm()

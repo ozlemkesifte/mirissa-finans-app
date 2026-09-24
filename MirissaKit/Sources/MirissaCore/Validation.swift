@@ -334,9 +334,10 @@ public extension Validation {
                 "Ödenen tutar girilmedi",
                 "Bu alım stoğa eklenecek ama birim maliyeti sıfır olacak; ürün maliyetin eksik çıkar."))
         }
+        // Paket boyutu tarihlidir: geri tarihli alım, o günde geçerli ayarla kontrol edilir
         let cevrim = Units.toBaseOrNil(qty: draft.qty, unit: draft.unit,
                                        baseUnit: state.itemBaseUnit(draft.item),
-                                       packSizes: state.itemPackSizes(draft.item))
+                                       packSizes: state.itemPackSizes(draft.item, on: draft.date))
         if draft.qty > 0, cevrim == nil || cevrim == 0 {
             out.append(ValidationIssue(.gecersizMiktar, .engel,
                 "Birim karşılığı tanımsız",
@@ -380,7 +381,7 @@ public extension Validation {
 
         guard let base = Units.toBaseOrNil(qty: draft.qty, unit: draft.unit,
                                             baseUnit: state.itemBaseUnit(draft.item),
-                                            packSizes: state.itemPackSizes(draft.item)),
+                                            packSizes: state.itemPackSizes(draft.item, on: draft.date)),
               abs(base - acilis) < max(acilis * 0.05, 1) else { return [] }
 
         let birim = state.itemBaseUnit(draft.item)

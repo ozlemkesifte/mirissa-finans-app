@@ -186,16 +186,26 @@ public enum RaporIceAktarma {
             return v.isEmpty ? nil : v
         }
         for (n, r) in t.satirlar.enumerated() {
-            let no = deger(r, .siparisNo) ?? sonSiparis
-            // Shopify: aynı siparişin sonraki satırlarında tarih boş olabilir
+            // Shopify aynı siparişin sonraki satırlarında numarayı, tarihi ve durumu boş bırakır:
+            // yalnız ikisi de boşsa satır önceki siparişin devamıdır. Numarasız başka bir satır
+            // kendi siparişi sayılamaz; numarasız kalırsa tekrar aktarımda hepsi aynı anahtara
+            // düşüp sessizce atlanırdı — bu yüzden hata olarak bildirilir.
+            let noHam = deger(r, .siparisNo)
             let tarihMetni = deger(r, .tarih)
-            let gun = tarihMetni.flatMap(tarih) ?? (no == sonSiparis ? sonTarih : nil)
-            // Shopify ödeme durumunu da yalnızca siparişin ilk satırına yazar
-            let durumMetni = deger(r, .durum) ?? (no == sonSiparis ? sonDurum : nil)
-            sonSiparis = no; sonTarih = gun; sonDurum = durumMetni
+            // Devam satırı: numara açıkça tekrar edilmiş ya da numara da tarih de boş bırakılmış
+            let devamSatiri = (noHam != nil && noHam == sonSiparis)
+                || (noHam == nil && tarihMetni == nil && !sonSiparis.isEmpty)
+            let no = noHam ?? (devamSatiri ? sonSiparis : "")
+            let gun = tarihMetni.flatMap(tarih) ?? (devamSatiri ? sonTarih : nil)
+            let durumMetni = deger(r, .durum) ?? (devamSatiri ? sonDurum : nil)
+            if !no.isEmpty { sonSiparis = no; sonTarih = gun; sonDurum = durumMetni }
             let ad = deger(r, .urun) ?? ""
             let anahtar = deger(r, .sku) ?? ad
             guard !anahtar.isEmpty else { continue }   // ürünsüz satır (kargo, toplam satırı)
+            guard !no.isEmpty else {
+                hatalar.append(Hata(satir: n + 2, neden: "Sipariş numarası yok"))
+                continue
+            }
             guard let g = gun else { hatalar.append(Hata(satir: n + 2, neden: "Tarih okunamadı")); continue }
             let a = deger(r, .adet).flatMap(adet) ?? 1
             var tutar: Kurus

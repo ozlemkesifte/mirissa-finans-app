@@ -293,7 +293,7 @@ struct MovementHistory: View {
         case .purchase: sheet = .editPurchase(r.movement.sourceId)
         case .adjustment: sheet = .editAdjustment(r.movement.sourceId)
         case .sales: sheet = .editSale(r.movement.sourceId)
-        case .count: silinecek = r
+        case .count: sheet = .editCount(r.movement.sourceId)
         case .opening: break
         }
     }

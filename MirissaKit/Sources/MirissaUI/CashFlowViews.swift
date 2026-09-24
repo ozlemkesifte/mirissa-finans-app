@@ -145,31 +145,3 @@ struct NakitRaporu: View {
     }
 }
 
-/// Ana sayfada tek satırlık nakit özeti
-struct NakitOzetKarti: View {
-    @Environment(AppStore.self) private var store
-    var onTap: () -> Void
-
-    var body: some View {
-        if let t = store.engine.nakitTahmini() {
-            Button(action: onTap) {
-                Card {
-                    HStack {
-                        Image(systemName: "banknote").foregroundStyle(Palette.accent)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Nakit").font(.caption.weight(.semibold)).foregroundStyle(Palette.inkFaint)
-                            Text(t.bittigiHafta.map { "Yaklaşık \($0) hafta yeter" }
-                                 ?? "\(t.haftalar.count) haftadan fazla yeter")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(t.bittigiHafta == nil ? Palette.ink : Palette.zarar)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption.weight(.bold))
-                            .foregroundStyle(Palette.inkFaint)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-        }
-    }
-}

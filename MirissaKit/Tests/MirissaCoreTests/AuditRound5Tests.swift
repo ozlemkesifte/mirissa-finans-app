@@ -328,6 +328,8 @@ struct AuditRound5HesapTests {
 
     // MARK: Doğrulama turunda bulunanlar
 
+    /// Kilitli aydan SONRA girilen alım, o ayın maliyetsiz satışını maliyetler: engellenmez.
+    /// Kilitli aya kadar olan bir kaydı düzenlemek ise o ayın kârını değiştirir ve engellenir.
     @Test func kilitliAydakiSatisaSonradanAlimGirilebilir() {
         var s = Fx.base()
         s.settings.vatEnabled = true
@@ -338,6 +340,11 @@ struct AuditRound5HesapTests {
         st.addPurchase(StockPurchase(id: "p", date: "2026-09-05", item: .product(Fx.sampuanId), qty: 100,
                                      unit: .adet, totalPaid: tl(1_000)))
         #expect(st.sonHata == nil)
+        #expect(st.state.purchases.count == 1)
+        // Kilitli aya tarihli (geri dönük) bir alım o ayın kârını değiştirir: engellenir
+        st.addPurchase(StockPurchase(id: "p2", date: "2026-08-05", item: .product(Fx.sampuanId), qty: 50,
+                                     unit: .adet, totalPaid: tl(2_000)))
+        #expect(st.sonHata != nil)
         #expect(st.state.purchases.count == 1)
     }
 

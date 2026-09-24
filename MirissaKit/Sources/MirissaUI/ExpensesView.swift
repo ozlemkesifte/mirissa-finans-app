@@ -212,6 +212,10 @@ private struct CategoryCard: View {
                                             .foregroundStyle(Palette.inkFaint)
                                     }
                                     if i.sourceKind == .duzenli { Pill("düzenli") }
+                                    if i.kkeg { Pill("KKEG", tone: Palette.uyari, background: Palette.uyariYumusak) }
+                                    if i.indirilemeyenKdv != 0 {
+                                        Pill("KDV indirilemez", tone: Palette.uyari, background: Palette.uyariYumusak)
+                                    }
                                     Spacer(minLength: 8)
                                     VStack(alignment: .trailing, spacing: 1) {
                                         // Kâra etki eden tutar (KDV hariç)

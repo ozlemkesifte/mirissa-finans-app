@@ -61,7 +61,8 @@ public struct SetupWizard: View {
     }
 
     private var taslakKaydi: TaslakKaydi {
-        TaslakKaydi(kind: .ilkKurulum, subjectId: nil, baslik: "İlk kurulum", toplamAdim: 14)
+        // Adım sayısı ürün, set, malzeme ve kanal sayısına göre değişir: sabit bir toplam yazılmaz
+        TaslakKaydi(kind: .ilkKurulum, subjectId: nil, baslik: "İlk kurulum", toplamAdim: 0)
     }
 
     public init() {}
@@ -622,7 +623,7 @@ public struct SetupWizard: View {
                 + "kullandığını yaz. Sadece sette kullanıyorsan sıfır bırak — "
                 + "setin ambalajını birazdan ayrıca soracağım.",
             adim: sira + 1, toplam: indisler.count,
-            ileriAktif: m.maliyet == 0 || m.maliyetKdvDahil != nil,
+            ileriAktif: m.maliyet == 0 || (m.maliyetKdvDahil != nil && m.maliyetKdvOranSecildi),
             geri: geriGit,
             ileri: { ileri(sonrakiMalzemeAdimi(sira)) }
         ) {
@@ -651,18 +652,21 @@ public struct SetupWizard: View {
                             .foregroundStyle(Palette.inkFaint)
                         ForEach(VatRate.allCases.reversed()) { r in
                             SecenekButonu(baslik: r == .yok ? "KDV yok" : r.displayName,
-                                          secili: m.maliyetKdvOrani == r) {
+                                          secili: m.maliyetKdvOranSecildi && m.maliyetKdvOrani == r) {
                                 if malzemeler.indices.contains(i) {
                                     malzemeler[i].maliyetKdvOrani = r
+                                    malzemeler[i].maliyetKdvOranSecildi = true
                                 }
                             }
                         }
-                        KdvOnizlemeKarti(
-                            baslik: "NET BİRİM MALİYET",
-                            tutar: m.maliyet,
-                            oran: m.maliyetKdvOrani,
-                            dahil: m.maliyetKdvDahil ?? true
-                        )
+                        if m.maliyetKdvOranSecildi {
+                            KdvOnizlemeKarti(
+                                baslik: "NET BİRİM MALİYET",
+                                tutar: m.maliyet,
+                                oran: m.maliyetKdvOrani,
+                                dahil: m.maliyetKdvDahil ?? true
+                            )
+                        }
                     }
                 }
             }
@@ -895,6 +899,7 @@ public struct SetupWizard: View {
     private func kanallariKurVeBasla() {
         let secilenler = kanalSecenekleri.filter { seciliKanallar.contains($0.id) }
         kurulacakKanallar = secilenler.map(\.id)
+        urunKimlikleriniYaz()
         store.mutate { s in
             for k in secilenler {
                 if let i = s.channels.firstIndex(where: { $0.id == k.id }) {
@@ -1207,6 +1212,25 @@ public struct SetupWizard: View {
         }
     }
 
+    /// Kanal kurulumu ürünleri mağaza kaydından okur: sihirbazda yeni eklenen ya da adı değişen
+    /// ürünler daha kaydedilmediği için o adımda görünmezdi. Kanal adımından önce yalnızca
+    /// ürünün kimliği ve adı yazılır; maliyet, stok ve fiyat bilgisi kurulumun sonunda işlenir.
+    private func urunKimlikleriniYaz() {
+        let urunAdlari = doluUrunler.map { ($0.id, $0.ad, false) }
+            + setler.filter { !$0.ad.trimmingCharacters(in: .whitespaces).isEmpty }.map { ($0.id, $0.ad, true) }
+        guard !urunAdlari.isEmpty else { return }
+        store.mutate { s in
+            for (id, ad, set) in urunAdlari {
+                if let i = s.products.firstIndex(where: { $0.id == id }) {
+                    s.products[i].name = ad
+                    s.products[i].archived = false
+                } else {
+                    s.products.append(Product(id: id, name: ad, isBundle: set))
+                }
+            }
+        }
+    }
+
     private func bitir() {
         let ay = Dates.monthStart(Dates.currentMonth())
         store.mutate { s in
@@ -1484,6 +1508,8 @@ struct MalzemeTaslak: Identifiable, Codable {
     /// Girilen birim maliyet KDV dahil mi? nil = henüz sorulmadı
     var maliyetKdvDahil: Bool?
     var maliyetKdvOrani: VatRate = .yirmi
+    /// Oran kullanıcı tarafından seçildi mi — seçilmeden maliyet kaydedilmez (varsayılan oran uydurulmaz)
+    var maliyetKdvOranSecildi = false
     /// Bir siparişte kullanılan miktar (reçete)
     var siparisBasi: Double = 0
     /// Kuruluma girerken reçetede yazan miktar; sıfırlanırsa satır kaldırılır

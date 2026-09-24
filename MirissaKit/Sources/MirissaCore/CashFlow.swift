@@ -216,9 +216,17 @@ public extension Engine {
             let buHafta = kalemler.filter { $0.gun > hb && $0.gun <= hs }
             var giris = buHafta.filter { $0.tutar > 0 }.reduce(0) { $0 + $1.tutar }
             var cikis = -buHafta.filter { $0.tutar < 0 }.reduce(0) { $0 + $1.tutar }
-            // Tahmini kalemler: haftanın tahsilat başladıktan sonraki günleri kadar
-            let tahsilatGunu = max(0, min(7, Dates.daysBetween(max(hb, tahsilatBas), hs)))
-            giris += Money.roundHalfAwayFromZero(Double(ort.tahsilat) * Double(tahsilatGunu) / 30)
+            // Tahmini tahsilat: tahsilat başladıktan sonraki her gün için, o günün ayının gün sayısına
+            // bölünmüş aylık ortalama (şubatta 28, temmuzda 31). Gider tarafı da böyle hesaplar;
+            // sabit 30 kullanmak her ay runway'i kaydırırdı.
+            let gunlukTahsilat = (1...7).reduce(0.0) { toplam, i in
+                let gun = Dates.addDays(hb, i)
+                guard gun > tahsilatBas, gun <= hs else { return toplam }
+                let ay = Dates.month(of: gun)
+                let ayinGunu = Dates.daysInMonth(year: Dates.year(of: ay), month: Dates.monthNumber(of: ay))
+                return toplam + Double(ort.tahsilat) / Double(ayinGunu)
+            }
+            giris += Money.roundHalfAwayFromZero(gunlukTahsilat)
             cikis += Money.roundHalfAwayFromZero((1...7).reduce(0.0) { $0 + gunlukDuzensiz(Dates.addDays(hb, $1)) })
             b += giris - cikis
             if bitti == nil, b < 0 { bitti = h + 1 }

@@ -253,51 +253,6 @@ struct HedefKarti: View {
     }
 }
 
-/// "BU AY GERÇEKLEŞEN" — ana mesaj değil, ikinci bölüm.
-struct GerceklesenKarti: View {
-    @Environment(AppStore.self) private var store
-    @Binding var sheet: AppSheet?
-    var month: MonthKey
-
-    private var r: CompanyMonthResult { store.engine.companyMonth(month) }
-    private var satisVar: Bool { r.orders > 0 || r.gercekCiro != 0 }
-
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("BU AY GERÇEKLEŞEN")
-                    .font(.caption.weight(.semibold))
-                    .tracking(0.6)
-                    .foregroundStyle(Palette.inkFaint)
-
-                if satisVar {
-                    VStack(spacing: 9) {
-                        LabeledRow("Gerçek ciro", r.gercekCiro.tl)
-                        LabeledRow("Toplam gider", r.toplamGider.tl, tone: Palette.gider)
-                        LabeledRow(r.isLoss ? "Gerçek zarar" : "Gerçek kâr",
-                                   (r.isLoss ? -r.gercekKar : r.gercekKar).tl,
-                                   tone: r.isLoss ? Palette.zarar : Palette.kar, strong: true)
-                        LabeledRow("Kâr marjı", Money.formatPercent(r.karMarjiPct),
-                                   tone: r.isLoss ? Palette.zarar : Palette.kar)
-                    }
-                } else {
-                    Text("Bu ayın satışlarını henüz girmedin.")
-                        .font(.subheadline)
-                        .foregroundStyle(Palette.inkSoft)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    if r.toplamGider != 0 {
-                        LabeledRow("Kaydedilmiş gider", r.toplamGider.tl, tone: Palette.gider)
-                    }
-                    Button("Satış gir") { sheet = .saleFlow }
-                        .font(.subheadline.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Palette.accent)
-                }
-            }
-        }
-    }
-}
-
 /// Kullanıcının kendi aylık kâr hedefi. Girilmemişse hazır tutar gösterilmez.
 struct KarHedefiGirisi: View {
     @Environment(AppStore.self) private var store

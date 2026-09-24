@@ -132,6 +132,8 @@ public final class AppStore {
             zaman: ISO8601DateFormatter().string(from: Date()), tur: .geriYuklendi, alan: "Yedek",
             aciklama: "Yedekten geri yüklendi (\(p.gun ?? "tarihsiz"))")]).suffix(DegisiklikGunlugu.enFazla))
         apply(s)
+        // Yedekte olmayan eski ekler diskte kalmasın
+        pruneAttachments()
     }
 
     public func replace(_ s: AppState) { apply(s) }
@@ -590,6 +592,20 @@ public final class AppStore {
     public func deleteAdjustment(_ id: Id) { mutate { $0.adjustments.removeAll { $0.id == id } } }
 
     public func addCount(_ c: StockCount) { mutate { $0.counts.append(c) } }
+
+    public func updateCount(_ c: StockCount) {
+        mutate { s in
+            guard let i = s.counts.firstIndex(where: { $0.id == c.id }) else { return }
+            s.counts[i] = c
+        }
+    }
+
+    /// İşletmenin adı (ana ekranın başlığı). Boş bırakılırsa değişmez.
+    public func setCompanyName(_ ad: String) {
+        let temiz = ad.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !temiz.isEmpty else { return }
+        mutate { $0.settings.companyName = temiz }
+    }
 
     public func deleteCount(_ id: Id) { mutate { $0.counts.removeAll { $0.id == id } } }
 

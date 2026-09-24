@@ -31,9 +31,10 @@ struct CashFlowTests {
         // 1. hafta (16–22 Eylül): +7.000 → 27.000
         #expect(t.haftalar[0].bakiye == tl(27_000))
         #expect(t.haftalar[1].bakiye == tl(34_000))
-        // 3. hafta (30 Eylül–6 Ekim): 1 Ekim kira −14.000, +7.000 → 27.000
+        // 3. hafta (30 Eylül–6 Ekim): 1 Ekim kira −14.000; tahsilat günün ayına bölünür:
+        // 30 Eylül 30.000/30 = 1.000, 6 gün Ekim 6 × 30.000/31 = 5.806,45 → +6.806,45
         #expect(t.haftalar[2].cikis == tl(14_000))
-        #expect(t.haftalar[2].bakiye == tl(27_000))
+        #expect(t.haftalar[2].bakiye == 2_680_645)
         #expect(t.bittigiHafta == nil)
     }
 
@@ -52,8 +53,8 @@ struct CashFlowTests {
         // İlk iki hafta tahmini tahsilat yok (çifte sayım olmasın)
         #expect(t.haftalar[0].giris == 0)
         #expect(t.haftalar[1].giris == 0)
-        // 3. hafta: 5 Ekim alacağı 25.000 + 6 Ekim bir günlük tahsilat 1.000
-        #expect(t.haftalar[2].giris == tl(26_000))
+        // 3. hafta: 5 Ekim alacağı 25.000 + 6 Ekim bir günlük tahsilat (30.000/31 = 967,74)
+        #expect(t.haftalar[2].giris == 2_596_774)
     }
 
     @Test func kdvIzleyenAyin28indeOdenir() {

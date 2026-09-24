@@ -59,6 +59,23 @@ public enum DegisiklikGunlugu {
 /// KDV beyanı verilen ayların kilidi.
 /// Kilitli bir aya ait satış, gider, alım, stok kaydı ya da o ayın KDV'si değişemez.
 public enum AyKilidi {
+
+    /// Değişiklik, verilen aya kadar olan bir kayda (ya da tarihli ürün/malzeme/kanal ayarına) mı ait?
+    /// İleri tarihli yeni kayıtlar geçmişe dokunmaz sayılır.
+    private static func gecmiseDokunuyor(eski: AppState, yeni: AppState, ay: MonthKey) -> Bool {
+        let son = Dates.monthEnd(ay)
+        func degisti<T: Hashable>(_ a: [T], _ b: [T], _ tarih: (T) -> DateKey) -> Bool {
+            Set(a.filter { tarih($0) <= son }) != Set(b.filter { tarih($0) <= son })
+        }
+        if degisti(eski.purchases.map(\.beyanAlanlari), yeni.purchases.map(\.beyanAlanlari), { $0.date }) { return true }
+        if degisti(eski.adjustments, yeni.adjustments, { $0.date }) { return true }
+        if degisti(eski.counts, yeni.counts, { $0.date }) { return true }
+        if Set(eski.sales.filter { $0.month <= ay }) != Set(yeni.sales.filter { $0.month <= ay }) { return true }
+        if degisti(eski.expenses, yeni.expenses, { $0.date }) { return true }
+        // Ürün maliyeti, reçete ve kanal oranları tarihlidir: değiştiyse geçmişe uzanıp uzanmadığına
+        // ayın kâr rakamı karar verir
+        return eski.products != yeni.products || eski.materials != yeni.materials || eski.channels != yeni.channels
+    }
     /// Değişiklik kilitli bir ayı etkiliyorsa kullanıcıya gösterilecek açıklama
     /// `eskiMotor` / `yeniMotor` verilirse yeniden kurulmaz (mağaza zaten elinde tutuyor)
     public static func ihlal(eski: AppState, yeni: AppState,
@@ -96,7 +113,18 @@ public enum AyKilidi {
         for ay in aylar.sorted() {
             if e1.vatStatus(ay) != e2.vatStatus(ay) {
                 return "\(Dates.displayMonth(ay)) kilitli (KDV beyanı verildi). Bu değişiklik o ayın KDV'sini "
-                    + "ya da sonucunu değiştiriyor (ör. önceki aydan devreden KDV); önce Raporlar → KDV kartından kilidi aç."
+                    + "ya da sonucunu değiştiriyor (ör. önceki aydan devreden KDV); önce Finans & Vergiler → KDV'den kilidi aç."
+            }
+            // Kilitli ayın raporu da korunur: ortalama maliyet bütün geçmişten katlandığı için kilitli
+            // aya kadar olan bir kaydı (ya da tarihli ürün/malzeme ayarını) düzenlemek o ayın satılan
+            // malın maliyetini ve kârını değiştirir. KDV değişmese bile bu "geçmiş rapor değişmez"i bozar.
+            // Sonradan girilen (ileri tarihli) bir alımın eksi stoğu maliyetlemesi bunun dışındadır:
+            // o kayıt geçmişe dokunmaz, yalnız maliyeti bilinmeyen satışı maliyetler.
+            guard gecmiseDokunuyor(eski: eski, yeni: yeni, ay: ay) else { continue }
+            let r1 = e1.companyMonth(ay), r2 = e2.companyMonth(ay)
+            if r1.gercekKar != r2.gercekKar || r1.toplamGider != r2.toplamGider || r1.gercekCiro != r2.gercekCiro {
+                return "\(Dates.displayMonth(ay)) kilitli. Bu değişiklik o ayın kârını değiştiriyor "
+                    + "(ör. daha eski bir alım ortalama maliyeti oynatıyor); önce Finans & Vergiler → KDV'den kilidi aç."
             }
         }
         return nil

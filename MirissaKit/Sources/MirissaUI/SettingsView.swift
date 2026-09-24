@@ -47,6 +47,15 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    TextField("İşletme adı", text: Binding(
+                        get: { store.state.settings.companyName },
+                        set: { store.setCompanyName($0) }))
+                } header: {
+                    Text("İşletme")
+                } footer: {
+                    Text("Ana ekranın başlığında bu ad görünür.")
+                }
                 VergiAyari()
                 HatirlatmaAyari()
                 Section {
